@@ -1,0 +1,195 @@
+// Pilote — schema de données MVP
+// SQLite en local pour zero-config ; passer à Postgres en prod ne change que `provider` + `url`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  name         String?
+  createdAt    DateTime @default(now())
+
+  companies Company[]
+  events    Event[]
+}
+
+model Company {
+  id              String   @id @default(cuid())
+  userId          String
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name            String
+  industry        String?
+  country         String?
+  sizeRange       String? // "1-5", "6-20", "21-50", "51-200", "200+"
+  employeeCount   Int?
+  objectives      String? // texte libre
+  painPoints      String? // texte libre
+  automationScore Int      @default(0)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  tools          CompanyTool[]
+  diagnostics    Diagnostic[]
+  opportunities  Opportunity[]
+  automations    Automation[]
+  chatMessages   ChatMessage[]
+  subscriptions  Subscription[]
+  purchases      Purchase[]
+  events         Event[]
+
+  @@index([userId])
+}
+
+model CompanyTool {
+  id        String  @id @default(cuid())
+  companyId String
+  company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name      String // ex: "Gmail", "HubSpot"
+  detected  Boolean @default(false) // détecté automatiquement vs ajouté manuellement
+
+  @@unique([companyId, name])
+}
+
+// Diagnostic anonyme (pré-inscription) ou lié à une entreprise après inscription.
+model Diagnostic {
+  id              String   @id @default(cuid())
+  companyId       String?
+  company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sessionToken    String? // identifiant anonyme (cookie) avant inscription
+  rawInput        String
+  detectedTools   String // JSON stringifié : string[]
+  automationScore Int
+  resultJson      String // JSON stringifié du diagnostic complet (opportunités détectées, etc.)
+  claimedAt       DateTime?
+  createdAt       DateTime @default(now())
+
+  opportunities Opportunity[]
+
+  @@index([sessionToken])
+  @@index([companyId])
+}
+
+model Opportunity {
+  id                    String      @id @default(cuid())
+  companyId             String
+  company               Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceDiagnosticId    String?
+  sourceDiagnostic      Diagnostic? @relation(fields: [sourceDiagnosticId], references: [id])
+  templateId            String // référence au catalogue lib/automations
+  title                 String
+  description           String
+  category              String
+  impactLevel           String // "low" | "medium" | "high"
+  complexity            String // "low" | "medium" | "high"
+  estimatedHoursPerMonth Float
+  estimatedValueEur     Float
+  priceEur              Float
+  status                String      @default("detected") // detected | viewed | accepted | rejected | installed
+  createdAt             DateTime    @default(now())
+  updatedAt             DateTime    @updatedAt
+
+  automations Automation[]
+  purchases   Purchase[]
+
+  @@index([companyId])
+}
+
+model Automation {
+  id                     String       @id @default(cuid())
+  companyId              String
+  company                Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  opportunityId          String?
+  opportunity            Opportunity? @relation(fields: [opportunityId], references: [id])
+  name                   String
+  businessGoal           String
+  status                 String       @default("active") // active | warning | error | inactive
+  health                 String       @default("green") // green | orange | red
+  toolsUsed              String // JSON stringifié : string[]
+  installedAt            DateTime     @default(now())
+  lastCheckedAt          DateTime     @default(now())
+  lastModifiedAt         DateTime     @default(now())
+  estimatedHoursPerMonth Float
+  estimatedValueEur      Float
+  usageCount             Int          @default(0)
+  errorCount             Int          @default(0)
+  createdAt              DateTime     @default(now())
+
+  feedback AutomationFeedback[]
+
+  @@index([companyId])
+}
+
+model AutomationFeedback {
+  id              String     @id @default(cuid())
+  automationId    String
+  automation      Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  sentiment       String // great | good | meh | bad
+  timeSavedPerWeek Float?
+  createdAt       DateTime   @default(now())
+
+  @@index([automationId])
+}
+
+model ChatMessage {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role      String // user | assistant
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([companyId])
+}
+
+model Subscription {
+  id               String   @id @default(cuid())
+  companyId        String
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan             String   @default("free") // free | starter | pro | business
+  status           String   @default("active") // active | cancelled
+  currentPeriodEnd DateTime?
+  createdAt        DateTime @default(now())
+
+  @@index([companyId])
+}
+
+// Achat mocké d'une automatisation (pas de vrai paiement en MVP).
+model Purchase {
+  id            String      @id @default(cuid())
+  companyId     String
+  company       Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  opportunityId String
+  opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
+  amountEur     Float
+  status        String      @default("mock_paid")
+  provider      String      @default("mock") // prêt à accueillir "stripe" plus tard
+  providerRef   String?
+  createdAt     DateTime    @default(now())
+
+  @@index([companyId])
+}
+
+// Couche d'événements — ne jamais y stocker de PII brute (contenu d'email, nom de contact, etc.),
+// uniquement des identifiants techniques + métadonnées catégorielles minimisées.
+model Event {
+  id        String   @id @default(cuid())
+  type      String
+  userId    String?
+  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  companyId String?
+  company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
+  metadata  String? // JSON stringifié, minimisé
+  createdAt DateTime @default(now())
+
+  @@index([type])
+  @@index([companyId])
+  @@index([createdAt])
+}
