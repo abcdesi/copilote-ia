@@ -4,6 +4,7 @@ import { prisma } from "@/lib/db/client";
 import { Badge } from "@/components/ui/Badge";
 import { AutomationActions } from "@/components/automations/AutomationActions";
 import { FeedbackWidget } from "@/components/automations/FeedbackWidget";
+import { ProspectsPanel } from "@/components/automations/ProspectsPanel";
 import {
   AUTOMATION_STATUS_LABELS,
   HEALTH_EMOJI,
@@ -30,15 +31,22 @@ export default async function AutomationDetailPage({ params }: { params: Promise
   if (!automation) notFound();
 
   const tools = JSON.parse(automation.toolsUsed) as string[];
+  const isProspectRelance = automation.name === "Relance automatique des prospects";
+  const prospects = isProspectRelance
+    ? await prisma.prospect.findMany({ where: { companyId: company.id, status: "active" }, orderBy: { createdAt: "desc" } })
+    : [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
-          <Badge tone={STATUS_TONE[automation.status]}>
-            {automation.status !== "inactive" && `${HEALTH_EMOJI[automation.health]} `}
-            {AUTOMATION_STATUS_LABELS[automation.status]}
-          </Badge>
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge tone={STATUS_TONE[automation.status]}>
+              {automation.status !== "inactive" && `${HEALTH_EMOJI[automation.health]} `}
+              {AUTOMATION_STATUS_LABELS[automation.status]}
+            </Badge>
+            {automation.n8nWorkflowId && <Badge tone="accent">⚡ Exécution réelle</Badge>}
+          </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight">{automation.name}</h1>
           <p className="mt-1 text-muted-foreground">{automation.businessGoal}</p>
         </div>
@@ -67,6 +75,8 @@ export default async function AutomationDetailPage({ params }: { params: Promise
         <InfoBox label="Installée le" value={automation.installedAt.toLocaleDateString("fr-FR")} />
         <InfoBox label="Dernière vérification" value={relativeTime(automation.lastCheckedAt)} />
       </div>
+
+      {isProspectRelance && <ProspectsPanel prospects={prospects} />}
 
       <div className="rounded-2xl border border-border bg-card p-6">
         <h2 className="font-semibold">Historique</h2>

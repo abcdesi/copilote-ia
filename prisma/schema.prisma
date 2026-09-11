@@ -45,6 +45,7 @@ model Company {
   subscriptions  Subscription[]
   purchases      Purchase[]
   events         Event[]
+  prospects      Prospect[]
 
   @@index([userId])
 }
@@ -122,8 +123,27 @@ model Automation {
   usageCount             Int          @default(0)
   errorCount             Int          @default(0)
   createdAt              DateTime     @default(now())
+  // Présent uniquement pour une automatisation réellement exécutée par le moteur n8n
+  // (par opposition au reste du catalogue, encore simulé). Null = automatisation simulée.
+  n8nWorkflowId          String?
 
   feedback AutomationFeedback[]
+
+  @@index([companyId])
+}
+
+// Prospects gérés manuellement pour le pilote "Relance automatique des prospects" —
+// première automatisation à exécution réelle. Pas un CRM complet : juste ce qu'il
+// faut pour que le workflow n8n ait de vraies données à traiter.
+model Prospect {
+  id               String    @id @default(cuid())
+  companyId        String
+  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  name             String
+  email            String
+  lastContactedAt  DateTime?
+  status           String    @default("active") // active | archived
+  createdAt        DateTime  @default(now())
 
   @@index([companyId])
 }
