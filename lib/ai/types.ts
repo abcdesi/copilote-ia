@@ -39,3 +39,10 @@ export interface ChatMessageInput {
   role: "user" | "assistant";
   content: string;
 }
+
+export interface ChatReply {
+  reply: string;
+  // Présent quand le copilote a trouvé une correspondance catalogue pour un besoin
+  // décrit en texte libre — l'appelant matérialise alors une nouvelle Opportunity.
+  matchedTemplateId?: string;
+}

@@ -1,7 +1,7 @@
 import { runMockChat, runMockDiagnostic } from "./mock-engine";
-import { ChatContext, ChatMessageInput, DiagnosticResult } from "./types";
+import { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 
-export type { ChatContext, ChatMessageInput, DiagnosticResult } from "./types";
+export type { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 
 const hasClaudeKey = () => Boolean(process.env.ANTHROPIC_API_KEY);
 
@@ -22,12 +22,12 @@ export async function runDiagnostic(input: string, existingTools: string[] = [])
   }
 }
 
-export async function runChat(messages: ChatMessageInput[], context: ChatContext): Promise<string> {
+export async function runChat(messages: ChatMessageInput[], context: ChatContext): Promise<ChatReply> {
   if (!hasClaudeKey()) {
     return runMockChat(messages, context);
   }
   try {
-    return await runClaudeChat(messages, context);
+    return { reply: await runClaudeChat(messages, context) };
   } catch {
     return runMockChat(messages, context);
   }
