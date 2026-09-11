@@ -5,6 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { Button } from "@/components/ui/Button";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
+import { MorningBrief, MorningBriefItem } from "@/components/dashboard/MorningBrief";
 import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 
 export default async function DashboardHomePage() {
@@ -38,12 +39,42 @@ export default async function DashboardHomePage() {
   const moreOpportunities = opportunities.slice(1, 3);
   const firstName = company.name.split(" ")[0];
 
+  const attentionCount = healthCounts.orange + healthCounts.red;
+  const briefItems: MorningBriefItem[] = [];
+  if (attentionCount > 0) {
+    briefItems.push({
+      tone: "danger",
+      text: `${attentionCount} automatisation${attentionCount > 1 ? "s nécessitent" : " nécessite"} votre attention`,
+      href: "/app/automations",
+    });
+  }
+  if (opportunities.length > 0) {
+    briefItems.push({
+      tone: "accent",
+      text: `${opportunities.length} opportunité${opportunities.length > 1 ? "s" : ""} en attente, potentiel ~${formatHours(
+        opportunities.reduce((s, o) => s + o.estimatedHoursPerMonth, 0)
+      )}/mois`,
+      href: "/app/opportunities",
+    });
+  }
+  if (attentionCount === 0 && activeAutomations.length > 0) {
+    briefItems.push({
+      tone: "success",
+      text: `Vos ${activeAutomations.length} automatisation${activeAutomations.length > 1 ? "s" : ""} fonctionnent normalement`,
+      href: "/app/automations",
+    });
+  }
+  if (briefItems.length === 0) {
+    briefItems.push({
+      tone: "accent",
+      text: "Décrivez une tâche qui vous fait perdre du temps à votre copilote pour recevoir vos premières recommandations",
+      href: "/app/copilot",
+    });
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-semibold tracking-tight">Bonjour, {firstName} 👋</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Voici où en sont vos automatisations aujourd&apos;hui.</p>
-      </div>
+      <MorningBrief firstName={firstName} items={briefItems} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card>

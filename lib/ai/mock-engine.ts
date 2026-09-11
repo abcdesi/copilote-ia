@@ -116,7 +116,7 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
   }
 
   if (/(ne fonctionne plus|marche plus|erreur|bug|probl[eè]me|panne)/.test(q)) {
-    const withIssue = context.automations.find((a) => a.status !== "active");
+    const withIssue = context.automations.find((a) => a.status === "warning" || a.status === "error");
     if (withIssue) {
       return `Je vois que « ${withIssue.name} » nécessite votre attention. Vous pouvez consulter le détail et l'historique dans l'onglet Automatisations pour voir ce qui a changé.`;
     }

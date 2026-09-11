@@ -1,6 +1,8 @@
 import { Check, X } from "lucide-react";
 import { SiteHeader } from "@/components/marketing/SiteHeader";
 import { DiagnosticExperience } from "@/components/marketing/DiagnosticExperience";
+import { ProductPreview } from "@/components/marketing/ProductPreview";
+import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { APP_NAME } from "@/lib/config";
 
 const CHATGPT_POINTS = [
@@ -21,47 +23,103 @@ const APP_POINTS = [
   { label: "Cherche en permanence la prochaine opportunité", has: true },
 ];
 
+const HOW_IT_WORKS = [
+  {
+    n: "01",
+    title: "Connectez vos outils",
+    body: "Indiquez ce que vous utilisez déjà (Gmail, CRM, Slack, Notion…). Pilotzia comprend votre environnement, sans configuration technique.",
+  },
+  {
+    n: "02",
+    title: "Parlez à votre copilote",
+    body: "Décrivez en langage naturel ce qui vous fait perdre du temps — pas besoin de connaître n8n, Make ou Zapier.",
+  },
+  {
+    n: "03",
+    title: "Pilotzia agit",
+    body: "Il recommande la meilleure automatisation, l'installe et la teste avant de vous la confier.",
+  },
+  {
+    n: "04",
+    title: "Pilotzia surveille",
+    body: "Il détecte les erreurs, les signale et maintient vos automatisations en état de marche.",
+  },
+  {
+    n: "05",
+    title: "Pilotzia progresse",
+    body: "Il mesure les résultats obtenus et cherche en continu votre prochaine opportunité.",
+  },
+];
+
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
       <SiteHeader />
 
       <main className="flex-1">
-        <section className="mx-auto max-w-6xl px-6 pt-10 pb-24 sm:pt-16">
+        <section className="mx-auto max-w-6xl px-6 pt-10 pb-16 sm:pt-16">
           <div className="mx-auto max-w-2xl text-center">
             <h1 className="text-4xl font-semibold tracking-tight text-balance sm:text-5xl">
-              Que voulez-vous automatiser ?
+              Le copilote opérationnel de votre entreprise
             </h1>
             <p className="mt-4 text-lg text-muted-foreground">
-              Décrivez votre entreprise, votre problème ou une tâche qui vous fait perdre du temps. Notre copilote
-              identifie les meilleures opportunités d'automatisation.
+              Connectez vos outils, décrivez ce qui vous ralentit, et laissez {APP_NAME} comprendre, automatiser et
+              surveiller vos opérations dans la durée.
+            </p>
+            <p className="mt-5 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium text-accent">
+              <span>Connecté à vos outils</span>
+              <span className="text-accent/40">→</span>
+              <span>Comprend votre entreprise</span>
+              <span className="text-accent/40">→</span>
+              <span>Agit</span>
+              <span className="text-accent/40">→</span>
+              <span>Mesure</span>
+              <span className="text-accent/40">→</span>
+              <span>Anticipe</span>
             </p>
           </div>
 
           <div className="mt-10">
+            <p className="text-center text-sm font-medium text-muted-foreground mb-3">Que voulez-vous automatiser ?</p>
             <DiagnosticExperience />
           </div>
         </section>
 
+        <section className="border-t border-border bg-card/60 px-6 py-16">
+          <ProductPreview />
+        </section>
+
+        <section className="border-t border-border">
+          <div className="mx-auto max-w-4xl px-6 py-16 text-center">
+            <h2 className="text-2xl font-semibold tracking-tight">Connectez toutes vos applications</h2>
+            <p className="mt-3 text-muted-foreground">
+              {APP_NAME} se connecte aux outils que vous utilisez déjà et rassemble leur contexte dans un seul
+              copilote.
+            </p>
+            <div className="mt-8 flex flex-wrap justify-center gap-2">
+              {KNOWN_TOOLS.map((tool) => (
+                <span
+                  key={tool}
+                  className="rounded-full border border-border bg-card px-4 py-1.5 text-sm text-muted-foreground"
+                >
+                  {tool}
+                </span>
+              ))}
+            </div>
+          </div>
+        </section>
+
         <section className="border-t border-border bg-card/60">
-          <div className="mx-auto max-w-5xl px-6 py-16 grid gap-10 sm:grid-cols-3 text-center">
-            <div>
-              <p className="text-sm font-semibold text-accent">Comprendre</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {APP_NAME} apprend votre activité, vos outils et vos priorités — vous n'avez rien à configurer.
-              </p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-accent">Automatiser</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                Chaque opportunité est installée, testée et surveillée sans que vous ayez à toucher un outil technique.
-              </p>
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-accent">Progresser</p>
-              <p className="mt-2 text-sm text-muted-foreground">
-                {APP_NAME} mesure les résultats et vous propose la prochaine opportunité, mois après mois.
-              </p>
+          <div className="mx-auto max-w-5xl px-6 py-16">
+            <h2 className="text-center text-2xl font-semibold tracking-tight">Comment ça marche</h2>
+            <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
+              {HOW_IT_WORKS.map((step) => (
+                <div key={step.n}>
+                  <p className="text-sm font-semibold text-accent/60">{step.n}</p>
+                  <p className="mt-1 font-semibold">{step.title}</p>
+                  <p className="mt-1.5 text-sm text-muted-foreground">{step.body}</p>
+                </div>
+              ))}
             </div>
           </div>
         </section>

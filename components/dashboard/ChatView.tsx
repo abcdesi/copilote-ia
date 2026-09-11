@@ -13,7 +13,8 @@ export interface ChatViewMessage {
 const STARTERS = [
   "Combien mes automatisations m'ont-elles fait économiser ce mois-ci ?",
   "Qu'est-ce que je pourrais automatiser ensuite ?",
-  "Une automatisation ne fonctionne plus.",
+  "Quels sont mes problèmes aujourd'hui ?",
+  "Quel est mon Automation Score ?",
 ];
 
 export function ChatView({ initialMessages, companyName }: { initialMessages: ChatViewMessage[]; companyName: string }) {
