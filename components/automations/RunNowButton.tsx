@@ -18,7 +18,7 @@ export function RunNowButton({ automationId }: { automationId: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const count = data.result?.relancedCount ?? 0;
-      setMessage(count > 0 ? `${count} prospect${count > 1 ? "s" : ""} relancé${count > 1 ? "s" : ""} par email.` : "Aucun prospect à relancer pour le moment.");
+      setMessage(count > 0 ? `${count} email${count > 1 ? "s" : ""} envoyé${count > 1 ? "s" : ""}.` : "Aucun contact à traiter pour le moment.");
       router.refresh();
     } catch {
       setMessage("L'exécution a échoué. Réessayez dans un instant.");
@@ -33,7 +33,7 @@ export function RunNowButton({ automationId }: { automationId: string }) {
         <div>
           <p className="text-sm font-semibold text-accent">⚡ Exécution réelle disponible</p>
           <p className="mt-1 text-sm text-foreground/80">
-            Lancez une relance maintenant pour tester en conditions réelles — un vrai email sera envoyé aux prospects concernés.
+            Lancez une exécution maintenant pour tester en conditions réelles — un vrai email sera envoyé aux contacts concernés.
           </p>
         </div>
         <Button size="sm" onClick={run} disabled={loading}>
