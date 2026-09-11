@@ -44,6 +44,16 @@ const REAL_EXECUTION_CONFIGS: Record<string, RealExecutionConfig> = {
       "Bonjour {{name}},\n\nAfin de continuer à vous offrir le meilleur service, pourriez-vous prendre 30 secondes pour nous dire comment s'est passée votre expérience récente ? Répondez simplement à cet email.\n\nMerci et à bientôt !",
     recontactDays: 30,
   },
+  "relance-factures": {
+    contactListTitle: "Vos factures impayées",
+    contactListDescription:
+      "Cette automatisation relance automatiquement les clients dont la facture n'a pas encore été réglée.",
+    emptyLabel: "Aucune facture impayée pour l'instant.",
+    defaultSubject: "{{name}}, votre facture est en attente de règlement",
+    defaultBody:
+      "Bonjour {{name}},\n\nNous n'avons pas encore reçu le règlement de votre facture. Merci de bien vouloir régulariser dès que possible, ou de nous contacter si vous avez une question.\n\nCordialement",
+    recontactDays: 7,
+  },
 };
 
 export function getRealExecutionConfig(templateId: string): RealExecutionConfig | undefined {
