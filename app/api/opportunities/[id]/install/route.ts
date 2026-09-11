@@ -4,6 +4,12 @@ import { requireSession } from "@/lib/companies/current";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { isN8nConfigured, createWorkflow, activateWorkflow } from "@/lib/n8n/client";
+import { buildRelanceProspectsWorkflow } from "@/lib/n8n/workflows";
+
+// Pour l'instant, seule cette automatisation a une exécution réelle (moteur n8n) —
+// le reste du catalogue reste simulé jusqu'à ce qu'elle ait fait ses preuves.
+const REAL_EXECUTION_TEMPLATE_IDS = new Set(["relance-prospects"]);
 
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
@@ -55,6 +61,18 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     metadata: { opportunityId: opportunity.id, amountEur: opportunity.priceEur },
   });
   await track(EVENTS.AUTOMATION_INSTALLED, { companyId: company.id, metadata: { automationId: automation.id } });
+
+  if (REAL_EXECUTION_TEMPLATE_IDS.has(opportunity.templateId) && isN8nConfigured()) {
+    try {
+      const workflow = await createWorkflow(buildRelanceProspectsWorkflow(company.id));
+      await activateWorkflow(workflow.id);
+      await prisma.automation.update({ where: { id: automation.id }, data: { n8nWorkflowId: workflow.id } });
+    } catch (err) {
+      // L'automatisation reste installée (simulée) même si la mise en place de
+      // l'exécution réelle échoue — on ne bloque jamais l'utilisateur là-dessus.
+      console.error("n8n workflow creation failed:", err);
+    }
+  }
 
   return NextResponse.json({ automationId: automation.id });
 }

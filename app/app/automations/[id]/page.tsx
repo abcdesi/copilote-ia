@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/Badge";
 import { AutomationActions } from "@/components/automations/AutomationActions";
 import { FeedbackWidget } from "@/components/automations/FeedbackWidget";
 import { ProspectsPanel } from "@/components/automations/ProspectsPanel";
+import { RunNowButton } from "@/components/automations/RunNowButton";
 import {
   AUTOMATION_STATUS_LABELS,
   HEALTH_EMOJI,
@@ -75,6 +76,8 @@ export default async function AutomationDetailPage({ params }: { params: Promise
         <InfoBox label="Installée le" value={automation.installedAt.toLocaleDateString("fr-FR")} />
         <InfoBox label="Dernière vérification" value={relativeTime(automation.lastCheckedAt)} />
       </div>
+
+      {automation.n8nWorkflowId && <RunNowButton automationId={automation.id} />}
 
       {isProspectRelance && <ProspectsPanel prospects={prospects} />}
 
