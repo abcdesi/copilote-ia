@@ -6,6 +6,7 @@ import { AutomationActions } from "@/components/automations/AutomationActions";
 import { FeedbackWidget } from "@/components/automations/FeedbackWidget";
 import { ProspectsPanel } from "@/components/automations/ProspectsPanel";
 import { RunNowButton } from "@/components/automations/RunNowButton";
+import { getRealExecutionConfig } from "@/lib/n8n/real-execution-config";
 import {
   AUTOMATION_STATUS_LABELS,
   HEALTH_EMOJI,
@@ -32,9 +33,16 @@ export default async function AutomationDetailPage({ params }: { params: Promise
   if (!automation) notFound();
 
   const tools = JSON.parse(automation.toolsUsed) as string[];
-  const isProspectRelance = automation.name === "Relance automatique des prospects";
-  const prospects = isProspectRelance
-    ? await prisma.prospect.findMany({ where: { companyId: company.id, status: "active" }, orderBy: { createdAt: "desc" } })
+  // Les automatisations installées avant l'ajout de templateId n'ont pas ce champ
+  // renseigné — on retombe sur "relance-prospects" (seule automatisation réelle
+  // existante à cette époque) pour rester compatible avec les données existantes.
+  const templateId = automation.templateId ?? (automation.n8nWorkflowId ? "relance-prospects" : null);
+  const realExecutionConfig = templateId ? getRealExecutionConfig(templateId) : undefined;
+  const prospects = realExecutionConfig
+    ? await prisma.prospect.findMany({
+        where: { companyId: company.id, templateId: templateId!, status: "active" },
+        orderBy: { createdAt: "desc" },
+      })
     : [];
 
   return (
@@ -79,7 +87,16 @@ export default async function AutomationDetailPage({ params }: { params: Promise
 
       {automation.n8nWorkflowId && <RunNowButton automationId={automation.id} />}
 
-      {isProspectRelance && <ProspectsPanel prospects={prospects} />}
+      {realExecutionConfig && (
+        <ProspectsPanel
+          automationId={automation.id}
+          templateId={templateId!}
+          config={realExecutionConfig}
+          prospects={prospects}
+          messageSubject={automation.messageSubject}
+          messageBody={automation.messageBody}
+        />
+      )}
 
       <div className="rounded-2xl border border-border bg-card p-6">
         <h2 className="font-semibold">Historique</h2>

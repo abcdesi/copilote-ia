@@ -1,15 +1,21 @@
-// Construit le workflow n8n réel pour "Relance automatique des prospects", pour une
-// entreprise donnée. Un seul nœud Code orchestre tout (récupérer les prospects à
-// relancer, envoyer via Resend, marquer comme relancé) — plus simple et plus fiable
-// à générer par API qu'une longue chaîne de nœuds HTTP Request séparés.
+// Construit le workflow n8n réel pour les automatisations "liste de contacts + email"
+// (relance de prospects, onboarding clients, suivi de satisfaction...), pour une
+// entreprise donnée. Un seul nœud Code orchestre tout (récupérer les contacts et le
+// message à envoyer, envoyer via Resend, marquer comme contacté) — plus simple et plus
+// fiable à générer par API qu'une longue chaîne de nœuds HTTP Request séparés. Le
+// message envoyé (sujet/corps) est récupéré à chaque exécution depuis l'API plutôt que
+// figé dans le code du workflow, pour qu'une personnalisation faite par le client soit
+// prise en compte sans avoir à recréer le workflow.
 
 import { randomUUID } from "crypto";
 
 const PILOTZIA_URL = "https://pilotzia.com";
 
-function relanceProspectsCode() {
+function contactListWorkflowCode() {
   return `
-const companyId = $input.first().json.body?.companyId || $input.first().json.companyId;
+const input = $input.first().json.body || $input.first().json;
+const companyId = input.companyId;
+const templateId = input.templateId || "relance-prospects";
 if (!companyId) {
   throw new Error("companyId manquant dans la requête.");
 }
@@ -18,16 +24,24 @@ const PILOTZIA_URL = "${PILOTZIA_URL}";
 const CALLBACK_SECRET = "${process.env.N8N_CALLBACK_SECRET}";
 const RESEND_KEY = "${process.env.RESEND_API_KEY}";
 
-const { prospects } = await this.helpers.httpRequest({
+const { prospects, message } = await this.helpers.httpRequest({
   method: "GET",
   url: \`\${PILOTZIA_URL}/api/automation-engine/prospects\`,
-  qs: { companyId },
+  qs: { companyId, templateId },
   headers: { Authorization: \`Bearer \${CALLBACK_SECRET}\` },
   json: true,
 });
 
 const results = [];
 for (const p of prospects || []) {
+  const subject = String(message?.subject || "").split("{{name}}").join(p.name);
+  const bodyText = String(message?.body || "").split("{{name}}").join(p.name);
+  const html = bodyText
+    .split("\\n")
+    .filter((line) => line.length > 0)
+    .map((line) => \`<p>\${line}</p>\`)
+    .join("");
+
   await this.helpers.httpRequest({
     method: "POST",
     url: "https://api.resend.com/emails",
@@ -35,8 +49,8 @@ for (const p of prospects || []) {
     body: {
       from: "Pilotzia <relances@pilotzia.com>",
       to: [p.email],
-      subject: \`\${p.name}, un petit rappel de notre part\`,
-      html: \`<p>Bonjour \${p.name},</p><p>Nous voulions simplement prendre de vos nouvelles suite à notre dernier échange. N'hésitez pas à nous répondre si vous avez des questions.</p><p>Cordialement</p>\`,
+      subject,
+      html,
     },
     json: true,
   });
@@ -51,17 +65,19 @@ for (const p of prospects || []) {
   results.push({ prospectId: p.id, email: p.email, sent: true });
 }
 
-return [{ json: { companyId, relancedCount: results.length, results } }];
+return [{ json: { companyId, templateId, relancedCount: results.length, results } }];
 `.trim();
 }
 
-export function webhookPathForCompany(companyId: string) {
-  return `relance-prospects-${companyId}`;
+// Le paramètre templateId a une valeur par défaut pour rester compatible avec le tout
+// premier workflow créé (relance-prospects), dont l'URL webhook ne l'incluait pas.
+export function webhookPathForCompany(companyId: string, templateId: string = "relance-prospects") {
+  return `${templateId}-${companyId}`;
 }
 
-export function buildRelanceProspectsWorkflow(companyId: string) {
+export function buildContactListWorkflow(companyId: string, templateId: string) {
   return {
-    name: `Relance prospects — ${companyId}`,
+    name: `${templateId} — ${companyId}`,
     nodes: [
       {
         id: "webhook",
@@ -75,24 +91,24 @@ export function buildRelanceProspectsWorkflow(companyId: string) {
         webhookId: randomUUID(),
         parameters: {
           httpMethod: "POST",
-          path: webhookPathForCompany(companyId),
+          path: webhookPathForCompany(companyId, templateId),
           responseMode: "lastNode",
         },
       },
       {
         id: "run",
-        name: "Relancer les prospects",
+        name: "Exécuter",
         type: "n8n-nodes-base.code",
         typeVersion: 2,
         position: [300, 0],
         parameters: {
           mode: "runOnceForAllItems",
-          jsCode: relanceProspectsCode(),
+          jsCode: contactListWorkflowCode(),
         },
       },
     ],
     connections: {
-      Webhook: { main: [[{ node: "Relancer les prospects", type: "main", index: 0 }]] },
+      Webhook: { main: [[{ node: "Exécuter", type: "main", index: 0 }]] },
     },
   };
 }

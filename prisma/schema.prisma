@@ -110,6 +110,7 @@ model Automation {
   company                Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   opportunityId          String?
   opportunity            Opportunity? @relation(fields: [opportunityId], references: [id])
+  templateId             String? // référence au catalogue lib/automations — identifie le type réel
   name                   String
   businessGoal           String
   status                 String       @default("active") // active | warning | error | inactive
@@ -126,19 +127,28 @@ model Automation {
   // Présent uniquement pour une automatisation réellement exécutée par le moteur n8n
   // (par opposition au reste du catalogue, encore simulé). Null = automatisation simulée.
   n8nWorkflowId          String?
+  // Personnalisation du message envoyé (uniquement pour les automatisations à
+  // exécution réelle) — {{name}} est remplacé par le nom du contact à l'envoi.
+  // Null = valeurs par défaut du template.
+  messageSubject         String?
+  messageBody            String?
 
   feedback AutomationFeedback[]
 
   @@index([companyId])
 }
 
-// Prospects gérés manuellement pour le pilote "Relance automatique des prospects" —
-// première automatisation à exécution réelle. Pas un CRM complet : juste ce qu'il
-// faut pour que le workflow n8n ait de vraies données à traiter.
+// Contacts gérés manuellement pour les automatisations à exécution réelle basées sur
+// l'envoi d'email à une liste de personnes (relance de prospects, onboarding de
+// nouveaux clients, suivi de satisfaction...). Pas un CRM complet : juste ce qu'il
+// faut pour que le workflow n8n ait de vraies données à traiter. `templateId` sépare
+// les listes entre automatisations (les prospects à relancer ne sont pas les mêmes
+// personnes que les nouveaux clients à accueillir).
 model Prospect {
   id               String    @id @default(cuid())
   companyId        String
   company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateId       String    @default("relance-prospects")
   name             String
   email            String
   lastContactedAt  DateTime?
@@ -146,6 +156,7 @@ model Prospect {
   createdAt        DateTime  @default(now())
 
   @@index([companyId])
+  @@index([companyId, templateId])
 }
 
 model AutomationFeedback {

@@ -18,13 +18,14 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Cette automatisation est simulée, pas d'exécution réelle disponible." }, { status: 400 });
   }
 
-  const webhookUrl = `${process.env.N8N_API_URL}/webhook/${webhookPathForCompany(company.id)}`;
+  const templateId = automation.templateId ?? "relance-prospects";
+  const webhookUrl = `${process.env.N8N_API_URL}/webhook/${webhookPathForCompany(company.id, templateId)}`;
 
   try {
     const res = await fetch(webhookUrl, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ companyId: company.id }),
+      body: JSON.stringify({ companyId: company.id, templateId }),
     });
     if (!res.ok) throw new Error(`n8n webhook error ${res.status}`);
     const result = await res.json();
