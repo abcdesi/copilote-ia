@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { APP_NAME, APP_TAGLINE } from "@/lib/config";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -13,9 +14,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Pilote — Le copilote qui automatise votre entreprise",
-  description:
-    "Décrivez votre entreprise ou une tâche qui vous fait perdre du temps : Pilote identifie, installe et surveille vos automatisations.",
+  title: `${APP_NAME} — ${APP_TAGLINE}`,
+  description: `Décrivez votre entreprise ou une tâche qui vous fait perdre du temps : ${APP_NAME} identifie, installe et surveille vos automatisations.`,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

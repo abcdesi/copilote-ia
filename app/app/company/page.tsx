@@ -13,10 +13,7 @@ export default async function CompanyPage() {
     <div className="mx-auto max-w-2xl px-4 py-8 sm:px-6 space-y-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Mon entreprise</h1>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Ces informations aident {company.name.split(" ")[0] ? "votre copilote" : "Pilote"} à affiner ses
-          recommandations.
-        </p>
+        <p className="mt-1 text-sm text-muted-foreground">Ces informations aident votre copilote à affiner ses recommandations.</p>
       </div>
 
       <form action={updateCompanyAction} className="rounded-2xl border border-border bg-card p-6 space-y-5">

@@ -1,5 +1,4 @@
-// Nom de travail du produit — placeholder assumé, à trancher plus tard.
-export const APP_NAME = "Pilote";
+export const APP_NAME = "Pilotzia";
 export const APP_TAGLINE = "Le copilote qui automatise votre entreprise";
 
 export const PLAN_LABELS: Record<string, string> = {
