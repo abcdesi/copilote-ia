@@ -1,12 +1,12 @@
 // Pilote — schema de données MVP
-// SQLite en local pour zero-config ; passer à Postgres en prod ne change que `provider` + `url`.
+// Postgres hébergé (Prisma Postgres via Vercel Marketplace) — même schéma qu'en local.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
