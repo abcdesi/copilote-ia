@@ -3,6 +3,8 @@
 // relancer, envoyer via Resend, marquer comme relancé) — plus simple et plus fiable
 // à générer par API qu'une longue chaîne de nœuds HTTP Request séparés.
 
+import { randomUUID } from "crypto";
+
 const PILOTZIA_URL = "https://pilotzia.com";
 
 function relanceProspectsCode() {
@@ -67,6 +69,10 @@ export function buildRelanceProspectsWorkflow(companyId: string) {
         type: "n8n-nodes-base.webhook",
         typeVersion: 2,
         position: [0, 0],
+        // n8n n'enregistre pas la route de production si ce champ est absent à la
+        // création par API (contrairement à une création depuis l'éditeur, qui le
+        // génère automatiquement) — sans lui, le webhook répond 404 silencieusement.
+        webhookId: randomUUID(),
         parameters: {
           httpMethod: "POST",
           path: webhookPathForCompany(companyId),
