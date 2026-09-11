@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowLeft, ArrowRight } from "lucide-react";
+import { useFormStatus } from "react-dom";
+import { ArrowLeft, ArrowRight, Loader2 } from "lucide-react";
 import { completeOnboardingAction } from "@/lib/onboarding/actions";
 import { Button } from "@/components/ui/Button";
 import { Input, Label, Textarea } from "@/components/ui/Input";
@@ -29,9 +30,30 @@ export function OnboardingWizard({
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [selectedTools, setSelectedTools] = useState<string[]>(prefill?.detectedTools ?? []);
+  // Verrou d'étape : un double-clic sur "Continuer" avance l'étape en un seul re-render React,
+  // et un deuxième clic (même geste) peut retomber pile sur le bouton suivant — qui, une fois à
+  // la dernière étape, est le bouton de soumission. `navLocked` désactive réellement les boutons
+  // (pas juste ignorer le clic) le temps que l'utilisateur voie la nouvelle étape.
+  const [navLocked, setNavLocked] = useState(false);
 
   const isLast = step === STEPS.length - 1;
   const canAdvance = step === 0 ? name.trim().length > 0 : true;
+
+  function lockNav() {
+    setNavLocked(true);
+    setTimeout(() => setNavLocked(false), 400);
+  }
+
+  function goNext() {
+    if (navLocked) return;
+    lockNav();
+    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+  }
+  function goBack() {
+    if (navLocked) return;
+    lockNav();
+    setStep((s) => Math.max(0, s - 1));
+  }
 
   function toggleTool(tool: string) {
     setSelectedTools((prev) => (prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]));
@@ -55,7 +77,21 @@ export function OnboardingWizard({
           </div>
         </div>
 
-        <form action={completeOnboardingAction} className="rounded-2xl border border-border bg-card p-7 shadow-[0_1px_3px_rgba(23,22,28,0.06)]">
+        <form
+          action={completeOnboardingAction}
+          onKeyDown={(e) => {
+            // Entrée dans un champ ne doit jamais soumettre le formulaire avant la dernière
+            // étape (et jamais dans un textarea, où Entrée doit insérer une ligne).
+            if (e.key !== "Enter") return;
+            const tag = (e.target as HTMLElement).tagName;
+            if (tag === "TEXTAREA") return;
+            if (!isLast) {
+              e.preventDefault();
+              if (canAdvance) goNext();
+            }
+          }}
+          className="rounded-2xl border border-border bg-card p-7 shadow-[0_1px_3px_rgba(23,22,28,0.06)]"
+        >
           {prefill && <input type="hidden" name="diagnosticId" value={prefill.diagnosticId} />}
 
           <h1 className="text-xl font-semibold tracking-tight">{STEPS[step].title}</h1>
@@ -168,16 +204,17 @@ export function OnboardingWizard({
               type="button"
               variant="ghost"
               size="sm"
-              onClick={() => setStep((s) => Math.max(0, s - 1))}
+              onClick={goBack}
+              disabled={navLocked}
               className={step === 0 ? "invisible" : ""}
             >
               <ArrowLeft size={16} /> Retour
             </Button>
 
             {isLast ? (
-              <Button type="submit">Découvrir mon plan d'automatisation</Button>
+              <SubmitButton navLocked={navLocked} />
             ) : (
-              <Button type="button" disabled={!canAdvance} onClick={() => setStep((s) => Math.min(STEPS.length - 1, s + 1))}>
+              <Button type="button" disabled={!canAdvance || navLocked} onClick={goNext}>
                 Continuer <ArrowRight size={16} />
               </Button>
             )}
@@ -185,5 +222,17 @@ export function OnboardingWizard({
         </form>
       </div>
     </div>
+  );
+}
+
+// useFormStatus() ne reflète l'état "pending" qu'une fois la soumission réellement en cours
+// (contrairement à un state local mis à jour dans le onClick, qui désactive le bouton trop tôt
+// et peut empêcher le navigateur de déclencher la soumission native du formulaire).
+function SubmitButton({ navLocked }: { navLocked: boolean }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button type="submit" disabled={pending || navLocked}>
+      {pending ? <Loader2 size={16} className="animate-spin" /> : "Découvrir mon plan d'automatisation"}
+    </Button>
   );
 }

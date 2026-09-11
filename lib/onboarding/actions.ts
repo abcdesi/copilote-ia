@@ -45,6 +45,11 @@ export async function completeOnboardingAction(formData: FormData) {
   const { name, industry, country, sizeRange, employeeCount, painPoints, objectives, diagnosticId } = parsed.data;
   const userId = session!.user.id;
 
+  // Filet de sécurité contre une double soumission (double-clic, retry réseau) :
+  // n'importe quelle entreprise déjà créée pour cet utilisateur, on ne recrée pas.
+  const existingCompany = await prisma.company.findFirst({ where: { userId } });
+  if (existingCompany) redirect("/app");
+
   const company = await prisma.company.create({
     data: {
       userId,
