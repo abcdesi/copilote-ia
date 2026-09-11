@@ -1,14 +1,15 @@
-import { getCurrentCompany } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
+import { getCurrentCompany } from "@/lib/companies/current";
+import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { ChatView } from "@/components/dashboard/ChatView";
 
 export default async function CopilotPage() {
   const company = await getCurrentCompany();
+  const conversation = await getOrCreateTodayConversation(company.id);
 
   const history = await prisma.chatMessage.findMany({
-    where: { companyId: company.id },
+    where: { conversationId: conversation.id },
     orderBy: { createdAt: "asc" },
-    take: 50,
   });
 
   return (

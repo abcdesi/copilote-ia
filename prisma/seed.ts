@@ -164,11 +164,22 @@ async function main() {
     ],
   });
 
+  const seedConversation = await prisma.conversation.create({
+    data: { companyId: company.id, createdAt: daysAgo(5) },
+  });
+
   await prisma.chatMessage.createMany({
     data: [
-      { companyId: company.id, role: "user", content: "Combien de temps avons-nous économisé ce mois-ci ?", createdAt: daysAgo(5) },
       {
         companyId: company.id,
+        conversationId: seedConversation.id,
+        role: "user",
+        content: "Combien de temps avons-nous économisé ce mois-ci ?",
+        createdAt: daysAgo(5),
+      },
+      {
+        companyId: company.id,
+        conversationId: seedConversation.id,
         role: "assistant",
         content:
           "Ce mois-ci, Nova Studio a économisé environ 17 h grâce à vos automatisations actives, soit une valeur estimée à 595 €.",

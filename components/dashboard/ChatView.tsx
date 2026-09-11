@@ -1,7 +1,8 @@
 "use client";
 
 import { FormEvent, useRef, useState } from "react";
-import { Bot, Loader2, Send, User } from "lucide-react";
+import Link from "next/link";
+import { Bot, History, Loader2, Send, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 export interface ChatViewMessage {
@@ -54,7 +55,17 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100vh-56px)] max-w-3xl flex-col px-4 sm:px-6">
+    <div className="mx-auto flex h-[calc(100vh-104px)] max-w-3xl flex-col px-4 sm:px-6 lg:h-[calc(100vh-48px)]">
+      <div className="flex items-center justify-between border-b border-border py-3">
+        <p className="text-sm font-medium text-muted-foreground">Conversation d&apos;aujourd&apos;hui</p>
+        <Link
+          href="/app/copilot/history"
+          className="flex items-center gap-1.5 text-sm text-muted-foreground hover:text-accent transition-colors"
+        >
+          <History size={14} /> Historique
+        </Link>
+      </div>
+
       <div className="flex-1 overflow-y-auto py-6 space-y-5">
         {messages.length === 0 && (
           <div className="text-center py-10">

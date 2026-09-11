@@ -41,6 +41,7 @@ model Company {
   opportunities  Opportunity[]
   automations    Automation[]
   chatMessages   ChatMessage[]
+  conversations  Conversation[]
   subscriptions  Subscription[]
   purchases      Purchase[]
   events         Event[]
@@ -138,15 +139,33 @@ model AutomationFeedback {
   @@index([automationId])
 }
 
-model ChatMessage {
+// Une conversation par jour avec le copilote : la première visite du jour en crée
+// une nouvelle et vide ; les précédentes deviennent consultables en lecture seule
+// dans l'historique/archives.
+model Conversation {
   id        String   @id @default(cuid())
   companyId String
   company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  role      String // user | assistant
-  content   String
   createdAt DateTime @default(now())
 
+  messages ChatMessage[]
+
   @@index([companyId])
+  @@index([companyId, createdAt])
+}
+
+model ChatMessage {
+  id             String       @id @default(cuid())
+  companyId      String
+  company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  role           String // user | assistant
+  content        String
+  createdAt      DateTime     @default(now())
+
+  @@index([companyId])
+  @@index([conversationId])
 }
 
 model Subscription {

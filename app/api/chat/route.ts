@@ -3,6 +3,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
 import { buildChatContext } from "@/lib/companies/context";
+import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
@@ -22,12 +23,14 @@ export async function POST(req: NextRequest) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return NextResponse.json({ error: "Aucune entreprise associée." }, { status: 404 });
 
+  const conversation = await getOrCreateTodayConversation(company.id);
+
   await prisma.chatMessage.create({
-    data: { companyId: company.id, role: "user", content: parsed.data.message },
+    data: { companyId: company.id, conversationId: conversation.id, role: "user", content: parsed.data.message },
   });
 
   const history = await prisma.chatMessage.findMany({
-    where: { companyId: company.id },
+    where: { conversationId: conversation.id },
     orderBy: { createdAt: "desc" },
     take: 10,
   });
@@ -42,7 +45,7 @@ export async function POST(req: NextRequest) {
   );
 
   await prisma.chatMessage.create({
-    data: { companyId: company.id, role: "assistant", content: reply },
+    data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
   });
 
   if (matchedTemplateId) {
