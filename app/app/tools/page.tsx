@@ -2,18 +2,10 @@ import { CheckCircle2, LockKeyhole, Plus, ShieldCheck, X } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
+import { getIntegrationDefinition } from "@/lib/integrations/registry";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-
-const PERMISSION_HINTS: Record<string, string> = {
-  Gmail: "Lecture + action avec confirmation",
-  Slack: "Lecture + action avec confirmation",
-  HubSpot: "Lecture + action avec confirmation",
-  Notion: "Lecture + action avec confirmation",
-  Stripe: "Lecture recommandée par défaut",
-  Shopify: "Lecture + action avec confirmation",
-};
 
 export default async function ToolsPage() {
   const company = await getCurrentCompany();
@@ -62,37 +54,41 @@ export default async function ToolsPage() {
           </div>
         ) : (
           <ul className="mt-5 grid gap-3 sm:grid-cols-2">
-            {company.tools.map((tool) => (
-              <li key={tool.id} className="rounded-xl border border-border bg-background p-4">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-sm font-semibold">{tool.name}</span>
-                      {tool.detected && <Badge tone="accent">Détecté</Badge>}
+            {company.tools.map((tool) => {
+              const definition = getIntegrationDefinition(tool.name);
+              return (
+                <li key={tool.id} className="rounded-xl border border-border bg-background p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="text-sm font-semibold">{tool.name}</span>
+                        {tool.detected && <Badge tone="accent">Détecté</Badge>}
+                        {definition.mvpPriority === "now" && <Badge tone="success">MVP prioritaire</Badge>}
+                      </div>
+                      <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <CheckCircle2 size={13} className="text-success" />
+                        Connu du copilote
+                      </div>
+                      <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
+                        <LockKeyhole size={13} />
+                        {definition.permissionLabel}
+                      </div>
+                      <p className="mt-2 text-[11px] font-medium text-muted-foreground">Connexion API : non activée</p>
                     </div>
-                    <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <CheckCircle2 size={13} className="text-success" />
-                      Connu du copilote
-                    </div>
-                    <div className="mt-1.5 flex items-center gap-1.5 text-xs text-muted-foreground">
-                      <LockKeyhole size={13} />
-                      {PERMISSION_HINTS[tool.name] ?? "Permissions à définir lors de la connexion"}
-                    </div>
-                    <p className="mt-2 text-[11px] font-medium text-muted-foreground">Connexion API : non activée</p>
+                    <form action={removeToolAction}>
+                      <input type="hidden" name="toolId" value={tool.id} />
+                      <button
+                        type="submit"
+                        aria-label={`Retirer ${tool.name}`}
+                        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
+                      >
+                        <X size={15} />
+                      </button>
+                    </form>
                   </div>
-                  <form action={removeToolAction}>
-                    <input type="hidden" name="toolId" value={tool.id} />
-                    <button
-                      type="submit"
-                      aria-label={`Retirer ${tool.name}`}
-                      className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
-                    >
-                      <X size={15} />
-                    </button>
-                  </form>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </section>
