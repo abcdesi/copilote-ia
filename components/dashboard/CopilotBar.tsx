@@ -1,15 +1,28 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ArrowRight, Loader2, Sparkles } from "lucide-react";
+
+const PLACEHOLDERS = [
+  "Que voulez-vous faire ? (ex : « Automatise mes relances »)",
+  "Trouve ce qui me fait perdre du temps",
+  "Quels emails attendent une réponse ?",
+  "Analyse mes outils",
+];
 
 export function CopilotBar() {
   const pathname = usePathname();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
+  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+
+  useEffect(() => {
+    const id = setInterval(() => setPlaceholderIndex((i) => (i + 1) % PLACEHOLDERS.length), 3000);
+    return () => clearInterval(id);
+  }, []);
 
   if (pathname === "/app/copilot") return null;
 
@@ -41,7 +54,7 @@ export function CopilotBar() {
         <input
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="Que voulez-vous faire ? (ex : « Automatise mes relances »)"
+          placeholder={PLACEHOLDERS[placeholderIndex]}
           className="flex-1 bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
         />
         <button

@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { Button } from "@/components/ui/Button";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
-import { MorningBrief, MorningBriefItem } from "@/components/dashboard/MorningBrief";
+import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
 import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 
 export default async function DashboardHomePage() {
@@ -72,9 +72,28 @@ export default async function DashboardHomePage() {
     });
   }
 
+  const briefStats: MorningBriefStats | undefined =
+    countable.length > 0 || opportunities.length > 0
+      ? {
+          opportunitiesCount: opportunities.length,
+          potentialHoursLabel: `${formatHours(opportunities.reduce((s, o) => s + o.estimatedHoursPerMonth, 0))}`,
+          healthRatioLabel: `${healthCounts.green}/${countable.length}`,
+        }
+      : undefined;
+
+  const briefPriority: MorningBriefPriority | undefined = topOpportunity
+    ? {
+        title: topOpportunity.title,
+        description:
+          "Je peux préparer cette automatisation et vous montrer le résultat avant son activation.",
+        href: `/app/opportunities/${topOpportunity.id}`,
+        isHighImpact: topOpportunity.impactLevel === "high",
+      }
+    : undefined;
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
-      <MorningBrief firstName={firstName} items={briefItems} />
+      <MorningBrief firstName={firstName} items={briefItems} stats={briefStats} priority={briefPriority} />
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card>
@@ -130,18 +149,6 @@ export default async function DashboardHomePage() {
           </Card>
         )}
       </div>
-
-      {topOpportunity && (
-        <Card className="border-accent/30">
-          <CardHeader>
-            <CardTitle>💡 Votre prochaine opportunité</CardTitle>
-            <CardDescription>Nous avons identifié une opportunité à fort potentiel pour {company.name}.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <OpportunityCard opportunity={topOpportunity} highlight />
-          </CardContent>
-        </Card>
-      )}
 
       {moreOpportunities.length > 0 && (
         <div>
