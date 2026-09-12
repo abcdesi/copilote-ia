@@ -62,6 +62,18 @@ export async function POST(req: NextRequest) {
 
   const action = buildSafeAction(parsed.data.message, opportunity?.id ?? null);
 
+  if (action) {
+    await track(EVENTS.RECOMMENDATION_SHOWN, {
+      companyId: company.id,
+      metadata: {
+        source: "copilot",
+        actionKind: action.kind,
+        destination: action.href,
+        requiresConfirmation: Boolean(action.requiresConfirmation),
+      },
+    });
+  }
+
   return NextResponse.json({ reply, action });
 }
 
