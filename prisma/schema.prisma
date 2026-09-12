@@ -1,4 +1,4 @@
-// Pilote — schema de données MVP
+// Pilotzia — schéma de données opérationnel
 // Postgres hébergé (Prisma Postgres via Vercel Marketplace) — même schéma qu'en local.
 
 generator client {
@@ -28,24 +28,26 @@ model Company {
   name            String
   industry        String?
   country         String?
-  sizeRange       String? // "1-5", "6-20", "21-50", "51-200", "200+"
+  sizeRange       String?
   employeeCount   Int?
-  objectives      String? // texte libre
-  painPoints      String? // texte libre
+  objectives      String?
+  painPoints      String?
   automationScore Int      @default(0)
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 
-  tools          CompanyTool[]
-  diagnostics    Diagnostic[]
-  opportunities  Opportunity[]
-  automations    Automation[]
-  chatMessages   ChatMessage[]
-  conversations  Conversation[]
-  subscriptions  Subscription[]
-  purchases      Purchase[]
-  events         Event[]
-  prospects      Prospect[]
+  tools                  CompanyTool[]
+  diagnostics            Diagnostic[]
+  opportunities          Opportunity[]
+  automations            Automation[]
+  chatMessages           ChatMessage[]
+  conversations          Conversation[]
+  subscriptions          Subscription[]
+  purchases              Purchase[]
+  events                 Event[]
+  prospects              Prospect[]
+  integrationConnections IntegrationConnection[]
+  pendingActions         PendingAction[]
 
   @@index([userId])
 }
@@ -54,22 +56,64 @@ model CompanyTool {
   id        String  @id @default(cuid())
   companyId String
   company   Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  name      String // ex: "Gmail", "HubSpot"
-  detected  Boolean @default(false) // détecté automatiquement vs ajouté manuellement
+  name      String
+  detected  Boolean @default(false)
 
   @@unique([companyId, name])
 }
 
-// Diagnostic anonyme (pré-inscription) ou lié à une entreprise après inscription.
+model IntegrationConnection {
+  id                    String   @id @default(cuid())
+  companyId             String
+  company               Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider              String
+  accountLabel          String?
+  externalAccountId     String?
+  status                String   @default("connected")
+  permissionMode        String   @default("read_action_confirm")
+  scopes                 String
+  accessTokenEncrypted  String
+  refreshTokenEncrypted String?
+  expiresAt             DateTime?
+  lastSyncedAt          DateTime?
+  lastError             String?
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([companyId, provider])
+  @@index([companyId, status])
+}
+
+model PendingAction {
+  id          String   @id @default(cuid())
+  companyId   String
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  provider    String
+  kind        String
+  title       String
+  description String
+  payloadJson String
+  riskLevel   String   @default("medium")
+  status      String   @default("pending")
+  resultJson  String?
+  error       String?
+  createdAt   DateTime @default(now())
+  expiresAt   DateTime?
+  executedAt  DateTime?
+
+  @@index([companyId, status])
+  @@index([createdAt])
+}
+
 model Diagnostic {
   id              String   @id @default(cuid())
   companyId       String?
   company         Company? @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  sessionToken    String? // identifiant anonyme (cookie) avant inscription
+  sessionToken    String?
   rawInput        String
-  detectedTools   String // JSON stringifié : string[]
+  detectedTools   String
   automationScore Int
-  resultJson      String // JSON stringifié du diagnostic complet (opportunités détectées, etc.)
+  resultJson      String
   claimedAt       DateTime?
   createdAt       DateTime @default(now())
 
@@ -80,23 +124,23 @@ model Diagnostic {
 }
 
 model Opportunity {
-  id                    String      @id @default(cuid())
-  companyId             String
-  company               Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  sourceDiagnosticId    String?
-  sourceDiagnostic      Diagnostic? @relation(fields: [sourceDiagnosticId], references: [id])
-  templateId            String // référence au catalogue lib/automations
-  title                 String
-  description           String
-  category              String
-  impactLevel           String // "low" | "medium" | "high"
-  complexity            String // "low" | "medium" | "high"
+  id                     String      @id @default(cuid())
+  companyId              String
+  company                Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  sourceDiagnosticId     String?
+  sourceDiagnostic       Diagnostic? @relation(fields: [sourceDiagnosticId], references: [id])
+  templateId             String
+  title                  String
+  description            String
+  category               String
+  impactLevel            String
+  complexity             String
   estimatedHoursPerMonth Float
-  estimatedValueEur     Float
-  priceEur              Float
-  status                String      @default("detected") // detected | viewed | accepted | rejected | installed
-  createdAt             DateTime    @default(now())
-  updatedAt             DateTime    @updatedAt
+  estimatedValueEur      Float
+  priceEur               Float
+  status                 String      @default("detected")
+  createdAt              DateTime    @default(now())
+  updatedAt              DateTime    @updatedAt
 
   automations Automation[]
   purchases   Purchase[]
@@ -110,12 +154,12 @@ model Automation {
   company                Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   opportunityId          String?
   opportunity            Opportunity? @relation(fields: [opportunityId], references: [id])
-  templateId             String? // référence au catalogue lib/automations — identifie le type réel
+  templateId             String?
   name                   String
   businessGoal           String
-  status                 String       @default("active") // active | warning | error | inactive
-  health                 String       @default("green") // green | orange | red
-  toolsUsed              String // JSON stringifié : string[]
+  status                 String       @default("active")
+  health                 String       @default("green")
+  toolsUsed              String
   installedAt            DateTime     @default(now())
   lastCheckedAt          DateTime     @default(now())
   lastModifiedAt         DateTime     @default(now())
@@ -124,55 +168,59 @@ model Automation {
   usageCount             Int          @default(0)
   errorCount             Int          @default(0)
   createdAt              DateTime     @default(now())
-  // Présent uniquement pour une automatisation réellement exécutée par le moteur n8n
-  // (par opposition au reste du catalogue, encore simulé). Null = automatisation simulée.
   n8nWorkflowId          String?
-  // Personnalisation du message envoyé (uniquement pour les automatisations à
-  // exécution réelle) — {{name}} est remplacé par le nom du contact à l'envoi.
-  // Null = valeurs par défaut du template.
   messageSubject         String?
   messageBody            String?
 
   feedback AutomationFeedback[]
+  runs     AutomationRun[]
 
   @@index([companyId])
 }
 
-// Contacts gérés manuellement pour les automatisations à exécution réelle basées sur
-// l'envoi d'email à une liste de personnes (relance de prospects, onboarding de
-// nouveaux clients, suivi de satisfaction...). Pas un CRM complet : juste ce qu'il
-// faut pour que le workflow n8n ait de vraies données à traiter. `templateId` sépare
-// les listes entre automatisations (les prospects à relancer ne sont pas les mêmes
-// personnes que les nouveaux clients à accueillir).
+model AutomationRun {
+  id             String     @id @default(cuid())
+  automationId   String
+  automation     Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  status         String
+  source         String     @default("scheduled")
+  itemsProcessed Int        @default(0)
+  durationMs     Int?
+  errorCode      String?
+  metadata       String?
+  startedAt      DateTime   @default(now())
+  finishedAt     DateTime?
+
+  @@index([automationId, startedAt])
+  @@index([status])
+}
+
 model Prospect {
-  id               String    @id @default(cuid())
-  companyId        String
-  company          Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  templateId       String    @default("relance-prospects")
-  name             String
-  email            String
-  lastContactedAt  DateTime?
-  status           String    @default("active") // active | archived
-  createdAt        DateTime  @default(now())
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  templateId      String   @default("relance-prospects")
+  name            String
+  email           String
+  lastContactedAt DateTime?
+  status          String   @default("active")
+  createdAt       DateTime @default(now())
 
   @@index([companyId])
   @@index([companyId, templateId])
 }
 
 model AutomationFeedback {
-  id              String     @id @default(cuid())
-  automationId    String
-  automation      Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
-  sentiment       String // great | good | meh | bad
+  id               String     @id @default(cuid())
+  automationId     String
+  automation       Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  sentiment        String
   timeSavedPerWeek Float?
-  createdAt       DateTime   @default(now())
+  createdAt        DateTime   @default(now())
 
   @@index([automationId])
 }
 
-// Une conversation par jour avec le copilote : la première visite du jour en crée
-// une nouvelle et vide ; les précédentes deviennent consultables en lecture seule
-// dans l'historique/archives.
 model Conversation {
   id        String   @id @default(cuid())
   companyId String
@@ -191,7 +239,7 @@ model ChatMessage {
   company        Company      @relation(fields: [companyId], references: [id], onDelete: Cascade)
   conversationId String
   conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  role           String // user | assistant
+  role           String
   content        String
   createdAt      DateTime     @default(now())
 
@@ -203,15 +251,16 @@ model Subscription {
   id               String   @id @default(cuid())
   companyId        String
   company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan             String   @default("free") // free | starter | pro | business
-  status           String   @default("active") // active | cancelled
+  plan             String   @default("free")
+  status           String   @default("active")
   currentPeriodEnd DateTime?
+  stripeCustomerId String?
+  stripeSubId      String?
   createdAt        DateTime @default(now())
 
   @@index([companyId])
 }
 
-// Achat mocké d'une automatisation (pas de vrai paiement en MVP).
 model Purchase {
   id            String      @id @default(cuid())
   companyId     String
@@ -219,16 +268,14 @@ model Purchase {
   opportunityId String
   opportunity   Opportunity @relation(fields: [opportunityId], references: [id])
   amountEur     Float
-  status        String      @default("mock_paid")
-  provider      String      @default("mock") // prêt à accueillir "stripe" plus tard
+  status        String      @default("pending")
+  provider      String      @default("stripe")
   providerRef   String?
   createdAt     DateTime    @default(now())
 
   @@index([companyId])
 }
 
-// Couche d'événements — ne jamais y stocker de PII brute (contenu d'email, nom de contact, etc.),
-// uniquement des identifiants techniques + métadonnées catégorielles minimisées.
 model Event {
   id        String   @id @default(cuid())
   type      String
@@ -236,7 +283,7 @@ model Event {
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
   companyId String?
   company   Company? @relation(fields: [companyId], references: [id], onDelete: SetNull)
-  metadata  String? // JSON stringifié, minimisé
+  metadata  String?
   createdAt DateTime @default(now())
 
   @@index([type])
