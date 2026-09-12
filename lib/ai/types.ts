@@ -29,6 +29,17 @@ export interface ChatContext {
   objectives?: string | null;
   painPoints?: string | null;
   tools: string[];
+  connections: {
+    provider: string;
+    status: string;
+    accountLabel?: string | null;
+    lastSyncedAt?: string | null;
+  }[];
+  observations?: {
+    unreadInboxLast7Days?: number;
+    upcomingEventsNext7Days?: number;
+    observedAt?: string;
+  } | null;
   automations: {
     name: string;
     status: string;
