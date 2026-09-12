@@ -6,6 +6,7 @@ import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { Button } from "@/components/ui/Button";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
+import { PilotziaFeed } from "@/components/dashboard/PilotziaFeed";
 import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 
 export default async function DashboardHomePage() {
@@ -160,6 +161,8 @@ export default async function DashboardHomePage() {
           </div>
         </div>
       )}
+
+      <PilotziaFeed companyId={company.id} />
     </div>
   );
 }
