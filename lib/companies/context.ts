@@ -12,17 +12,24 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     }),
   ]);
 
-  opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
+  opportunities.sort(
+    (a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur
+  );
 
   const active = automations.filter((a) => a.status === "active");
 
   return {
     companyName: company.name,
     industry: company.industry,
+    country: company.country,
+    sizeRange: company.sizeRange,
+    objectives: company.objectives,
+    painPoints: company.painPoints,
     tools: company.tools.map((t) => t.name),
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,
+      health: a.health,
       estimatedHoursPerMonth: a.estimatedHoursPerMonth,
     })),
     automationScore: company.automationScore,
