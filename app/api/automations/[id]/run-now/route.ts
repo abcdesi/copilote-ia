@@ -3,8 +3,6 @@ import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
 import { triggerAutomation } from "@/lib/n8n/execution";
 
-// Déclenche immédiatement une automatisation réellement exécutée (n8n), pour tester
-// ou forcer un passage sans attendre le prochain déclenchement planifié.
 export async function POST(_req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await requireSession();
   const { id } = await params;
@@ -18,7 +16,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     return NextResponse.json({ error: "Cette automatisation est simulée, pas d'exécution réelle disponible." }, { status: 400 });
   }
 
-  const outcome = await triggerAutomation(automation);
+  const outcome = await triggerAutomation(automation, "manual");
   if (!outcome.ok) {
     console.error("run-now failed:", outcome.error);
     return NextResponse.json({ error: "L'exécution a échoué." }, { status: 502 });
