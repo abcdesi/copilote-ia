@@ -2,6 +2,7 @@
 
 import { FormEvent, useEffect, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { ArrowRight, Loader2, Sparkles } from "lucide-react";
 
 const PLACEHOLDERS = [
@@ -13,7 +14,7 @@ const PLACEHOLDERS = [
 ];
 
 export function CopilotBar() {
-  const pathname = usePathnameSafe();
+  const pathname = usePathname();
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [reply, setReply] = useState<string | null>(null);
@@ -76,12 +77,4 @@ export function CopilotBar() {
       )}
     </div>
   );
-}
-
-function usePathnameSafe() {
-  // Import isolé pour garder le composant client simple et éviter d'introduire
-  // une dépendance supplémentaire dans les composants serveur qui l'utilisent.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const { usePathname } = require("next/navigation") as typeof import("next/navigation");
-  return usePathname();
 }
