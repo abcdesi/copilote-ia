@@ -32,7 +32,7 @@ export default async function ResultsPage() {
         </CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm">
-            Ce mois-ci, vos automatisations ont permis d&apos;économiser environ{" "}
+            Ce mois-ci, vos automatisations actives représentent un potentiel estimé d&apos;environ{" "}
             <strong>{formatHours(totalHours)}</strong>, pour une valeur estimée de <strong>{formatEur(totalValue)}</strong>.
             {pendingOpportunities > 0 && (
               <>
@@ -52,10 +52,14 @@ export default async function ResultsPage() {
           </p>
 
           <div className="grid grid-cols-3 gap-3">
-            <MiniStat label="Heures économisées" value={formatHours(totalHours)} />
+            <MiniStat label="Potentiel estimé" value={formatHours(totalHours)} />
             <MiniStat label="Valeur estimée" value={formatEur(totalValue)} />
             <MiniStat label="Automatisations actives" value={String(active.length)} />
           </div>
+          <p className="text-xs text-muted-foreground">
+            Estimation basée sur le potentiel de vos automatisations actives — une automatisation qui rencontre des
+            problèmes répétés sort de ce calcul et apparaît dans « à surveiller ».
+          </p>
 
           {pendingOpportunities > 0 && (
             <a href="/app/opportunities" className="inline-block text-sm font-medium text-accent">

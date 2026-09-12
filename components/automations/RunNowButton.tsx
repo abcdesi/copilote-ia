@@ -35,9 +35,10 @@ export function RunNowButton({ automationId }: { automationId: string }) {
     <div className="rounded-2xl border border-accent/20 bg-accent-soft p-6">
       <div className="flex items-center justify-between gap-4">
         <div>
-          <p className="text-sm font-semibold text-accent">⚡ Exécution réelle disponible</p>
+          <p className="text-sm font-semibold text-accent">⚡ Exécution réelle</p>
           <p className="mt-1 text-sm text-foreground/80">
-            Lancez une exécution maintenant pour tester en conditions réelles — un vrai email sera envoyé aux contacts concernés.
+            Cette automatisation s&apos;exécute automatiquement chaque jour. Vous pouvez aussi la lancer maintenant
+            pour tester en conditions réelles — un vrai email sera envoyé aux contacts concernés.
           </p>
         </div>
         <Button size="sm" onClick={run} disabled={loading}>

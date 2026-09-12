@@ -11,6 +11,7 @@ export interface AutomationCardData {
   toolsUsed: string; // JSON string
   estimatedHoursPerMonth: number;
   lastCheckedAt: Date | string;
+  n8nWorkflowId: string | null;
 }
 
 const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> = {
@@ -30,10 +31,15 @@ export function AutomationCard({ automation }: { automation: AutomationCardData 
           <h3 className="font-semibold">{automation.name}</h3>
           <p className="mt-1 text-sm text-muted-foreground">{automation.businessGoal}</p>
         </div>
-        <Badge tone={STATUS_TONE[automation.status]}>
-          {automation.status !== "inactive" && `${HEALTH_EMOJI[automation.health]} `}
-          {AUTOMATION_STATUS_LABELS[automation.status]}
-        </Badge>
+        <div className="flex flex-col items-end gap-1">
+          <Badge tone={STATUS_TONE[automation.status]}>
+            {automation.status !== "inactive" && `${HEALTH_EMOJI[automation.health]} `}
+            {AUTOMATION_STATUS_LABELS[automation.status]}
+          </Badge>
+          <Badge tone={automation.n8nWorkflowId ? "accent" : "neutral"}>
+            {automation.n8nWorkflowId ? "⚡ Exécution réelle" : "🧪 Simulée"}
+          </Badge>
+        </div>
       </div>
 
       <p className="mt-3 text-sm text-muted-foreground">{tools.join(" → ")}</p>

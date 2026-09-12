@@ -8,6 +8,7 @@ import { InstallDialog } from "@/components/opportunities/InstallDialog";
 import { IMPACT_LABELS, COMPLEXITY_LABELS, formatEur, formatHours } from "@/lib/format";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -24,6 +25,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const template = getTemplateById(opportunity.templateId);
   const steps = template?.steps ?? [];
   const alreadyInstalled = opportunity.status === "installed";
+  const isReal = isRealExecutionTemplate(opportunity.templateId);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">
@@ -36,6 +38,16 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         </div>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">{opportunity.title}</h1>
         <p className="mt-2 text-muted-foreground">{template?.businessGoal ?? opportunity.description}</p>
+      </div>
+
+      <div
+        className={`rounded-2xl border p-4 text-sm ${
+          isReal ? "border-accent/20 bg-accent-soft text-accent" : "border-border bg-muted text-muted-foreground"
+        }`}
+      >
+        {isReal
+          ? "⚡ Automatisation à exécution réelle : une fois installée, elle envoie de vrais emails à vos contacts, selon la fréquence prévue."
+          : "🧪 Version simulée : cette automatisation illustre le fonctionnement du copilote, mais n'exécute pas encore d'actions réelles sur vos outils."}
       </div>
 
       <div className="grid grid-cols-3 gap-3">

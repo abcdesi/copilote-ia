@@ -70,7 +70,9 @@ export default async function AutomationDetailPage({ params }: { params: Promise
               {automation.status !== "inactive" && `${HEALTH_EMOJI[automation.health]} `}
               {AUTOMATION_STATUS_LABELS[automation.status]}
             </Badge>
-            {automation.n8nWorkflowId && <Badge tone="accent">⚡ Exécution réelle</Badge>}
+            <Badge tone={automation.n8nWorkflowId ? "accent" : "neutral"}>
+              {automation.n8nWorkflowId ? "⚡ Exécution réelle" : "🧪 Version simulée"}
+            </Badge>
           </div>
           <h1 className="mt-3 text-2xl font-semibold tracking-tight">{automation.name}</h1>
           <p className="mt-1 text-muted-foreground">{automation.businessGoal}</p>
@@ -101,7 +103,14 @@ export default async function AutomationDetailPage({ params }: { params: Promise
         <InfoBox label="Dernière vérification" value={relativeTime(automation.lastCheckedAt)} />
       </div>
 
-      {automation.n8nWorkflowId && <RunNowButton automationId={automation.id} />}
+      {automation.n8nWorkflowId ? (
+        <RunNowButton automationId={automation.id} />
+      ) : (
+        <div className="rounded-2xl border border-border bg-muted p-6 text-sm text-muted-foreground">
+          🧪 Cette automatisation est une version simulée : elle illustre le fonctionnement du copilote mais
+          n&apos;exécute pas encore d&apos;actions réelles sur vos outils.
+        </div>
+      )}
 
       {realExecutionConfig && (
         <ProspectsPanel
