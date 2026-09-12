@@ -19,6 +19,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const active = automations.filter((a) => a.status === "active");
 
   return {
+    companyId: company.id,
     companyName: company.name,
     industry: company.industry,
     country: company.country,
