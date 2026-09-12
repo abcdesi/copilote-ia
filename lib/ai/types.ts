@@ -23,10 +23,15 @@ export interface DiagnosticResult {
 export interface ChatContext {
   companyName: string;
   industry?: string | null;
+  country?: string | null;
+  sizeRange?: string | null;
+  objectives?: string | null;
+  painPoints?: string | null;
   tools: string[];
   automations: {
     name: string;
     status: string;
+    health: string;
     estimatedHoursPerMonth: number;
   }[];
   automationScore: number;

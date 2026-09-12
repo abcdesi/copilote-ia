@@ -7,9 +7,10 @@ import { ArrowRight, Loader2, Sparkles } from "lucide-react";
 
 const PLACEHOLDERS = [
   "Que voulez-vous faire ? (ex : « Automatise mes relances »)",
+  "Qu'est-ce qui mérite mon attention aujourd'hui ?",
   "Trouve ce qui me fait perdre du temps",
-  "Quels emails attendent une réponse ?",
-  "Analyse mes outils",
+  "Que sais-tu déjà de mon entreprise ?",
+  "Quels outils devrais-je connecter en priorité ?",
 ];
 
 export function CopilotBar() {
@@ -49,7 +50,7 @@ export function CopilotBar() {
 
   return (
     <div className="border-b border-border bg-card/60 px-4 py-3 sm:px-6">
-      <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 shadow-sm focus-within:ring-2 focus-within:ring-accent/30 focus-within:border-accent">
+      <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 shadow-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
         <Sparkles size={16} className="ml-2 shrink-0 text-accent" />
         <input
           value={input}
@@ -70,7 +71,7 @@ export function CopilotBar() {
         <div className="mx-auto mt-2 max-w-3xl rounded-xl bg-accent-soft px-4 py-2.5 text-sm text-foreground">
           {reply}{" "}
           <Link href="/app/copilot" className="font-medium text-accent whitespace-nowrap">
-            Ouvrir le copilote →
+            Continuer dans le copilote →
           </Link>
         </div>
       )}

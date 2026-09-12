@@ -12,6 +12,14 @@ import { EVENTS } from "@/lib/analytics/events";
 
 const bodySchema = z.object({ message: z.string().min(1).max(1000) });
 
+export interface CopilotAction {
+  kind: "navigate";
+  label: string;
+  href: string;
+  description?: string;
+  requiresConfirmation?: boolean;
+}
+
 export async function POST(req: NextRequest) {
   const session = await requireSession();
 
@@ -48,21 +56,35 @@ export async function POST(req: NextRequest) {
     data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
   });
 
-  if (matchedTemplateId) {
-    await createOpportunityFromChatMatch(company.id, matchedTemplateId);
+  const opportunity = matchedTemplateId
+    ? await createOpportunityFromChatMatch(company.id, matchedTemplateId)
+    : null;
+
+  const action = buildSafeAction(parsed.data.message, opportunity?.id ?? null);
+
+  if (action) {
+    await track(EVENTS.RECOMMENDATION_SHOWN, {
+      companyId: company.id,
+      metadata: {
+        source: "copilot",
+        actionKind: action.kind,
+        destination: action.href,
+        requiresConfirmation: Boolean(action.requiresConfirmation),
+      },
+    });
   }
 
-  return NextResponse.json({ reply });
+  return NextResponse.json({ reply, action });
 }
 
 async function createOpportunityFromChatMatch(companyId: string, templateId: string) {
   const existing = await prisma.opportunity.findFirst({ where: { companyId, templateId } });
-  if (existing) return;
+  if (existing) return existing;
 
   const template = getTemplateById(templateId);
-  if (!template) return;
+  if (!template) return null;
 
-  await prisma.opportunity.create({
+  const opportunity = await prisma.opportunity.create({
     data: {
       companyId,
       templateId: template.id,
@@ -79,4 +101,48 @@ async function createOpportunityFromChatMatch(companyId: string, templateId: str
   });
 
   await track(EVENTS.AUTOMATION_OPPORTUNITY_DETECTED, { companyId, metadata: { source: "chat", templateId } });
+  return opportunity;
+}
+
+function buildSafeAction(message: string, opportunityId: string | null): CopilotAction | null {
+  if (opportunityId) {
+    return {
+      kind: "navigate",
+      label: "Voir la recommandation",
+      href: `/app/opportunities/${opportunityId}`,
+      description: "Vérifiez le fonctionnement, l'impact estimé et les étapes avant toute activation.",
+      requiresConfirmation: true,
+    };
+  }
+
+  const normalized = message.toLowerCase();
+
+  if (/connect|connexion|gmail|slack|notion|hubspot|calendar|calendrier|outil|application/.test(normalized)) {
+    return {
+      kind: "navigate",
+      label: "Gérer les outils & connexions",
+      href: "/app/tools",
+      description: "Pilotzia distingue les outils simplement renseignés des connexions réellement autorisées.",
+    };
+  }
+
+  if (/objectif|entreprise|activité|activite|contexte|mémoire|memoire|priorité|priorite/.test(normalized)) {
+    return {
+      kind: "navigate",
+      label: "Mettre à jour la mémoire entreprise",
+      href: "/app/company",
+      description: "Ajoutez le contexte durable qui aide le copilote à mieux prioriser ses recommandations.",
+    };
+  }
+
+  if (/automatis|opportunité|opportunite|gagner du temps|perdre du temps/.test(normalized)) {
+    return {
+      kind: "navigate",
+      label: "Voir les opportunités",
+      href: "/app/opportunities",
+      description: "Consultez les recommandations déjà détectées et leur impact estimé.",
+    };
+  }
+
+  return null;
 }

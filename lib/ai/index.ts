@@ -17,7 +17,6 @@ export async function runDiagnostic(input: string, existingTools: string[] = [])
   try {
     return await runClaudeDiagnostic(input, existingTools);
   } catch {
-    // Le moteur mock reste le filet de sécurité si l'API réelle échoue.
     return runMockDiagnostic(input, existingTools);
   }
 }
@@ -56,15 +55,37 @@ async function callClaude(system: string, userContent: string) {
 }
 
 async function runClaudeDiagnostic(input: string, existingTools: string[]): Promise<DiagnosticResult> {
-  // Fallback conservateur : tant que le prompt/parsing JSON n'a pas été validé en conditions
-  // réelles avec une vraie clé, on garde le moteur mock comme source de vérité pour le MVP.
   return runMockDiagnostic(input, existingTools);
 }
 
 async function runClaudeChat(messages: ChatMessageInput[], context: ChatContext): Promise<string> {
-  const system = `Tu es le copilote d'automatisation de l'entreprise ${context.companyName}. Réponds de façon concise, orientée résultat, sans jargon technique. Contexte: ${JSON.stringify(
-    context
-  )}`;
-  const lastUserMessage = messages[messages.length - 1]?.content ?? "";
-  return callClaude(system, lastUserMessage);
+  const system = `Tu es Pilotzia, le copilote opérationnel de l'entreprise ${context.companyName}.
+
+MISSION
+Aide l'utilisateur à comprendre ce qui mérite son attention, décider quoi améliorer et transformer ses demandes en actions concrètes. Tu n'es pas un chatbot générique ni un simple générateur d'automatisations.
+
+CONTEXTE ENTREPRISE
+${JSON.stringify(context, null, 2)}
+
+RÈGLES
+- Réponds en français, de façon concise, claire et orientée résultat.
+- Utilise le contexte entreprise quand il est pertinent : objectifs, pertes de temps, outils, automatisations, santé, score et opportunités.
+- Distingue toujours ce que Pilotzia sait de ce qu'il suppose.
+- Ne prétends jamais avoir lu, modifié ou synchronisé une application externe si aucune intégration réelle n'est disponible dans le contexte.
+- Pour une action sensible (suppression, paiement, désactivation, envoi massif, modification irréversible), demande explicitement confirmation avant de présenter l'action comme exécutée.
+- Quand une demande peut être satisfaite par une automatisation, explique le résultat attendu avant la technique.
+- Si une donnée manque, propose la prochaine étape la plus courte au lieu d'inventer.
+- Les valeurs de temps et d'euros sont des estimations, jamais des garanties.
+- Quand c'est utile, termine par une seule prochaine action claire.
+`;
+
+  const transcript = messages
+    .slice(-10)
+    .map((message) => `${message.role === "user" ? "Utilisateur" : "Pilotzia"}: ${message.content}`)
+    .join("\n");
+
+  return callClaude(
+    system,
+    `Voici les derniers échanges de la conversation. Réponds au dernier message en tenant compte de l'historique :\n\n${transcript}`
+  );
 }
