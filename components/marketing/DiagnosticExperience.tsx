@@ -9,10 +9,10 @@ import { IMPACT_LABELS, formatHours } from "@/lib/format";
 import type { DiagnosticResult } from "@/lib/ai/types";
 
 const SUGGESTIONS = [
-  "Je veux automatiser ma prospection",
-  "Je veux gagner du temps administratif",
-  "Je veux automatiser mes relances",
-  "Je veux savoir ce que je peux automatiser",
+  "Relance mes prospects qui ne répondent plus",
+  "Accueille mes nouveaux clients automatiquement",
+  "Sonde la satisfaction de mes clients",
+  "Relance mes factures impayées",
 ];
 
 const PLACEHOLDER =

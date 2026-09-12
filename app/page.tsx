@@ -77,10 +77,23 @@ export default function HomePage() {
               <span className="text-accent/40">→</span>
               <span>Anticipe</span>
             </p>
+            <div className="mt-6 flex flex-wrap items-center justify-center gap-1.5">
+              {KNOWN_TOOLS.slice(0, 8).map((tool) => (
+                <span
+                  key={tool}
+                  className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground"
+                >
+                  {tool}
+                </span>
+              ))}
+              <span className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">
+                +{KNOWN_TOOLS.length - 8} autres
+              </span>
+            </div>
           </div>
 
           <div className="mt-10">
-            <p className="text-center text-sm font-medium text-muted-foreground mb-3">Que voulez-vous automatiser ?</p>
+            <p className="text-center text-sm font-medium text-muted-foreground mb-3">Que voulez-vous faire ?</p>
             <DiagnosticExperience />
           </div>
         </section>
