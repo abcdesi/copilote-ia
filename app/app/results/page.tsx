@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { AlertTriangle, CheckCircle2, Clock3, Euro, Lightbulb, Lock, Zap } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
@@ -73,14 +74,14 @@ export default async function ResultsPage() {
 
           <div className="flex flex-wrap gap-3">
             {needsAttention.length > 0 && (
-              <a href="/app/automations" className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground">
+              <Link href="/app/automations" className="inline-flex items-center rounded-full bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground">
                 Traiter les alertes
-              </a>
+              </Link>
             )}
             {pendingOpportunities > 0 && (
-              <a href="/app/opportunities" className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium">
+              <Link href="/app/opportunities" className="inline-flex items-center rounded-full border border-border px-4 py-2 text-sm font-medium">
                 Voir les opportunités
-              </a>
+              </Link>
             )}
           </div>
         </CardContent>
