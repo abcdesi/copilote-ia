@@ -1,6 +1,4 @@
-// Déclenchement d'une automatisation à exécution réelle + mise à jour de sa santé à
-// partir du résultat effectif — partagé entre le déclenchement manuel ("Lancer
-// maintenant") et le déclenchement automatique planifié (cron).
+// Déclenchement d'une automatisation à exécution réelle + mise à jour de sa santé.
 
 import { prisma } from "@/lib/db/client";
 import { track } from "@/lib/analytics/track";
@@ -14,9 +12,19 @@ interface TriggerableAutomation {
   errorCount: number;
 }
 
-export async function triggerAutomation(automation: TriggerableAutomation) {
+export async function triggerAutomation(
+  automation: TriggerableAutomation,
+  source: "scheduled" | "manual" | "webhook" = "scheduled"
+) {
   const templateId = automation.templateId ?? "relance-prospects";
-  const webhookUrl = `${process.env.N8N_API_URL}/webhook/${webhookPathForCompany(automation.companyId, templateId)}`;
+  const baseUrl = process.env.N8N_API_URL;
+  if (!baseUrl) return { ok: false as const, error: "N8N_API_URL manquante." };
+
+  const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${webhookPathForCompany(automation.companyId, templateId)}`;
+  const startedAt = new Date();
+  const run = await prisma.automationRun.create({
+    data: { automationId: automation.id, status: "running", source, startedAt },
+  });
 
   try {
     const res = await fetch(webhookUrl, {
@@ -26,48 +34,65 @@ export async function triggerAutomation(automation: TriggerableAutomation) {
     });
     if (!res.ok) throw new Error(`n8n webhook error ${res.status}`);
     const result = await res.json();
-    const sentCount: number = result?.relancedCount ?? 0;
+    const sentCount: number = result?.relancedCount ?? result?.processedCount ?? 0;
     const runErrors: number = result?.errorCount ?? 0;
+    const finishedAt = new Date();
 
-    await applyExecutionOutcome(automation.id, automation.errorCount, runErrors);
+    await Promise.all([
+      applyExecutionOutcome(automation.id, automation.errorCount, runErrors),
+      prisma.automationRun.update({
+        where: { id: run.id },
+        data: {
+          status: runErrors > 0 ? "failed" : "success",
+          itemsProcessed: sentCount,
+          durationMs: finishedAt.getTime() - startedAt.getTime(),
+          errorCode: runErrors > 0 ? "PARTIAL_EXECUTION_ERRORS" : null,
+          metadata: JSON.stringify({ templateId, errorCount: runErrors }),
+          finishedAt,
+        },
+      }),
+    ]);
 
-    // On ne journalise que ce qui s'est réellement passé — pas d'entrée pour une
-    // exécution qui n'a trouvé aucun contact à traiter, pour ne pas noyer le flux
-    // d'activité du client sous du bruit.
     if (sentCount > 0) {
       await track(EVENTS.AUTOMATION_EXECUTED, {
         companyId: automation.companyId,
-        metadata: { templateId, sentCount },
+        metadata: { templateId, sentCount, source },
       });
     }
     if (runErrors > 0) {
       await track(EVENTS.AUTOMATION_EXECUTION_ISSUE, {
         companyId: automation.companyId,
-        metadata: { templateId, errorCount: runErrors },
+        metadata: { templateId, errorCount: runErrors, source },
       });
     }
 
     return { ok: true as const, result };
   } catch (err) {
-    // Échec total de l'exécution (webhook injoignable, erreur n8n...) — compte comme
-    // une erreur pleine, pas seulement partielle.
-    await applyExecutionOutcome(automation.id, automation.errorCount, 1);
-    await track(EVENTS.AUTOMATION_EXECUTION_ISSUE, {
-      companyId: automation.companyId,
-      metadata: { templateId, errorCount: 1 },
-    });
-    return { ok: false as const, error: err instanceof Error ? err.message : String(err) };
+    const finishedAt = new Date();
+    const message = err instanceof Error ? err.message : String(err);
+    await Promise.all([
+      applyExecutionOutcome(automation.id, automation.errorCount, 1),
+      prisma.automationRun.update({
+        where: { id: run.id },
+        data: {
+          status: "failed",
+          durationMs: finishedAt.getTime() - startedAt.getTime(),
+          errorCode: "EXECUTION_FAILED",
+          metadata: JSON.stringify({ templateId }),
+          finishedAt,
+        },
+      }),
+      track(EVENTS.AUTOMATION_EXECUTION_ISSUE, {
+        companyId: automation.companyId,
+        metadata: { templateId, errorCount: 1, source },
+      }),
+    ]);
+    return { ok: false as const, error: message };
   }
 }
 
-// Met à jour la santé de l'automatisation à partir du résultat réel de l'exécution :
-// une exécution propre remet le compteur à zéro (auto-guérison), des échecs répétés
-// font passer la santé en orange puis rouge et remontent l'automatisation dans les
-// automatisations "à surveiller" (page Résultats).
 export async function applyExecutionOutcome(automationId: string, previousErrorCount: number, newErrors: number) {
   const current = await prisma.automation.findUnique({ where: { id: automationId }, select: { status: true } });
-  // Ne jamais réactiver automatiquement une automatisation que le client a désactivée
-  // lui-même — seule une action explicite du client doit la remettre en marche.
   if (current?.status === "inactive") return;
 
   const errorCount = newErrors > 0 ? previousErrorCount + newErrors : 0;
@@ -76,6 +101,13 @@ export async function applyExecutionOutcome(automationId: string, previousErrorC
 
   await prisma.automation.update({
     where: { id: automationId },
-    data: { lastCheckedAt: new Date(), errorCount, health, status },
+    data: {
+      lastCheckedAt: new Date(),
+      lastModifiedAt: new Date(),
+      errorCount,
+      health,
+      status,
+      usageCount: newErrors === 0 ? { increment: 1 } : undefined,
+    },
   });
 }

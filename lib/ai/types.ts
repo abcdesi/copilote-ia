@@ -21,6 +21,7 @@ export interface DiagnosticResult {
 }
 
 export interface ChatContext {
+  companyId: string;
   companyName: string;
   industry?: string | null;
   country?: string | null;
@@ -28,6 +29,17 @@ export interface ChatContext {
   objectives?: string | null;
   painPoints?: string | null;
   tools: string[];
+  connections: {
+    provider: string;
+    status: string;
+    accountLabel?: string | null;
+    lastSyncedAt?: string | null;
+  }[];
+  observations?: {
+    unreadInboxLast7Days?: number;
+    upcomingEventsNext7Days?: number;
+    observedAt?: string;
+  } | null;
   automations: {
     name: string;
     status: string;
@@ -47,7 +59,5 @@ export interface ChatMessageInput {
 
 export interface ChatReply {
   reply: string;
-  // Présent quand le copilote a trouvé une correspondance catalogue pour un besoin
-  // décrit en texte libre — l'appelant matérialise alors une nouvelle Opportunity.
   matchedTemplateId?: string;
 }

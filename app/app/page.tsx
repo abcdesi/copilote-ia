@@ -1,6 +1,7 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
+import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { Button } from "@/components/ui/Button";
@@ -12,12 +13,18 @@ import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 export default async function DashboardHomePage() {
   const company = await getCurrentCompany();
 
-  const [automations, opportunities] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
       orderBy: { estimatedValueEur: "desc" },
     }),
+    prisma.pendingAction.findMany({
+      where: { companyId: company.id, status: "pending" },
+      orderBy: { createdAt: "desc" },
+      take: 10,
+    }),
+    getLatestGoogleOperationalSnapshot(company.id),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -42,11 +49,26 @@ export default async function DashboardHomePage() {
 
   const attentionCount = healthCounts.orange + healthCounts.red;
   const briefItems: MorningBriefItem[] = [];
+
+  if (pendingActions.length > 0) {
+    briefItems.push({
+      tone: "accent",
+      text: `${pendingActions.length} action${pendingActions.length > 1 ? "s" : ""} préparée${pendingActions.length > 1 ? "s" : ""} attend${pendingActions.length > 1 ? "ent" : ""} votre validation`,
+      href: "/app/actions",
+    });
+  }
   if (attentionCount > 0) {
     briefItems.push({
       tone: "danger",
       text: `${attentionCount} automatisation${attentionCount > 1 ? "s nécessitent" : " nécessite"} votre attention`,
       href: "/app/automations",
+    });
+  }
+  if (googleSnapshot && googleSnapshot.unreadInboxLast7Days > 0) {
+    briefItems.push({
+      tone: "accent",
+      text: `${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
+      href: "/app/tools",
     });
   }
   if (opportunities.length > 0) {
@@ -82,19 +104,34 @@ export default async function DashboardHomePage() {
         }
       : undefined;
 
-  const briefPriority: MorningBriefPriority | undefined = topOpportunity
-    ? {
-        title: topOpportunity.title,
-        description:
-          "Je peux préparer cette automatisation et vous montrer le résultat avant son activation.",
-        href: `/app/opportunities/${topOpportunity.id}`,
-        isHighImpact: topOpportunity.impactLevel === "high",
-      }
-    : undefined;
+  let briefPriority: MorningBriefPriority | undefined;
+  if (pendingActions[0]) {
+    briefPriority = {
+      title: pendingActions[0].title,
+      description: "Pilotzia a préparé cette action. Vérifiez son impact puis confirmez ou refusez son exécution.",
+      href: "/app/actions",
+      isHighImpact: pendingActions[0].riskLevel === "high" || pendingActions[0].riskLevel === "critical",
+    };
+  } else if (topOpportunity) {
+    briefPriority = {
+      title: topOpportunity.title,
+      description: "Je peux préparer cette automatisation et vous montrer le résultat avant son activation.",
+      href: `/app/opportunities/${topOpportunity.id}`,
+      isHighImpact: topOpportunity.impactLevel === "high",
+    };
+  }
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
       <MorningBrief firstName={firstName} items={briefItems} stats={briefStats} priority={briefPriority} />
+
+      {googleSnapshot && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <MiniOperationalStat label="Emails non lus · 7 jours" value={String(googleSnapshot.unreadInboxLast7Days)} />
+          <MiniOperationalStat label="Événements · 7 jours" value={String(googleSnapshot.upcomingEventsNext7Days)} />
+          <MiniOperationalStat label="Observation Google" value="Synchronisée" />
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card>
@@ -163,6 +200,15 @@ export default async function DashboardHomePage() {
       )}
 
       <PilotziaFeed companyId={company.id} />
+    </div>
+  );
+}
+
+function MiniOperationalStat({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-border bg-card px-4 py-3">
+      <p className="text-[11px] text-muted-foreground">{label}</p>
+      <p className="mt-1 text-sm font-semibold">{value}</p>
     </div>
   );
 }

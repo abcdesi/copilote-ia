@@ -1,15 +1,21 @@
 import { prisma } from "@/lib/db/client";
 import type { ChatContext } from "@/lib/ai/types";
 import { IMPACT_RANK } from "@/lib/format";
+import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 
 export async function buildChatContext(companyId: string): Promise<ChatContext> {
-  const [company, automations, opportunities] = await Promise.all([
+  const [company, automations, opportunities, connections, observations] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
       where: { companyId, status: { in: ["detected", "viewed"] } },
       orderBy: { estimatedValueEur: "desc" },
     }),
+    prisma.integrationConnection.findMany({
+      where: { companyId },
+      select: { provider: true, status: true, accountLabel: true, lastSyncedAt: true },
+    }),
+    getLatestGoogleOperationalSnapshot(companyId),
   ]);
 
   opportunities.sort(
@@ -19,6 +25,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const active = automations.filter((a) => a.status === "active");
 
   return {
+    companyId: company.id,
     companyName: company.name,
     industry: company.industry,
     country: company.country,
@@ -26,6 +33,13 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     objectives: company.objectives,
     painPoints: company.painPoints,
     tools: company.tools.map((t) => t.name),
+    connections: connections.map((connection) => ({
+      provider: connection.provider,
+      status: connection.status,
+      accountLabel: connection.accountLabel,
+      lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
+    })),
+    observations,
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,
