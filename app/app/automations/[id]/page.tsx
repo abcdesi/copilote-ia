@@ -7,6 +7,7 @@ import { FeedbackWidget } from "@/components/automations/FeedbackWidget";
 import { ProspectsPanel } from "@/components/automations/ProspectsPanel";
 import { RunNowButton } from "@/components/automations/RunNowButton";
 import { getRealExecutionConfig } from "@/lib/n8n/real-execution-config";
+import { isN8nConfigured, getWorkflowExecutions } from "@/lib/n8n/client";
 import {
   AUTOMATION_STATUS_LABELS,
   HEALTH_EMOJI,
@@ -20,6 +21,14 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> 
   warning: "warning",
   error: "danger",
   inactive: "neutral",
+};
+
+const EXECUTION_STATUS_LABELS: Record<string, string> = {
+  success: "Réussie",
+  error: "Échouée",
+  running: "En cours",
+  new: "En cours",
+  waiting: "En attente",
 };
 
 export default async function AutomationDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -44,6 +53,13 @@ export default async function AutomationDetailPage({ params }: { params: Promise
         orderBy: { createdAt: "desc" },
       })
     : [];
+
+  const executions =
+    automation.n8nWorkflowId && isN8nConfigured()
+      ? await getWorkflowExecutions(automation.n8nWorkflowId, 10)
+          .then((r) => r.data)
+          .catch(() => [])
+      : [];
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">
@@ -96,6 +112,23 @@ export default async function AutomationDetailPage({ params }: { params: Promise
           messageSubject={automation.messageSubject}
           messageBody={automation.messageBody}
         />
+      )}
+
+      {executions.length > 0 && (
+        <div className="rounded-2xl border border-border bg-card p-6">
+          <h2 className="font-semibold">Historique des exécutions</h2>
+          <p className="mt-1 text-sm text-muted-foreground">Les 10 dernières exécutions réelles de cette automatisation.</p>
+          <ul className="mt-3 space-y-2">
+            {executions.map((e) => (
+              <li key={e.id} className="flex items-center justify-between rounded-xl bg-muted px-4 py-2.5 text-sm">
+                <span>{new Date(e.startedAt).toLocaleString("fr-FR")}</span>
+                <Badge tone={e.status === "success" ? "success" : e.status === "error" ? "danger" : "neutral"}>
+                  {EXECUTION_STATUS_LABELS[e.status] ?? e.status}
+                </Badge>
+              </li>
+            ))}
+          </ul>
+        </div>
       )}
 
       <div className="rounded-2xl border border-border bg-card p-6">

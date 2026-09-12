@@ -30,11 +30,32 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (!res.ok) throw new Error(`n8n webhook error ${res.status}`);
     const result = await res.json();
 
-    await prisma.automation.update({ where: { id: automation.id }, data: { lastCheckedAt: new Date() } });
+    // Nombre de contacts pour qui l'envoi a échoué dans cette exécution (envoi
+    // partiellement réussi) — remonté par le workflow n8n lui-même.
+    const runErrors: number = result?.errorCount ?? 0;
+    await applyExecutionOutcome(automation.id, automation.errorCount, runErrors);
 
     return NextResponse.json({ ok: true, result });
   } catch (err) {
     console.error("run-now failed:", err);
+    // Échec total de l'exécution (webhook injoignable, erreur n8n...) — compte comme
+    // une erreur pleine, pas seulement partielle.
+    await applyExecutionOutcome(automation.id, automation.errorCount, 1);
     return NextResponse.json({ error: "L'exécution a échoué." }, { status: 502 });
   }
+}
+
+// Met à jour la santé de l'automatisation à partir du résultat réel de l'exécution :
+// une exécution propre remet le compteur à zéro (auto-guérison), des échecs répétés
+// font passer la santé en orange puis rouge et remontent l'automatisation dans les
+// automatisations "à surveiller" (page Résultats).
+async function applyExecutionOutcome(automationId: string, previousErrorCount: number, newErrors: number) {
+  const errorCount = newErrors > 0 ? previousErrorCount + newErrors : 0;
+  const health = errorCount === 0 ? "green" : errorCount <= 2 ? "orange" : "red";
+  const status = errorCount >= 3 ? "warning" : "active";
+
+  await prisma.automation.update({
+    where: { id: automationId },
+    data: { lastCheckedAt: new Date(), errorCount, health, status },
+  });
 }

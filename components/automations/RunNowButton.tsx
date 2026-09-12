@@ -18,7 +18,11 @@ export function RunNowButton({ automationId }: { automationId: string }) {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
       const count = data.result?.relancedCount ?? 0;
-      setMessage(count > 0 ? `${count} email${count > 1 ? "s" : ""} envoyé${count > 1 ? "s" : ""}.` : "Aucun contact à traiter pour le moment.");
+      const errors = data.result?.errorCount ?? 0;
+      const parts = [];
+      if (count > 0) parts.push(`${count} email${count > 1 ? "s" : ""} envoyé${count > 1 ? "s" : ""}`);
+      if (errors > 0) parts.push(`${errors} échec${errors > 1 ? "s" : ""}`);
+      setMessage(parts.length > 0 ? `${parts.join(", ")}.` : "Aucun contact à traiter pour le moment.");
       router.refresh();
     } catch {
       setMessage("L'exécution a échoué. Réessayez dans un instant.");

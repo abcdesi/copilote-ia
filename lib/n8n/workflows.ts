@@ -34,38 +34,47 @@ const { prospects, message } = await this.helpers.httpRequest({
 
 const results = [];
 for (const p of prospects || []) {
-  const subject = String(message?.subject || "").split("{{name}}").join(p.name);
-  const bodyText = String(message?.body || "").split("{{name}}").join(p.name);
-  const html = bodyText
-    .split("\\n")
-    .filter((line) => line.length > 0)
-    .map((line) => \`<p>\${line}</p>\`)
-    .join("");
+  try {
+    const subject = String(message?.subject || "").split("{{name}}").join(p.name);
+    const bodyText = String(message?.body || "").split("{{name}}").join(p.name);
+    const html = bodyText
+      .split("\\n")
+      .filter((line) => line.length > 0)
+      .map((line) => \`<p>\${line}</p>\`)
+      .join("");
 
-  await this.helpers.httpRequest({
-    method: "POST",
-    url: "https://api.resend.com/emails",
-    headers: { Authorization: \`Bearer \${RESEND_KEY}\`, "Content-Type": "application/json" },
-    body: {
-      from: "Pilotzia <relances@pilotzia.com>",
-      to: [p.email],
-      subject,
-      html,
-    },
-    json: true,
-  });
+    await this.helpers.httpRequest({
+      method: "POST",
+      url: "https://api.resend.com/emails",
+      headers: { Authorization: \`Bearer \${RESEND_KEY}\`, "Content-Type": "application/json" },
+      body: {
+        from: "Pilotzia <relances@pilotzia.com>",
+        to: [p.email],
+        subject,
+        html,
+      },
+      json: true,
+    });
 
-  await this.helpers.httpRequest({
-    method: "POST",
-    url: \`\${PILOTZIA_URL}/api/automation-engine/prospects/\${p.id}/mark-contacted\`,
-    headers: { Authorization: \`Bearer \${CALLBACK_SECRET}\` },
-    json: true,
-  });
+    await this.helpers.httpRequest({
+      method: "POST",
+      url: \`\${PILOTZIA_URL}/api/automation-engine/prospects/\${p.id}/mark-contacted\`,
+      headers: { Authorization: \`Bearer \${CALLBACK_SECRET}\` },
+      json: true,
+    });
 
-  results.push({ prospectId: p.id, email: p.email, sent: true });
+    results.push({ prospectId: p.id, email: p.email, sent: true });
+  } catch (err) {
+    // Un échec sur un contact (email invalide, erreur Resend ponctuelle...) ne doit
+    // pas empêcher les autres contacts de la liste d'être traités.
+    results.push({ prospectId: p.id, email: p.email, sent: false, error: err.message || String(err) });
+  }
 }
 
-return [{ json: { companyId, templateId, relancedCount: results.length, results } }];
+const relancedCount = results.filter((r) => r.sent).length;
+const errorCount = results.filter((r) => !r.sent).length;
+
+return [{ json: { companyId, templateId, relancedCount, errorCount, results } }];
 `.trim();
 }
 
