@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
+import { resolveIdentity, resolveKnownCompanyIdentities } from "@/lib/business-graph/entity-resolution";
 
 const schema = z.object({
   name: z.string().min(1).max(120),
@@ -23,7 +24,7 @@ export async function addProspectAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
-  await prisma.prospect.create({
+  const prospect = await prisma.prospect.create({
     data: {
       companyId: company.id,
       templateId: parsed.data.templateId,
@@ -31,7 +32,21 @@ export async function addProspectAction(formData: FormData) {
       email: parsed.data.email,
     },
   });
+
+  await resolveIdentity({
+    companyId: company.id,
+    entityType: "person",
+    displayName: prospect.name,
+    provider: "pilotzia",
+    kind: "email",
+    value: prospect.email,
+    sourceRef: `prospect:${prospect.id}`,
+    confidence: 0.98,
+    attributes: { role: "prospect", status: prospect.status, templateId: prospect.templateId },
+  });
+
   revalidatePath("/app/automations");
+  revalidatePath("/app/context");
 }
 
 export async function deleteProspectAction(formData: FormData) {
@@ -42,8 +57,34 @@ export async function deleteProspectAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
+  const identity = await prisma.businessIdentity.findUnique({
+    where: {
+      companyId_provider_kind_sourceRef: {
+        companyId: company.id,
+        provider: "pilotzia",
+        kind: "email",
+        sourceRef: `prospect:${prospectId}`,
+      },
+    },
+    select: { id: true, entityId: true },
+  });
+
   await prisma.prospect.deleteMany({ where: { id: prospectId, companyId: company.id } });
+
+  if (identity) {
+    await prisma.businessIdentity.deleteMany({ where: { id: identity.id, companyId: company.id } });
+    const remainingIdentities = await prisma.businessIdentity.count({ where: { entityId: identity.entityId } });
+    if (remainingIdentities === 0) {
+      const entity = await prisma.businessEntity.findFirst({
+        where: { id: identity.entityId, companyId: company.id, type: "person" },
+        select: { id: true },
+      });
+      if (entity) await prisma.businessEntity.delete({ where: { id: entity.id } });
+    }
+  }
+
   revalidatePath("/app/automations");
+  revalidatePath("/app/context");
 }
 
 const MAX_IMPORT_ROWS = 500;
@@ -85,8 +126,10 @@ export async function importProspectsAction(formData: FormData) {
 
   if (toCreate.length > 0) {
     await prisma.prospect.createMany({ data: toCreate });
+    await resolveKnownCompanyIdentities(company.id);
   }
   revalidatePath("/app/automations");
+  revalidatePath("/app/context");
 }
 
 // Accepte soit un JSON (tableau d'objets {name, email}), soit un CSV simple avec une
