@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { resolveKnownCompanyIdentities } from "@/lib/business-graph/entity-resolution";
 
 interface GmailListResponse {
   resultSizeEstimate?: number;
@@ -54,9 +55,10 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
     }),
   ]);
 
-  // La synchronisation n'alimente pas seulement un compteur UI : elle met à jour la
-  // représentation canonique de l'entreprise utilisée par le copilote et les agents.
+  // La synchronisation met à jour le graphe ET les identités canoniques utilisées
+  // par le copilote. Aucune adresse email brute n'est recopiée dans BusinessIdentity.
   await rebuildBusinessGraph(companyId);
+  await resolveKnownCompanyIdentities(companyId);
 
   return snapshot;
 }
