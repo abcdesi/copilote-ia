@@ -50,6 +50,7 @@ model Company {
   pendingActions         PendingAction[]
   graphEntities          BusinessEntity[]
   graphFacts             BusinessFact[]
+  graphIdentities        BusinessIdentity[]
 
   @@index([userId])
 }
@@ -125,8 +126,9 @@ model BusinessEntity {
   lastSeenAt     DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  subjectFacts BusinessFact[] @relation("BusinessFactSubject")
-  objectFacts  BusinessFact[] @relation("BusinessFactObject")
+  subjectFacts BusinessFact[]     @relation("BusinessFactSubject")
+  objectFacts  BusinessFact[]     @relation("BusinessFactObject")
+  identities   BusinessIdentity[]
 
   @@unique([companyId, type, canonicalKey])
   @@index([companyId, type])
@@ -156,6 +158,32 @@ model BusinessFact {
   @@index([subjectEntityId])
   @@index([objectEntityId])
   @@index([companyId, sourceProvider])
+}
+
+// Une identité relie un enregistrement source à une entité canonique sans dupliquer
+// les identifiants sensibles en clair. `fingerprint` est un SHA-256 normalisé ;
+// `displayHint` est volontairement masqué pour l'interface et les logs.
+model BusinessIdentity {
+  id           String         @id @default(cuid())
+  companyId    String
+  company      Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  entityId     String
+  entity       BusinessEntity @relation(fields: [entityId], references: [id], onDelete: Cascade)
+  provider     String         // pilotzia | google | hubspot | slack | stripe...
+  kind         String         // email | external_id | phone | domain...
+  fingerprint  String         // empreinte SHA-256 d'une valeur normalisée
+  displayHint  String?        // ex: j***@acme.fr ; jamais la valeur complète si sensible
+  sourceRef    String         // référence stable de l'enregistrement dans la source
+  confidence   Float          @default(1)
+  verified     Boolean        @default(false)
+  observedAt   DateTime       @default(now())
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@unique([companyId, provider, kind, sourceRef])
+  @@index([companyId, kind, fingerprint])
+  @@index([entityId])
+  @@index([companyId, provider])
 }
 
 model Diagnostic {
