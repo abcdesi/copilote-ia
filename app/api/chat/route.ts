@@ -9,6 +9,7 @@ import { getTemplateById } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { AI_USAGE_RESERVE_EUR, reserveUsage } from "@/lib/billing/usage-policy";
 
 const bodySchema = z.object({ message: z.string().min(1).max(1000) });
 
@@ -18,6 +19,10 @@ export interface CopilotAction {
   href: string;
   description?: string;
   requiresConfirmation?: boolean;
+}
+
+function isSmartRequest(message: string) {
+  return message.length > 420 || /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis/i.test(message);
 }
 
 export async function POST(req: NextRequest) {
@@ -44,6 +49,39 @@ export async function POST(req: NextRequest) {
   });
 
   const context = await buildChatContext(company.id);
+  const smart = isSmartRequest(parsed.data.message);
+  const usage = process.env.ANTHROPIC_API_KEY
+    ? await reserveUsage({
+        companyId: company.id,
+        kind: smart ? "ai_smart" : "ai_fast",
+        credits: smart ? 3 : 1,
+        reservedCostEur: smart ? AI_USAGE_RESERVE_EUR.smart : AI_USAGE_RESERVE_EUR.fast,
+      })
+    : { allowed: true as const, paid: false as const, reservationId: null };
+
+  if (!usage.allowed) {
+    const reply =
+      "Votre enveloppe d’essai Pilotzia est arrivée à sa limite. Votre contexte, vos connexions et votre historique restent conservés. Activez un abonnement pour reprendre les analyses IA sans repartir de zéro.";
+    await prisma.chatMessage.create({
+      data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
+    });
+    await track(EVENTS.RECOMMENDATION_SHOWN, {
+      companyId: company.id,
+      metadata: { source: "usage_limit", reason: usage.reason },
+    });
+    return NextResponse.json({
+      reply,
+      action: {
+        kind: "navigate",
+        label: "Voir les offres Pilotzia",
+        href: "/app/settings",
+        description: "Votre contexte reste intact. L’abonnement réactive le copilote et l’usage continu.",
+      } satisfies CopilotAction,
+      usageLimited: true,
+      usageReason: usage.reason,
+    });
+  }
+
   const { reply, matchedTemplateId } = await runChat(
     history
       .slice()

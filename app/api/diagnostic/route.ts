@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
+import { runMockDiagnostic } from "@/lib/ai/mock-engine";
 import { z } from "zod";
-import { runDiagnostic } from "@/lib/ai";
 import { prisma } from "@/lib/db/client";
 import { getOrCreateDiagnosticSessionToken } from "@/lib/session";
 import { track } from "@/lib/analytics/track";
@@ -21,7 +21,10 @@ export async function POST(req: NextRequest) {
 
   await track(EVENTS.DIAGNOSTIC_STARTED, { metadata: { inputLength: input.length } });
 
-  const result = await runDiagnostic(input, []);
+  // Acquisition volontairement sans coût LLM : la preuve de valeur publique utilise
+  // le moteur déterministe Pilotzia. Les appels IA payants commencent uniquement une
+  // fois l'entreprise créée, où ils sont bornés par l'enveloppe d'essai.
+  const result = runMockDiagnostic(input, []);
 
   const diagnostic = await prisma.diagnostic.create({
     data: {
@@ -34,7 +37,7 @@ export async function POST(req: NextRequest) {
   });
 
   await track(EVENTS.DIAGNOSTIC_COMPLETED, {
-    metadata: { diagnosticId: diagnostic.id, opportunityCount: result.opportunities.length },
+    metadata: { diagnosticId: diagnostic.id, opportunityCount: result.opportunities.length, engine: "bounded_public" },
   });
 
   return NextResponse.json({ diagnosticId: diagnostic.id, result });

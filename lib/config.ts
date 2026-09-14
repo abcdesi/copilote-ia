@@ -2,15 +2,15 @@ export const APP_NAME = "Pilotzia";
 export const APP_TAGLINE = "Le copilote qui automatise votre entreprise";
 
 export const PLAN_LABELS: Record<string, string> = {
-  free: "Gratuit",
-  starter: "Starter",
-  pro: "Pro",
-  business: "Business",
+  free: "Découverte",
+  starter: "Core",
+  pro: "Action",
+  business: "Scale",
 };
 
 export const PLAN_PRICES_EUR: Record<string, number> = {
   free: 0,
-  starter: 19,
-  pro: 49,
-  business: 149,
+  starter: 49,
+  pro: 99,
+  business: 249,
 };
