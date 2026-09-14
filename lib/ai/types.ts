@@ -40,6 +40,14 @@ export interface ChatContext {
     upcomingEventsNext7Days?: number;
     observedAt?: string;
   } | null;
+  businessGraph?: {
+    readinessScore: number;
+    entityCount: number;
+    factCount: number;
+    connectedSourceCount: number;
+    freshSourceCount: number;
+    entityTypes: Array<{ type: string; count: number }>;
+  } | null;
   automations: {
     name: string;
     status: string;
