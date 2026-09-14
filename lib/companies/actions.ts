@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { resolveKnownCompanyIdentities } from "@/lib/business-graph/entity-resolution";
 
 const schema = z.object({
   name: z.string().min(1).max(120),
@@ -18,6 +19,7 @@ const schema = z.object({
 
 async function refreshGraph(companyId: string) {
   await rebuildBusinessGraph(companyId);
+  await resolveKnownCompanyIdentities(companyId);
   revalidatePath("/app/context");
 }
 
