@@ -12,6 +12,7 @@ const signupSchema = z.object({
   name: z.string().min(1, "Nom requis").max(100),
   email: z.string().email("Email invalide"),
   password: z.string().min(8, "8 caractères minimum").max(100),
+  acceptTerms: z.literal("yes"),
 });
 
 export async function signupAction(formData: FormData) {
@@ -19,6 +20,7 @@ export async function signupAction(formData: FormData) {
     name: formData.get("name"),
     email: formData.get("email"),
     password: formData.get("password"),
+    acceptTerms: formData.get("acceptTerms"),
   });
 
   if (!parsed.success) {
@@ -35,7 +37,10 @@ export async function signupAction(formData: FormData) {
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({ data: { name, email, passwordHash } });
 
-  await track(EVENTS.USER_CREATED, { userId: user.id });
+  await track(EVENTS.USER_CREATED, {
+    userId: user.id,
+    metadata: { acceptedTermsAt: new Date().toISOString(), termsVersion: "2026-09-14" },
+  });
 
   await signIn("credentials", { email, password, redirect: false });
 
