@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
+import { rebuildBusinessGraph } from "@/lib/business-graph";
 
 const schema = z.object({
   name: z.string().min(1).max(120),
@@ -14,6 +15,11 @@ const schema = z.object({
   objectives: z.string().max(2000).optional(),
   painPoints: z.string().max(2000).optional(),
 });
+
+async function refreshGraph(companyId: string) {
+  await rebuildBusinessGraph(companyId);
+  revalidatePath("/app/context");
+}
 
 export async function updateCompanyAction(formData: FormData) {
   const session = await requireSession();
@@ -33,6 +39,7 @@ export async function updateCompanyAction(formData: FormData) {
   if (!company) return;
 
   await prisma.company.update({ where: { id: company.id }, data: parsed.data });
+  await refreshGraph(company.id);
   revalidatePath("/app/company");
   revalidatePath("/app");
 }
@@ -50,6 +57,7 @@ export async function addToolAction(formData: FormData) {
     update: {},
     create: { companyId: company.id, name, detected: false },
   });
+  await refreshGraph(company.id);
   revalidatePath("/app/tools");
 }
 
@@ -62,5 +70,6 @@ export async function removeToolAction(formData: FormData) {
   if (!company) return;
 
   await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
+  await refreshGraph(company.id);
   revalidatePath("/app/tools");
 }

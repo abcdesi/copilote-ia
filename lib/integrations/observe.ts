@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
+import { rebuildBusinessGraph } from "@/lib/business-graph";
 
 interface GmailListResponse {
   resultSizeEstimate?: number;
@@ -52,6 +53,10 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
       },
     }),
   ]);
+
+  // La synchronisation n'alimente pas seulement un compteur UI : elle met à jour la
+  // représentation canonique de l'entreprise utilisée par le copilote et les agents.
+  await rebuildBusinessGraph(companyId);
 
   return snapshot;
 }

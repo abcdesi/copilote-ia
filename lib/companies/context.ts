@@ -2,9 +2,13 @@ import { prisma } from "@/lib/db/client";
 import type { ChatContext } from "@/lib/ai/types";
 import { IMPACT_RANK } from "@/lib/format";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
+import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
 
 export async function buildChatContext(companyId: string): Promise<ChatContext> {
-  const [company, automations, opportunities, connections, observations] = await Promise.all([
+  const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
+  if (!graphExists) await rebuildBusinessGraph(companyId);
+
+  const [company, automations, opportunities, connections, observations, businessGraph] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -16,6 +20,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       select: { provider: true, status: true, accountLabel: true, lastSyncedAt: true },
     }),
     getLatestGoogleOperationalSnapshot(companyId),
+    getBusinessGraphSummary(companyId),
   ]);
 
   opportunities.sort(
@@ -40,6 +45,14 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       lastSyncedAt: connection.lastSyncedAt?.toISOString() ?? null,
     })),
     observations,
+    businessGraph: {
+      readinessScore: businessGraph.readinessScore,
+      entityCount: businessGraph.entityCount,
+      factCount: businessGraph.factCount,
+      connectedSourceCount: businessGraph.connectedSourceCount,
+      freshSourceCount: businessGraph.freshSourceCount,
+      entityTypes: businessGraph.entityTypes,
+    },
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,

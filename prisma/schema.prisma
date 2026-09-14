@@ -48,6 +48,8 @@ model Company {
   prospects              Prospect[]
   integrationConnections IntegrationConnection[]
   pendingActions         PendingAction[]
+  graphEntities          BusinessEntity[]
+  graphFacts             BusinessFact[]
 
   @@index([userId])
 }
@@ -103,6 +105,57 @@ model PendingAction {
 
   @@index([companyId, status])
   @@index([createdAt])
+}
+
+// Représentation canonique et permission-aware de l'entreprise pour les copilotes et agents IA.
+// Le graphe commence volontairement dans Postgres : on peut migrer vers un moteur de graphe
+// spécialisé plus tard sans changer le contrat produit/API.
+model BusinessEntity {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  type           String   // company | tool | automation | opportunity | process | person | customer | document...
+  canonicalKey   String   // identifiant stable interne à l'entreprise
+  name           String
+  status         String   @default("active")
+  attributesJson String?  // données structurées minimisées, jamais de secrets/tokens
+  confidence     Float    @default(1)
+  sourceCount    Int      @default(1)
+  firstSeenAt    DateTime @default(now())
+  lastSeenAt     DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  subjectFacts BusinessFact[] @relation("BusinessFactSubject")
+  objectFacts  BusinessFact[] @relation("BusinessFactObject")
+
+  @@unique([companyId, type, canonicalKey])
+  @@index([companyId, type])
+  @@index([companyId, status])
+}
+
+model BusinessFact {
+  id              String          @id @default(cuid())
+  companyId       String
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  subjectEntityId String
+  subject         BusinessEntity  @relation("BusinessFactSubject", fields: [subjectEntityId], references: [id], onDelete: Cascade)
+  predicate       String          // uses | connected_to | has_goal | has_metric | runs | targets...
+  objectEntityId  String?
+  object          BusinessEntity? @relation("BusinessFactObject", fields: [objectEntityId], references: [id], onDelete: Cascade)
+  valueJson       String?         // valeur scalaire/structurée quand la relation ne pointe pas vers une entité
+  sourceProvider  String          // pilotzia | google | hubspot | slack | stripe...
+  sourceRef       String?         // identifiant technique non-secret permettant de retracer la provenance
+  confidence      Float           @default(1)
+  observedAt      DateTime        @default(now())
+  expiresAt       DateTime?
+  provenanceJson  String?         // métadonnées minimisées : méthode, fraîcheur, champs utilisés
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+
+  @@index([companyId, predicate])
+  @@index([subjectEntityId])
+  @@index([objectEntityId])
+  @@index([companyId, sourceProvider])
 }
 
 model Diagnostic {

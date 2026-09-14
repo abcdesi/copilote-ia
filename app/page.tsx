@@ -1,4 +1,4 @@
-import { Activity, Check, Eye, ShieldCheck, Sparkles, Wrench, X, Zap } from "lucide-react";
+import { Activity, Check, Database, Eye, Network, ShieldCheck, Sparkles, Wrench, X, Zap } from "lucide-react";
 import { SiteHeader } from "@/components/marketing/SiteHeader";
 import { DiagnosticExperience } from "@/components/marketing/DiagnosticExperience";
 import { ProductPreview } from "@/components/marketing/ProductPreview";
@@ -8,18 +8,18 @@ import { APP_NAME } from "@/lib/config";
 const CHATGPT_POINTS = [
   { label: "Vous aide à réfléchir ou à rédiger", has: true },
   { label: "Connaît votre entreprise dans la durée", has: false },
+  { label: "Unifie le contexte dispersé de vos systèmes", has: false },
   { label: "Suit la santé de vos automatisations", has: false },
   { label: "Mesure le temps et la valeur générés", has: false },
   { label: "Détecte les problèmes opérationnels", has: false },
-  { label: "Vous propose la prochaine amélioration", has: false },
 ];
 
 const APP_POINTS = [
   { label: "Comprend votre activité, vos outils et vos priorités", has: true },
-  { label: "Garde la mémoire de votre contexte opérationnel", has: true },
+  { label: "Structure les données utiles en contexte exploitable par l'IA", has: true },
+  { label: "Conserve la provenance, la fraîcheur et les permissions", has: true },
   { label: "Surveille ce qui fonctionne et ce qui nécessite votre attention", has: true },
   { label: "Mesure le temps et la valeur estimée générés", has: true },
-  { label: "Vous aide à maintenir vos automatisations dans la durée", has: true },
   { label: "Cherche en permanence la prochaine opportunité", has: true },
 ];
 
@@ -27,27 +27,32 @@ const HOW_IT_WORKS = [
   {
     n: "01",
     title: "Connecter",
-    body: "Décrivez les outils que vous utilisez déjà et donnez à Pilotzia le contexte dont il a besoin.",
+    body: "Reliez progressivement les outils où votre entreprise travaille déjà.",
   },
   {
     n: "02",
-    title: "Comprendre",
-    body: "Pilotzia apprend votre activité, vos priorités, vos processus et ce qui vous fait perdre du temps.",
+    title: "Structurer",
+    body: "Pilotzia transforme les signaux dispersés en entités, relations et faits traçables.",
   },
   {
     n: "03",
-    title: "Agir",
-    body: "Le copilote recommande l'action ou l'automatisation la plus utile et vous montre ce qu'il va faire.",
+    title: "Comprendre",
+    body: "Le copilote raisonne sur un contexte cohérent avec provenance, fraîcheur et permissions.",
   },
   {
     n: "04",
-    title: "Mesurer",
-    body: "Vous suivez les heures économisées, la valeur estimée, la santé et les résultats de vos automatisations.",
+    title: "Agir",
+    body: "Pilotzia recommande ou exécute l'action utile selon le niveau d'autorisation choisi.",
   },
   {
     n: "05",
-    title: "Anticiper",
-    body: "Pilotzia détecte de nouvelles opportunités et les problèmes qui méritent votre attention.",
+    title: "Mesurer",
+    body: "Vous suivez la santé, les résultats et la valeur estimée des actions réalisées.",
+  },
+  {
+    n: "06",
+    title: "Apprendre",
+    body: "Le contexte s'enrichit avec les nouvelles données, décisions et retours de votre entreprise.",
   },
 ];
 
@@ -69,6 +74,24 @@ const PROACTIVE_FEATURES = [
   },
 ];
 
+const CONTEXT_FEATURES = [
+  {
+    icon: Database,
+    title: "Données reliées",
+    body: "Outils, automatisations, opportunités et signaux opérationnels sont transformés en objets compréhensibles par l'IA.",
+  },
+  {
+    icon: Network,
+    title: "Business Graph",
+    body: "Pilotzia relie progressivement personnes, systèmes, processus et résultats au lieu de laisser chaque source isolée.",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Confiance & provenance",
+    body: "Chaque fait conserve sa source, sa fraîcheur, son niveau de confiance et les permissions qui encadrent son usage.",
+  },
+];
+
 export default function HomePage() {
   return (
     <div className="flex min-h-screen flex-col">
@@ -85,11 +108,13 @@ export default function HomePage() {
               Parlez à votre entreprise. {APP_NAME} vous aide à agir.
             </h1>
             <p className="mx-auto mt-5 max-w-2xl text-lg leading-8 text-muted-foreground">
-              Décrivez ce que vous voulez accomplir, donnez à {APP_NAME} le contexte de vos outils et laissez votre
-              copilote comprendre, automatiser, surveiller et améliorer vos opérations dans la durée.
+              Connectez vos outils. {APP_NAME} transforme leurs données dispersées en contexte fiable pour comprendre,
+              recommander, automatiser et améliorer vos opérations dans la durée.
             </p>
             <p className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium text-accent">
               <span>Connecter</span>
+              <span className="text-accent/40">→</span>
+              <span>Structurer</span>
               <span className="text-accent/40">→</span>
               <span>Comprendre</span>
               <span className="text-accent/40">→</span>
@@ -99,7 +124,7 @@ export default function HomePage() {
               <span className="text-accent/40">→</span>
               <span>Mesurer</span>
               <span className="text-accent/40">→</span>
-              <span>Anticiper</span>
+              <span>Apprendre</span>
             </p>
           </div>
 
@@ -140,6 +165,32 @@ export default function HomePage() {
 
         <section className="border-t border-border">
           <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
+            <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Pilotzia Context Engine</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+                Vos données deviennent un contexte que les agents peuvent réellement utiliser
+              </h2>
+              <p className="mt-3 text-muted-foreground">
+                Pas un ETL de plus. Pilotzia construit une représentation vivante de votre entreprise : entités, relations,
+                provenance, fraîcheur et permissions — utilisable par le copilote et les actions opérationnelles.
+              </p>
+            </div>
+            <div className="mt-10 grid gap-4 md:grid-cols-3">
+              {CONTEXT_FEATURES.map(({ icon: Icon, title, body }) => (
+                <div key={title} className="rounded-2xl border border-border bg-card p-6">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
+                    <Icon size={18} />
+                  </div>
+                  <h3 className="mt-4 font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{body}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-border bg-card/60">
+          <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
             <div className="mx-auto max-w-2xl text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Proactif, pas seulement réactif</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
@@ -164,13 +215,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="border-t border-border bg-card/60">
-          <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
+        <section className="border-t border-border">
+          <div className="mx-auto max-w-6xl px-6 py-16 sm:py-20">
             <div className="mx-auto max-w-2xl text-center">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Comment ça marche</h2>
-              <p className="mt-3 text-muted-foreground">Une boucle simple qui s'améliore avec le contexte de votre entreprise.</p>
+              <p className="mt-3 text-muted-foreground">Une boucle qui transforme les données en compréhension, puis la compréhension en action.</p>
             </div>
-            <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-5">
+            <div className="mt-10 grid gap-8 sm:grid-cols-2 lg:grid-cols-6">
               {HOW_IT_WORKS.map((step) => (
                 <div key={step.n}>
                   <p className="text-sm font-semibold text-accent/60">{step.n}</p>
@@ -182,7 +233,7 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="border-t border-border">
+        <section className="border-t border-border bg-card/60">
           <div className="mx-auto grid max-w-5xl gap-10 px-6 py-16 sm:py-20 lg:grid-cols-[1fr_1.15fr] lg:items-center">
             <div>
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-accent-soft text-accent">
@@ -190,7 +241,7 @@ export default function HomePage() {
               </div>
               <h2 className="mt-4 text-2xl font-semibold tracking-tight sm:text-3xl">Vous gardez le contrôle</h2>
               <p className="mt-3 text-muted-foreground">
-                Une action n'a pas le même risque qu'une lecture. Pilotzia est conçu pour distinguer l'observation, l'action et les opérations sensibles.
+                Une action n'a pas le même risque qu'une lecture. Pilotzia distingue l'observation, le contexte, l'action et les opérations sensibles.
               </p>
             </div>
             <div className="grid gap-3 sm:grid-cols-2">
@@ -202,12 +253,13 @@ export default function HomePage() {
           </div>
         </section>
 
-        <section className="border-t border-border bg-card/60">
+        <section className="border-t border-border">
           <div className="mx-auto max-w-4xl px-6 py-16 sm:py-20">
             <div className="text-center">
               <h2 className="text-2xl font-semibold tracking-tight sm:text-3xl">Pourquoi pas simplement ChatGPT ?</h2>
               <p className="mt-3 text-muted-foreground">
-                ChatGPT vous aide à réfléchir. {APP_NAME} est conçu pour apprendre votre contexte opérationnel, suivre ce qui a été mis en place et transformer les recommandations en résultats mesurables.
+                ChatGPT vous aide à réfléchir. {APP_NAME} construit et maintient le contexte opérationnel de votre entreprise,
+                puis l'utilise pour surveiller, recommander et agir avec vos permissions.
               </p>
             </div>
 
@@ -250,7 +302,7 @@ export default function HomePage() {
             </div>
             <h2 className="mt-5 text-2xl font-semibold tracking-tight sm:text-3xl">Commencez par ce qui vous fait perdre du temps</h2>
             <p className="mx-auto mt-3 max-w-2xl text-muted-foreground">
-              Décrivez votre entreprise, vos outils et votre problème. Pilotzia vous montre où se trouve la première opportunité.
+              Décrivez votre entreprise, vos outils et votre problème. Pilotzia commence à construire le contexte utile et vous montre où se trouve la première opportunité.
             </p>
             <a
               href="#top"
