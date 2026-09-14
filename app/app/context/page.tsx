@@ -1,6 +1,7 @@
-import { AlertTriangle, CheckCircle2, Database, Network, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
+import { AlertTriangle, CheckCircle2, Database, Fingerprint, Network, RefreshCw, ShieldCheck, Sparkles, Users } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { getBusinessGraphContext } from "@/lib/business-graph";
+import { getEntityResolutionSummary } from "@/lib/business-graph/entity-resolution";
 import { rebuildBusinessGraphAction } from "@/lib/business-graph/actions";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -52,7 +53,10 @@ function formatDate(value: string | null) {
 
 export default async function ContextPage() {
   const company = await getCurrentCompany();
-  const graph = await getBusinessGraphContext(company.id);
+  const [graph, resolution] = await Promise.all([
+    getBusinessGraphContext(company.id),
+    getEntityResolutionSummary(company.id),
+  ]);
   const entityById = new Map(graph.entities.map((entity) => [entity.id, entity]));
   const visibleFacts = graph.facts.slice(0, 8);
 
@@ -87,11 +91,51 @@ export default async function ContextPage() {
             </div>
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
             <Metric label="Entités comprises" value={String(graph.summary.entityCount)} icon={Database} />
             <Metric label="Faits traçables" value={String(graph.summary.factCount)} icon={Sparkles} />
-            <Metric label="Sources réelles" value={String(graph.summary.connectedSourceCount)} icon={Network} />
+            <Metric label="Identités résolues" value={String(resolution.identityCount)} icon={Fingerprint} />
+            <Metric label="Personnes canoniques" value={String(resolution.personEntityCount)} icon={Users} />
+            <Metric label="Entités multi-sources" value={String(resolution.multiProviderEntityCount)} icon={Network} />
             <Metric label="Sources fraîches" value={String(graph.summary.freshSourceCount)} icon={CheckCircle2} />
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+            <Fingerprint size={18} />
+          </div>
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h2 className="font-semibold">Résolution d'identité</h2>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  Pilotzia rapproche progressivement les enregistrements qui désignent la même personne sans fusionner sur un simple nom.
+                </p>
+              </div>
+              <Badge tone={resolution.multiProviderEntityCount > 0 ? "success" : "neutral"}>
+                {resolution.multiProviderEntityCount} rapprochement{resolution.multiProviderEntityCount > 1 ? "s" : ""} multi-sources
+              </Badge>
+            </div>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-xl bg-muted p-4">
+                <p className="text-2xl font-semibold">{resolution.identityCount}</p>
+                <p className="mt-1 text-xs text-muted-foreground">identifiants source reliés</p>
+              </div>
+              <div className="rounded-xl bg-muted p-4">
+                <p className="text-2xl font-semibold">{resolution.multiIdentityEntityCount}</p>
+                <p className="mt-1 text-xs text-muted-foreground">entités avec plusieurs identifiants</p>
+              </div>
+              <div className="rounded-xl bg-muted p-4">
+                <p className="text-2xl font-semibold">{resolution.providerCount}</p>
+                <p className="mt-1 text-xs text-muted-foreground">fournisseurs contribuant aux identités</p>
+              </div>
+            </div>
+            <p className="mt-4 text-xs leading-5 text-muted-foreground">
+              Fusion automatique uniquement sur des identifiants déterministes normalisés, comme une adresse email identique. Les valeurs sensibles ne sont pas recopiées dans le graphe : Pilotzia conserve une empreinte cryptographique et un indice masqué avec la provenance.
+            </p>
           </div>
         </div>
       </section>
@@ -134,7 +178,7 @@ export default async function ContextPage() {
 
         <section className="rounded-2xl border border-border bg-card p-6">
           <h2 className="font-semibold">Ce que Pilotzia comprend déjà</h2>
-          <p className="mt-1 text-sm text-muted-foreground">Les entités sont canoniques : plusieurs sources pourront progressivement converger vers le même objet.</p>
+          <p className="mt-1 text-sm text-muted-foreground">Les entités sont canoniques : plusieurs sources peuvent converger vers le même objet sans perdre leur provenance.</p>
           <div className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-3">
             {graph.summary.entityTypes.map((item) => (
               <div key={item.type} className="rounded-xl border border-border bg-background p-3">
@@ -187,8 +231,8 @@ export default async function ContextPage() {
         <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[
             ["1. Connecter", "Sources et permissions réelles"],
-            ["2. Structurer", "Entités, relations et provenance"],
-            ["3. Comprendre", "Contexte cohérent et actualisé"],
+            ["2. Structurer", "Entités, identités, relations et provenance"],
+            ["3. Comprendre", "Contexte cohérent, résolu et actualisé"],
             ["4. Agir", "Actions gouvernées et mesurées"],
           ].map(([title, description]) => (
             <div key={title} className="rounded-xl bg-muted p-4">
