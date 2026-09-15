@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { requireSession } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
@@ -6,6 +7,7 @@ import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { reserveUsage, refundUsage } from "@/lib/billing/usage-policy";
 import { extractFinancialStatementFromPdf } from "@/lib/intelligence/financial-document";
 import { auditFinancialStatement } from "@/lib/intelligence/financial-audit";
+import { persistFinancialAuditToBusinessGraph } from "@/lib/intelligence/financial-graph";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 
@@ -64,8 +66,23 @@ export async function POST(req: NextRequest) {
 
   try {
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const documentKey = createHash("sha256").update(bytes).digest("hex");
     const extraction = await extractFinancialStatementFromPdf({ pdfBytes: bytes, filename: file.name });
     const audit = auditFinancialStatement(extraction.statement);
+
+    const graphWrite = await persistFinancialAuditToBusinessGraph({
+      companyId: company.id,
+      documentKey,
+      documentType: extraction.documentType,
+      extractionConfidence: extraction.extractionConfidence,
+      statement: extraction.statement,
+      audit,
+      model: extraction.model,
+      warningsCount: extraction.warnings.length,
+    }).catch((error) => {
+      console.error("Financial audit Business Graph persistence failed", error);
+      return null;
+    });
 
     await track(EVENTS.FINANCIAL_AUDIT_COMPLETED, {
       companyId: company.id,
@@ -76,6 +93,7 @@ export async function POST(req: NextRequest) {
         alertsCount: audit.alerts.length,
         questionsCount: audit.questions.length,
         warningsCount: extraction.warnings.length,
+        graphFactsWritten: graphWrite?.factsWritten ?? 0,
         model: extraction.model,
         inputTokens: extraction.inputTokens,
         outputTokens: extraction.outputTokens,
@@ -91,9 +109,13 @@ export async function POST(req: NextRequest) {
         warnings: extraction.warnings,
       },
       audit,
+      context: {
+        businessGraphEnriched: Boolean(graphWrite),
+        factsWritten: graphWrite?.factsWritten ?? 0,
+      },
       privacy: {
         rawPdfStored: false,
-        note: "Le PDF est traité pour cette analyse mais n'est pas enregistré dans la base Pilotzia par cette fonctionnalité.",
+        note: "Le PDF brut n'est pas enregistré dans la base Pilotzia par cette fonctionnalité. Seuls les éléments structurés utiles à l'audit peuvent enrichir le contexte de l'entreprise.",
       },
     });
   } catch (error) {
