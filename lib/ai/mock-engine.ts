@@ -1,5 +1,6 @@
 import { AUTOMATION_CATALOG } from "@/lib/automations/catalog";
 import { AutomationTemplate, HOURLY_RATE_EUR, KNOWN_TOOLS } from "@/lib/automations/types";
+import { assessAdviceMaturity } from "./advice-maturity";
 import { findConfidentTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
 import { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 
@@ -91,33 +92,74 @@ export function runMockDiagnostic(input: string, existingTools: string[] = []): 
 
 const CLARIFY_MARKER = "Pour mieux cerner votre besoin";
 
+function bestDiscoveryQuestion(context: ChatContext) {
+  const maturity = assessAdviceMaturity(context);
+  const missing = maturity.missingSignals[0];
+  if (missing === "objectifs business") return "Quel résultat voulez-vous améliorer en priorité sur les 90 prochains jours : chiffre d'affaires, marge, trésorerie, délai de réponse ou temps dirigeant ?";
+  if (missing === "irritants prioritaires") return "Quelles sont les 3 tâches ou situations qui vous coûtent aujourd'hui le plus de temps, de chiffre d'affaires ou de qualité ?";
+  if (missing === "données réelles connectées") return "Parmi vos outils actuels, lequel contient le meilleur signal pour mesurer ce problème sur des données réelles ?";
+  return "Quel indicateur concret permettrait de dire, dans 30 jours, que cette amélioration a réellement fonctionné ?";
+}
+
 function strategicAnswer(context: ChatContext) {
-  const priorities: string[] = [];
+  const maturity = assessAdviceMaturity(context);
+  const pain = normalize(context.painPoints ?? "");
+  const recommendations: string[] = [];
 
-  if (context.topOpportunity) {
-    priorities.push(`1. **${context.topOpportunity.title}** — potentiel estimé d'environ ${context.topOpportunity.estimatedHoursPerMonth} h/mois.`);
+  if (/prospect|relanc|lead|commercial/.test(pain)) {
+    recommendations.push("**Sécuriser les relances commerciales** — c'est le levier à examiner en premier car il touche directement le revenu et le suivi des opportunités.");
   }
-  if (context.painPoints) {
-    priorities.push(`2. **Vos irritants déclarés** — ${context.painPoints}. Je chercherais d'abord les tâches fréquentes, manuelles et directement liées au revenu ou à la satisfaction client.`);
+  if (/factur|impay|paiement|tresorer/.test(pain)) {
+    recommendations.push("**Réduire le délai d'encaissement** — les factures impayées ont un impact direct sur la trésorerie et se prêtent bien à un suivi systématique.");
   }
-  if (context.objectives) {
-    priorities.push(`3. **Vos objectifs business** — ${context.objectives}. Toute automatisation devrait être priorisée selon son effet sur le revenu, la marge, le délai de réponse ou le temps dirigeant.`);
+  if (/compte.?rendu|reunion|appel|meeting/.test(pain)) {
+    recommendations.push("**Réduire l'administratif après réunion** — bon candidat pour récupérer du temps sans modifier une décision commerciale sensible.");
   }
-
-  if (priorities.length === 0) {
-    priorities.push(
-      "1. **Ventes** — relances, qualification et devis : priorité si le manque de suivi fait perdre du chiffre d'affaires.",
-      "2. **Opérations** — tâches répétitives à forte fréquence : priorité si elles consomment du temps chaque semaine.",
-      "3. **Support / fidélisation** — suivi client et satisfaction : priorité si cela réduit le churn ou améliore la réactivité."
+  if (recommendations.length === 0 && context.topOpportunity) {
+    recommendations.push(`**Examiner ${context.topOpportunity.title}** — c'est l'opportunité actuellement la mieux classée dans Pilotzia, avec un potentiel estimé d'environ ${context.topOpportunity.estimatedHoursPerMonth} h/mois.`);
+  }
+  if (recommendations.length === 0) {
+    recommendations.push(
+      "**Revenu** — chercher les ruptures de suivi entre lead, relance, devis et paiement.",
+      "**Temps** — repérer les tâches répétées chaque semaine par plusieurs personnes.",
+      "**Qualité / délai** — repérer les demandes client qui attendent inutilement une intervention humaine."
     );
   }
 
-  return `Pour optimiser votre temps **et** gagner plus d'argent, je prioriserais les leviers qui combinent impact revenu et temps économisé.\n\n${priorities.join("\n")}\n\nAujourd'hui, vos automatisations actives représentent environ ${context.totalHoursSavedThisMonth} h économisées ce mois-ci, soit ${context.totalValueEurThisMonth} € de valeur estimée. Ce sont des estimations, pas une garantie de revenu.\n\nMa prochaine étape recommandée : classer vos tâches actuelles selon **impact revenu × temps consommé × facilité d'automatisation**, puis traiter les 1 à 3 meilleures.`;
+  const top = recommendations.slice(0, 3).map((item, index) => `${index + 1}. ${item}`).join("\n");
+  const knowledge = maturity.level === "initial"
+    ? "Je dispose encore de peu de contexte : ces points sont des hypothèses de consultant, pas un diagnostic de votre entreprise."
+    : maturity.level === "contextual"
+      ? "Je m'appuie surtout sur votre contexte déclaré. Je peux déjà personnaliser les priorités, mais pas encore mesurer leur fréquence ou leur impact réel."
+      : maturity.level === "observed"
+        ? "Je dispose de contexte et de premières observations réelles. Je peux commencer à arbitrer avec davantage de confiance, tout en distinguant les faits des estimations."
+        : "Le contexte est suffisamment riche pour raisonner de façon opérationnelle et relier les recommandations à des faits structurés.";
+
+  const measured = context.totalHoursSavedThisMonth > 0
+    ? `\n\n**Déjà mesuré**\nVos automatisations actives représentent environ ${context.totalHoursSavedThisMonth} h/mois et ${context.totalValueEurThisMonth} € de valeur estimée. Je traiterais ces chiffres comme des indicateurs à confirmer, pas comme du revenu garanti.`
+    : "";
+
+  return `**Ma recommandation maintenant**\n${top}\n\n**Pourquoi**\nJe priorise d'abord ce qui combine impact économique, fréquence et capacité à être fiabilisé. Une automatisation n'est intéressante que si elle améliore un processus qui mérite réellement d'être amélioré.\n\n**Niveau de confiance**\n${knowledge}${measured}\n\n**Pour rendre le diagnostic plus pointu**\n${bestDiscoveryQuestion(context)}`;
+}
+
+function isAcknowledgement(text: string) {
+  return /^(ok|okay|d'accord|dac|oui|compris|vas-y|go|parfait|tres bien|tr[eè]s bien)[.!\s]*$/i.test(text.trim());
+}
+
+function continueAfterAcknowledgement(messages: ChatMessageInput[], context: ChatContext): ChatReply {
+  const previousAssistant = [...messages.slice(0, -1)].reverse().find((message) => message.role === "assistant")?.content ?? "";
+  const question = bestDiscoveryQuestion(context);
+  if (/Pour rendre le diagnostic plus pointu|Pour mieux cerner votre besoin/.test(previousAssistant)) {
+    return { reply: `Très bien. On passe du conseil général au diagnostic exploitable.\n\n**La donnée qui me manque le plus maintenant**\n${question}` };
+  }
+  return { reply: `Très bien. Je poursuis sans repartir de zéro.\n\n**Prochaine étape utile**\n${question}` };
 }
 
 export function runMockChat(messages: ChatMessageInput[], context: ChatContext): ChatReply {
   const last = messages[messages.length - 1]?.content ?? "";
   const q = normalize(last);
+
+  if (isAcknowledgement(last)) return continueAfterAcknowledgement(messages, context);
 
   if (isCorrectionRequest(last)) {
     const previousUser = [...messages.slice(0, -1)].reverse().find((message) => message.role === "user")?.content ?? "";
@@ -125,35 +167,27 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
       return { reply: strategicAnswer(context) };
     }
     return {
-      reply: "Vous avez raison : ma réponse précédente n'était pas assez directe. Reformulez votre objectif en une phrase et je répondrai d'abord à la question, puis seulement ensuite je proposerai une action si elle est réellement pertinente.",
+      reply: `Vous avez raison : la réponse précédente n'était pas assez exploitable.\n\n**Réponse directe**\nJe dois d'abord distinguer ce que Pilotzia sait de votre entreprise de ce qu'il ne fait qu'inférer.\n\n**Pour avancer utilement**\n${bestDiscoveryQuestion(context)}`,
     };
   }
 
-  if (/optimis|gagner plus|plus d'argent|rentabil|marge|priorit/.test(q)) {
+  if (/optimis|gagner plus|plus d'argent|rentabil|marge|priorit|dirige|direction|conseil/.test(q)) {
     return { reply: strategicAnswer(context) };
   }
 
   if (/(combien|économis|economis|gagné|gagne|valeur|temps gagné)/.test(q)) {
     return {
-      reply: `Ce mois-ci, ${context.companyName} a économisé environ ${context.totalHoursSavedThisMonth} h grâce à vos automatisations actives, soit une valeur estimée à ${context.totalValueEurThisMonth} €. Ce sont des estimations basées sur le temps habituellement consacré à ces tâches.`,
+      reply: `**Ce que je peux mesurer aujourd'hui**\nEnviron ${context.totalHoursSavedThisMonth} h/mois et ${context.totalValueEurThisMonth} € de valeur estimée sur les automatisations actives.\n\n**À interpréter correctement**\nC'est une estimation de temps valorisé, pas une garantie de chiffre d'affaires. Pour parler de ROI, il faut la rapprocher du coût réel, du taux d'usage et d'un indicateur métier avant/après.`,
     };
   }
 
   if (/(prochaine|quoi automatiser|que faire|opportunit|suivant|ensuite|apr[eè]s)/.test(q)) {
-    if (context.topOpportunity) {
-      return {
-        reply: `Je recommande de regarder « ${context.topOpportunity.title} » : le potentiel estimé est d'environ ${context.topOpportunity.estimatedHoursPerMonth} h/mois. Je la prioriserais seulement si elle est cohérente avec votre objectif business actuel et vos tâches réellement manuelles.`,
-      };
-    }
-    return {
-      reply:
-        "Je n'ai pas encore assez de données pour recommander une priorité avec confiance. Donnez-moi les 3 tâches qui vous prennent le plus de temps ou qui ralentissent le chiffre d'affaires, et je les classerai par impact.",
-    };
+    return { reply: strategicAnswer(context) };
   }
 
   if (/(score|automation score|note)/.test(q)) {
     return {
-      reply: `Votre Automation Score actuel est de ${context.automationScore}/100. Il reflète la part de vos tâches répétitives déjà automatisées et leur fiabilité. Installer une nouvelle automatisation ou améliorer une automatisation existante le fait progresser.`,
+      reply: `Votre Automation Score actuel est de ${context.automationScore}/100. Je le traiterais comme un indicateur de progression, pas comme une note de performance de l'entreprise. Ce qui compte est de savoir quelles automatisations améliorent réellement revenu, marge, délai, qualité ou temps disponible.`,
     };
   }
 
@@ -161,19 +195,18 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
     const withIssue = context.automations.find((a) => a.status === "warning" || a.status === "error");
     if (withIssue) {
       return {
-        reply: `Je vois que « ${withIssue.name} » nécessite votre attention. Vous pouvez consulter le détail et l'historique dans l'onglet Automatisations pour voir ce qui a changé.`,
+        reply: `**Point à traiter en priorité**\n« ${withIssue.name} » nécessite votre attention. Avant de modifier quoi que ce soit, je vérifierais le dernier fonctionnement correct, ce qui a changé depuis, puis l'impact métier de la panne.`,
       };
     }
     return {
-      reply: "Toutes vos automatisations semblent fonctionner normalement actuellement. Pouvez-vous préciser laquelle vous inquiète ?",
+      reply: "Je ne vois pas d'automatisation signalée en erreur dans le contexte actuel. Dites-moi laquelle vous inquiète et ce que vous observez ; je raisonnerai à partir des faits disponibles.",
     };
   }
 
   if (/(outil|utilise|utilisons|connect)/.test(q)) {
+    const connected = context.connections.filter((connection) => connection.status === "connected" || connection.status === "active").map((connection) => connection.provider);
     return {
-      reply: context.tools.length
-        ? `Vos outils actuellement connus : ${context.tools.join(", ")}. Si vous en changez, dites-le-moi et j'adapte mes recommandations.`
-        : "Je ne connais pas encore vos outils. Vous pouvez les ajouter dans l'onglet Outils ou me les indiquer directement ici.",
+      reply: `**Ce que je connais**\n${context.tools.length ? `Outils déclarés : ${context.tools.join(", ")}.` : "Aucun outil déclaré."}\n${connected.length ? `Sources réellement connectées : ${connected.join(", ")}.` : "Je n'ai pas encore de source réellement connectée à utiliser comme preuve opérationnelle."}\n\nCette distinction est importante : un outil déclaré m'aide à comprendre votre environnement ; une source connectée me permet de raisonner sur des observations réelles.`,
     };
   }
 
@@ -181,15 +214,15 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
     const alreadyInstalled = context.automations.find((a) => normalize(a.name) === normalize(match.title));
     if (alreadyInstalled) {
       return {
-        reply: `Vous avez déjà une automatisation proche de ce besoin : « ${alreadyInstalled.name} », actuellement ${alreadyInstalled.status === "active" ? "active" : "installée"}. Vous pouvez la consulter dans l'onglet Automatisations.`,
+        reply: `Vous avez déjà une automatisation proche de ce besoin : « ${alreadyInstalled.name} ». Avant d'en ajouter une autre, je vérifierais son usage, sa fiabilité et l'impact réellement obtenu.`,
       };
     }
 
     const explicit = isExplicitAutomationRequest(last);
     return {
       reply: explicit
-        ? `Ce besoin correspond à « ${match.title} » : ${match.description} Potentiel estimé ~${match.estimatedHoursPerMonth} h/mois. Je peux préparer cette opportunité pour validation.`
-        : `Une piste pertinente est « ${match.title} » : ${match.description} Potentiel estimé ~${match.estimatedHoursPerMonth} h/mois. Je vous la recommande seulement si elle correspond bien à votre processus réel.`,
+        ? `**Option concrète**\n« ${match.title} » correspond au besoin décrit : ${match.description}\n\n**Estimation**\nPotentiel indicatif : ~${match.estimatedHoursPerMonth} h/mois. Je peux préparer cette opportunité pour validation, mais je ne considérerais pas ce potentiel comme acquis avant d'avoir vérifié votre fréquence réelle et votre processus actuel.`
+        : `**Piste à valider**\n« ${match.title} » pourrait être pertinente : ${match.description}\n\nJe ne l'installerais pas sur la seule base d'un mot-clé. Je vérifierais d'abord que le processus existe réellement, qu'il est assez fréquent et que son coût métier justifie l'automatisation.`,
       ...(explicit ? { matchedTemplateId: match.id } : {}),
     };
   }
@@ -201,8 +234,7 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
     const match = findBestCatalogMatch(combined, context.tools);
     if (match) return describeMatch(match);
     return {
-      reply:
-        "Merci pour ces précisions. Je n'ai pas assez de preuves pour rattacher ce besoin à une automatisation du catalogue sans risque de hors-sujet. Je peux toutefois analyser le processus et vous dire où se situe le meilleur levier métier.",
+      reply: `Merci. Je préfère ne pas forcer une automatisation catalogue si la preuve est insuffisante.\n\n**Ce que je ferais comme consultant**\nJe remonterais d'abord au processus, au résultat attendu et au volume réel.\n\n${bestDiscoveryQuestion(context)}`,
     };
   }
 
@@ -211,11 +243,11 @@ export function runMockChat(messages: ChatMessageInput[], context: ChatContext):
     if (match) return describeMatch(match);
 
     return {
-      reply: `Je n'ai pas assez d'éléments pour recommander une automatisation précise sans inventer. ${CLARIFY_MARKER} : quel résultat voulez-vous améliorer en priorité — revenu, marge, temps, délai de réponse ou qualité — et quelle tâche vous bloque aujourd'hui ?`,
+      reply: `**Première lecture**\nJe peux vous aider sur ce sujet, mais je n'ai pas assez de faits pour donner une recommandation spécifique sans inventer.\n\n${CLARIFY_MARKER} : ${bestDiscoveryQuestion(context)}`,
     };
   }
 
   return {
-    reply: "Pouvez-vous préciser votre objectif ? Je peux vous aider à prioriser selon revenu, temps, risque et effort.",
+    reply: `Je ne vais pas vous faire reformuler pour reformuler. Donnez-moi simplement la décision ou le problème métier à traiter ; je distinguerai ce que je sais, ce que j'estime et ce qu'il faut vérifier.`,
   };
 }
