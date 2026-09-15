@@ -1,10 +1,9 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowRight, Lock, Loader2, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Check, Lock, Loader2, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
-import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { IMPACT_LABELS, formatHours } from "@/lib/format";
 import type { DiagnosticResult } from "@/lib/ai/types";
 
@@ -36,7 +35,7 @@ export function DiagnosticExperience() {
       });
       if (!res.ok) throw new Error("failed");
       const data = await res.json();
-      await new Promise((r) => setTimeout(r, 500)); // laisse le temps de percevoir l'analyse
+      await new Promise((r) => setTimeout(r, 500));
       setResult(data.result);
       setStatus("done");
     } catch {
@@ -72,13 +71,13 @@ export function DiagnosticExperience() {
             }}
           />
           <div className="flex items-center justify-between px-2 pb-1">
-            <span className="text-xs text-muted-foreground">Entrée pour envoyer</span>
+            <span className="text-xs text-muted-foreground">Décrivez un problème réel, même en une phrase</span>
             <Button type="submit" size="sm" disabled={status === "loading" || input.trim().length < 3}>
               {status === "loading" ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : (
                 <>
-                  Analyser gratuitement <ArrowRight size={16} />
+                  Voir ce que Pilotzia ferait <ArrowRight size={16} />
                 </>
               )}
             </Button>
@@ -106,7 +105,7 @@ export function DiagnosticExperience() {
         <div className="mx-auto mt-10 max-w-2xl text-center">
           <div className="inline-flex items-center gap-2 text-sm text-muted-foreground">
             <Sparkles size={16} className="animate-pulse text-accent" />
-            Analyse de votre entreprise en cours…
+            Pilotzia cherche l'action la plus utile pour votre situation…
           </div>
         </div>
       )}
@@ -123,80 +122,121 @@ export function DiagnosticExperience() {
 }
 
 function DiagnosticReveal({ result }: { result: DiagnosticResult }) {
-  const visible = result.opportunities.slice(0, 2);
-  const locked = result.opportunities.slice(2);
+  const primary = result.opportunities[0];
+  const secondary = result.opportunities.slice(1, 3);
+  const hasBusinessContext = result.detectedTools.length > 0;
+
+  if (!primary) return null;
 
   return (
     <div className="mx-auto mt-12 max-w-3xl animate-[fadeIn_0.4s_ease-out]">
       <div className="text-center">
-        <p className="text-sm font-medium text-accent">Votre première analyse</p>
-        <h2 className="mt-1 text-2xl font-semibold tracking-tight">{result.summary}</h2>
+        <p className="text-sm font-medium text-accent">Première lecture de votre besoin</p>
+        <h2 className="mt-1 text-2xl font-semibold tracking-tight sm:text-3xl">
+          Voilà ce que Pilotzia regarderait en premier.
+        </h2>
+        <p className="mx-auto mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Ceci est une estimation rapide à partir de votre phrase. La vraie simulation utilise votre contexte, vos outils et vos volumes réels pour prioriser plus précisément.
+        </p>
       </div>
 
-      <div className="mt-8 grid gap-6 sm:grid-cols-[auto_1fr] items-center rounded-2xl border border-border bg-card p-6">
-        <ScoreGauge score={result.automationScore} />
-        <div className="grid grid-cols-2 gap-4 sm:gap-6">
+      <div className="mt-8 rounded-2xl border border-accent/25 bg-card p-6 shadow-sm">
+        <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-muted-foreground">Automation Score</p>
-            <p className="text-lg font-semibold">{result.automationScore} / 100</p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Action prioritaire</p>
+            <h3 className="mt-1 text-xl font-semibold">{primary.title}</h3>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">{primary.description}</p>
           </div>
-          <div>
-            <p className="text-xs text-muted-foreground">Potentiel identifié</p>
-            <p className="text-lg font-semibold">~{formatHours(result.potentialHoursPerMonth)} / mois</p>
+          <Badge tone={primary.impactLevel === "high" ? "success" : "accent"}>{IMPACT_LABELS[primary.impactLevel]}</Badge>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-xs text-muted-foreground">Temps potentiellement récupérable</p>
+            <p className="mt-1 text-xl font-semibold">~{formatHours(primary.estimatedHoursPerMonth)} / mois</p>
+            <p className="mt-1 text-xs text-muted-foreground">Estimation à affiner avec vos volumes réels.</p>
           </div>
-          <div className="col-span-2">
-            <p className="text-xs text-muted-foreground">Outils détectés</p>
-            <p className="text-sm font-medium mt-1">
-              {result.detectedTools.length ? result.detectedTools.join(" · ") : "Aucun outil identifié pour l'instant"}
-            </p>
+          <div className="rounded-xl border border-border bg-muted/30 p-4">
+            <p className="text-xs text-muted-foreground">Valeur mensuelle estimée</p>
+            <p className="mt-1 text-xl font-semibold">~{primary.estimatedValueEur} € / mois</p>
+            <p className="mt-1 text-xs text-muted-foreground">Une indication, pas une promesse de résultat.</p>
           </div>
         </div>
-      </div>
 
-      <div className="mt-6 grid gap-4 sm:grid-cols-2">
-        {visible.map((opp) => (
-          <div key={opp.templateId} className="rounded-2xl border border-border bg-card p-5">
-            <div className="flex items-center gap-2 text-accent">
-              <Zap size={16} />
-              <p className="font-semibold text-foreground">{opp.title}</p>
-            </div>
-            <p className="mt-2 text-sm text-muted-foreground">{opp.description}</p>
-            <div className="mt-4 flex items-center gap-2">
-              <Badge tone="accent">Potentiel ~{formatHours(opp.estimatedHoursPerMonth)}/mois</Badge>
-              <Badge tone={opp.impactLevel === "high" ? "success" : "neutral"}>{IMPACT_LABELS[opp.impactLevel]}</Badge>
-            </div>
-          </div>
-        ))}
-        {locked.map((opp) => (
-          <div key={opp.templateId} className="relative overflow-hidden rounded-2xl border border-border bg-card p-5">
-            <div className="blur-[3px] select-none pointer-events-none opacity-70">
-              <div className="flex items-center gap-2 text-accent">
-                <Zap size={16} />
-                <p className="font-semibold text-foreground">{opp.title}</p>
+        <div className="mt-5">
+          <p className="text-sm font-semibold">Comment Pilotzia s'y prendrait</p>
+          <div className="mt-3 grid gap-2">
+            {primary.steps.slice(0, 4).map((step) => (
+              <div key={step} className="flex items-start gap-2 text-sm text-muted-foreground">
+                <Check size={15} className="mt-0.5 shrink-0 text-accent" />
+                <span>{step}</span>
               </div>
-              <p className="mt-2 text-sm text-muted-foreground">{opp.description}</p>
-            </div>
-            <div className="absolute inset-0 flex items-center justify-center bg-card/40">
-              <Lock size={18} className="text-muted-foreground" />
-            </div>
+            ))}
           </div>
-        ))}
+        </div>
       </div>
 
-      <div className="mt-6 rounded-2xl border border-accent/20 bg-accent-soft p-6 text-center">
-        <div className="mx-auto flex h-10 w-10 items-center justify-center rounded-full bg-card text-accent">
-          <Lock size={18} />
+      {!hasBusinessContext && (
+        <div className="mt-4 rounded-2xl border border-border bg-card p-5">
+          <p className="text-sm font-semibold">Ce qu'il manque pour passer d'une idée à une vraie décision</p>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            Pilotzia ne connaît pas encore vos outils, vos volumes ni votre façon de travailler. En créant votre espace, vous pourrez ajouter ce contexte et obtenir une recommandation beaucoup plus crédible : quoi faire, dans quel ordre, avec quel gain potentiel et quelles actions préparer.
+          </p>
         </div>
-        <h3 className="mt-3 text-lg font-semibold">Votre analyse complète est prête.</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Créez votre espace gratuitement pour découvrir toutes vos opportunités, votre score détaillé, les
-          automatisations recommandées et votre plan d'automatisation personnalisé.
+      )}
+
+      {secondary.length > 0 && (
+        <div className="mt-6">
+          <div className="flex items-end justify-between gap-4">
+            <div>
+              <p className="text-sm font-semibold">Ce que Pilotzia vérifierait ensuite</p>
+              <p className="mt-1 text-sm text-muted-foreground">Des pistes secondaires, à confirmer avec votre contexte réel.</p>
+            </div>
+          </div>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            {secondary.map((opp, index) => (
+              <div key={opp.templateId} className="relative overflow-hidden rounded-2xl border border-border bg-card p-5">
+                <div className={index === secondary.length - 1 ? "blur-[2px] opacity-70 select-none" : ""}>
+                  <div className="flex items-center gap-2 text-accent">
+                    <Zap size={16} />
+                    <p className="font-semibold text-foreground">{opp.title}</p>
+                  </div>
+                  <p className="mt-2 text-sm text-muted-foreground">{opp.description}</p>
+                </div>
+                {index === secondary.length - 1 && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-card/35">
+                    <div className="rounded-full border border-border bg-card px-3 py-1.5 text-xs font-medium text-muted-foreground shadow-sm">
+                      À confirmer dans votre espace
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="mt-7 rounded-2xl border border-accent/25 bg-accent-soft p-7 text-center">
+        <div className="mx-auto flex h-11 w-11 items-center justify-center rounded-full bg-card text-accent">
+          <Sparkles size={19} />
+        </div>
+        <h3 className="mt-3 text-xl font-semibold">Passez maintenant de l'estimation à votre vraie simulation.</h3>
+        <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Créez votre espace gratuitement, ajoutez le contexte de votre entreprise et voyez ce que Pilotzia recommande réellement pour vous : priorités, potentiel, plan d'action et prochaines automatisations à tester.
         </p>
         <div className="mt-5">
           <Button href="/signup" size="lg">
-            Créer mon espace gratuitement <ArrowRight size={18} />
+            Tester Pilotzia gratuitement sur mon entreprise <ArrowRight size={18} />
           </Button>
         </div>
+        <div className="mt-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs text-muted-foreground">
+          <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-success" /> Sans carte bancaire</span>
+          <span className="inline-flex items-center gap-1.5"><Check size={13} className="text-success" /> 14 jours pour tester sérieusement</span>
+          <span className="inline-flex items-center gap-1.5"><Lock size={13} /> Votre contexte reste disponible après l'essai</span>
+        </div>
+        <p className="mx-auto mt-4 max-w-2xl text-xs leading-5 text-muted-foreground">
+          Vous pouvez rester en découverte gratuite. Si vous voulez connecter davantage de contexte, obtenir des recommandations continues et surtout faire exécuter ou automatiser les actions, les offres payantes prennent naturellement le relais.
+        </p>
       </div>
     </div>
   );
