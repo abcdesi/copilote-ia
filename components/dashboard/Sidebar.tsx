@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network, ShieldCheck } from "lucide-react";
+import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network, ShieldCheck, Landmark } from "lucide-react";
 import { APP_NAME } from "@/lib/config";
 import { logoutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils/cn";
@@ -13,6 +13,7 @@ const NAV = [
   { href: "/app/automations", label: "Automatisations", icon: Zap },
   { href: "/app/opportunities", label: "Opportunités", icon: Lightbulb },
   { href: "/app/results", label: "Résultats", icon: BarChart3 },
+  { href: "/app/finance", label: "Finance & audit", icon: Landmark },
   { href: "/app/context", label: "Contexte IA", icon: Network },
   { href: "/app/tools", label: "Outils", icon: Wrench },
   { href: "/app/company", label: "Mon entreprise", icon: Building2 },
@@ -28,9 +29,7 @@ export function Sidebar({ companyName, isAdmin = false }: { companyName: string;
   return (
     <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-col lg:border-r lg:border-border lg:bg-card">
       <div className="px-6 py-5">
-        <Link href="/app" className="text-lg font-semibold tracking-tight">
-          {APP_NAME}
-        </Link>
+        <Link href="/app" className="text-lg font-semibold tracking-tight">{APP_NAME}</Link>
         <p className="mt-0.5 truncate text-xs text-muted-foreground">{companyName}</p>
       </div>
 
