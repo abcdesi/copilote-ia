@@ -15,6 +15,11 @@ function isAdmin(email?: string | null) {
   return allowed.includes(email.toLowerCase());
 }
 
+function minimumCohortSize() {
+  const parsed = Number(process.env.PILOTZIA_BENCHMARK_MIN_COHORT || "5");
+  return Number.isFinite(parsed) ? Math.max(3, Math.round(parsed)) : 5;
+}
+
 type Bucket = {
   companies: number;
   opportunities: number;
@@ -38,8 +43,9 @@ function ensureBucket(map: Map<string, Bucket>, key: string) {
   return map.get(key)!;
 }
 
-function summarize(map: Map<string, Bucket>) {
+function summarize(map: Map<string, Bucket>, minCohort: number) {
   return Array.from(map.entries())
+    .filter(([, value]) => value.companies >= minCohort)
     .map(([segment, value]) => ({
       segment,
       ...value,
@@ -57,6 +63,7 @@ export async function GET() {
     return NextResponse.json({ error: "Accès administrateur requis." }, { status: 403 });
   }
 
+  const minCohort = minimumCohortSize();
   const companies = await prisma.company.findMany({
     select: {
       id: true,
@@ -111,21 +118,25 @@ export async function GET() {
     for (const bucket of buckets) bucket.automations += company.automations.length;
   }
 
-  const topNeeds = Array.from(needCounts.entries())
-    .map(([need, stats]) => ({
-      need,
-      occurrences: stats.count,
-      avgEstimatedValueEur: stats.count ? stats.value / stats.count : 0,
-      avgEstimatedHoursPerMonth: stats.count ? stats.hours / stats.count : 0,
-      acceptanceRate: stats.count ? stats.accepted / stats.count : 0,
-    }))
-    .sort((a, b) => b.occurrences - a.occurrences)
-    .slice(0, 25);
+  const topNeeds = companies.length >= minCohort
+    ? Array.from(needCounts.entries())
+        .filter(([, stats]) => stats.count >= minCohort)
+        .map(([need, stats]) => ({
+          need,
+          occurrences: stats.count,
+          avgEstimatedValueEur: stats.count ? stats.value / stats.count : 0,
+          avgEstimatedHoursPerMonth: stats.count ? stats.hours / stats.count : 0,
+          acceptanceRate: stats.count ? stats.accepted / stats.count : 0,
+        }))
+        .sort((a, b) => b.occurrences - a.occurrences)
+        .slice(0, 25)
+    : [];
 
   return NextResponse.json({
     privacy: {
       mode: "aggregated",
-      note: "Cette vue agrège les tendances. Elle ne doit pas exposer le contenu privé ou les données brutes d'une entreprise cliente.",
+      minimumCohort: minCohort,
+      note: "Les segments et besoins sous le seuil de cohorte sont masqués. Aucun contenu brut d'une entreprise cliente n'est exposé.",
     },
     totals: {
       companies: companies.length,
@@ -133,9 +144,9 @@ export async function GET() {
       automations: companies.reduce((sum, company) => sum + company.automations.length, 0),
     },
     segments: {
-      industry: summarize(byIndustry),
-      country: summarize(byCountry),
-      size: summarize(bySize),
+      industry: summarize(byIndustry, minCohort),
+      country: summarize(byCountry, minCohort),
+      size: summarize(bySize, minCohort),
     },
     topNeeds,
   });
