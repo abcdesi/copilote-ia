@@ -19,12 +19,20 @@ export default async function DashboardHomePage() {
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
       orderBy: { estimatedValueEur: "desc" },
     }),
-    prisma.pendingAction.findMany({
-      where: { companyId: company.id, status: "pending" },
-      orderBy: { createdAt: "desc" },
-      take: 10,
+    prisma.pendingAction
+      .findMany({
+        where: { companyId: company.id, status: "pending" },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      })
+      .catch((error) => {
+        console.error("PendingAction unavailable on dashboard", error);
+        return [];
+      }),
+    getLatestGoogleOperationalSnapshot(company.id).catch((error) => {
+      console.error("Google operational snapshot unavailable on dashboard", error);
+      return null;
     }),
-    getLatestGoogleOperationalSnapshot(company.id),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
