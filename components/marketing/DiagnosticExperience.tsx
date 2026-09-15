@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { ArrowRight, Check, Loader2, SearchCheck, Sparkles, Zap } from "lucide-react";
+import { ArrowRight, Check, Loader2, SearchCheck, Share2, Sparkles, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { IMPACT_LABELS, formatEur, formatHours } from "@/lib/format";
@@ -23,6 +23,7 @@ export function DiagnosticExperience() {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<DiagnosticResult | null>(null);
+  const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
 
   async function submit(text: string) {
     if (text.trim().length < 3 || status === "loading") return;
@@ -37,6 +38,7 @@ export function DiagnosticExperience() {
       const data = await res.json();
       await new Promise((r) => setTimeout(r, 400));
       setResult(data.result);
+      setDiagnosticId(data.diagnosticId ?? null);
       setStatus("done");
     } catch {
       setStatus("error");
@@ -116,15 +118,46 @@ export function DiagnosticExperience() {
         </p>
       )}
 
-      {status === "done" && result && <DiagnosticReveal result={result} />}
+      {status === "done" && result && <DiagnosticReveal result={result} diagnosticId={diagnosticId} />}
     </div>
   );
 }
 
-function DiagnosticReveal({ result }: { result: DiagnosticResult }) {
+function DiagnosticReveal({ result, diagnosticId }: { result: DiagnosticResult; diagnosticId: string | null }) {
   const primary = result.opportunities[0];
   const secondary = result.opportunities.slice(1, 3);
   const detectedTools = result.detectedTools.length ? result.detectedTools.join(" · ") : null;
+  const [shareStatus, setShareStatus] = useState<"idle" | "loading" | "shared" | "error">("idle");
+
+  async function shareDiagnostic() {
+    if (!diagnosticId || shareStatus === "loading") return;
+    setShareStatus("loading");
+    try {
+      const response = await fetch("/api/diagnostic/share", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ diagnosticId }),
+      });
+      if (!response.ok) throw new Error("share_failed");
+      const data = (await response.json()) as { url: string };
+      if (navigator.share) {
+        await navigator.share({
+          title: "Première lecture Pilotzia",
+          text: "Voici une première hypothèse Pilotzia sur un levier d'amélioration opérationnelle.",
+          url: data.url,
+        });
+      } else {
+        await navigator.clipboard.writeText(data.url);
+      }
+      setShareStatus("shared");
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        setShareStatus("idle");
+        return;
+      }
+      setShareStatus("error");
+    }
+  }
 
   return (
     <div className="mx-auto mt-12 max-w-3xl animate-[fadeIn_0.4s_ease-out]">
@@ -193,11 +226,16 @@ function DiagnosticReveal({ result }: { result: DiagnosticResult }) {
         <p className="mx-auto mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
           Créez votre espace gratuitement. Pilotzia reprend ce diagnostic, apprend votre contexte, vous pose les questions qui changent réellement la décision et affine les recommandations à mesure que les faits deviennent disponibles.
         </p>
-        <div className="mt-5">
-          <Button href="/signup" size="lg">
-            Faire ma vraie simulation gratuitement <ArrowRight size={18} />
-          </Button>
+        <div className="mt-5 flex flex-wrap justify-center gap-3">
+          <Button href="/signup" size="lg">Faire ma vraie simulation gratuitement <ArrowRight size={18} /></Button>
+          {diagnosticId && (
+            <Button type="button" size="lg" variant="outline" onClick={shareDiagnostic} disabled={shareStatus === "loading"}>
+              {shareStatus === "loading" ? <Loader2 size={17} className="animate-spin" /> : <Share2 size={17} />}
+              {shareStatus === "shared" ? "Lien partagé / copié" : "Partager cette première lecture"}
+            </Button>
+          )}
         </div>
+        {shareStatus === "error" && <p className="mt-2 text-xs text-danger">Impossible de créer le lien pour l'instant.</p>}
         <p className="mt-3 text-xs text-muted-foreground">Sans carte bancaire · 14 jours pour tester l'IA réelle · Votre contexte reste disponible ensuite</p>
       </div>
     </div>
