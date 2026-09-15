@@ -18,8 +18,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
 
   const outcome = await triggerAutomation(automation, "manual");
   if (!outcome.ok) {
+    if ("upgradeRequired" in outcome && outcome.upgradeRequired) {
+      return NextResponse.json(
+        { error: outcome.error, upgradeRequired: true, href: "/app/settings" },
+        { status: 403 }
+      );
+    }
+    if ("usageLimited" in outcome && outcome.usageLimited) {
+      return NextResponse.json(
+        { error: outcome.error, usageLimited: true, reason: outcome.reason, href: "/app/settings" },
+        { status: 429 }
+      );
+    }
     console.error("run-now failed:", outcome.error);
-    return NextResponse.json({ error: "L'exécution a échoué." }, { status: 502 });
+    return NextResponse.json({ error: "L'exécution réelle a échoué. Vérifiez la connexion puis réessayez." }, { status: 502 });
   }
 
   return NextResponse.json({ ok: true, result: outcome.result });
