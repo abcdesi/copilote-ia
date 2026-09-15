@@ -1,5 +1,6 @@
 import { z } from "zod";
-import { runMockChat, runMockDiagnostic } from "./mock-engine";
+import { runMockDiagnostic } from "./mock-engine";
+import { runExpertFallbackChat } from "./expert-fallback";
 import { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 import { AUTOMATION_CATALOG } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR, KNOWN_TOOLS } from "@/lib/automations/types";
@@ -37,12 +38,12 @@ export async function runDiagnostic(input: string, existingTools: string[] = [],
 }
 
 export async function runChat(messages: ChatMessageInput[], context: ChatContext): Promise<ChatReply> {
-  if (!hasClaudeKey()) return runMockChat(messages, context);
+  if (!hasClaudeKey()) return runExpertFallbackChat(messages, context);
   try {
     return await runClaudeChat(messages, context);
   } catch (error) {
     console.error("Real chat fallback", error);
-    return runMockChat(messages, context);
+    return runExpertFallbackChat(messages, context);
   }
 }
 
