@@ -1,7 +1,9 @@
-import { CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
+import { ArrowRight, CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 
 const STATUS_LABELS: Record<string, string> = {
   pending: "À valider",
@@ -14,11 +16,14 @@ const STATUS_LABELS: Record<string, string> = {
 
 export default async function ActionsPage() {
   const company = await getCurrentCompany();
-  const actions = await prisma.pendingAction.findMany({
-    where: { companyId: company.id },
-    orderBy: { createdAt: "desc" },
-    take: 50,
-  });
+  const [actions, entitlements] = await Promise.all([
+    prisma.pendingAction.findMany({
+      where: { companyId: company.id },
+      orderBy: { createdAt: "desc" },
+      take: 50,
+    }),
+    getCompanyEntitlements(company.id),
+  ]);
 
   const pending = actions.filter((action) => action.status === "pending");
   const history = actions.filter((action) => action.status !== "pending");
@@ -27,20 +32,35 @@ export default async function ActionsPage() {
     <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Contrôle opérationnel</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Actions à valider</h1>
+        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Actions préparées</h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Pilotzia peut préparer une action, mais ne l'exécute pas silencieusement. Vérifiez ce qui va changer, puis
-          validez ou refusez. Les actions critiques conservent cette étape de confirmation.
+          Pilotzia peut préparer une action sans l'exécuter silencieusement. Vous voyez ce qui va changer avant de décider. L'exécution réelle est incluse dans Action et Scale ; les actions sensibles conservent une confirmation explicite.
         </p>
       </div>
+
+      {!entitlements.canExecute && pending.length > 0 && (
+        <section className="rounded-2xl border border-accent/20 bg-accent-soft p-5 sm:p-6">
+          <p className="text-sm font-semibold text-accent">Vous avez déjà une action prête à produire de la valeur</p>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Continuez à l'examiner gratuitement. Quand vous voulez que Pilotzia agisse réellement dans vos outils et suive le résultat, l'offre Action débloque l'exécution contrôlée.
+          </p>
+          <div className="mt-4">
+            <Button href="/app/settings" size="sm">
+              Voir Action <ArrowRight size={15} />
+            </Button>
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3">
         {pending.length === 0 ? (
           <div className="rounded-2xl border border-border bg-card p-6 text-sm text-muted-foreground">
-            Aucune action n'attend votre validation.
+            Aucune action n'attend votre décision.
           </div>
         ) : (
-          pending.map((action) => <PendingActionCard key={action.id} action={action} />)
+          pending.map((action) => (
+            <PendingActionCard key={action.id} action={action} canExecute={entitlements.canExecute} />
+          ))
         )}
       </section>
 
@@ -68,6 +88,7 @@ export default async function ActionsPage() {
 
 function PendingActionCard({
   action,
+  canExecute,
 }: {
   action: {
     id: string;
@@ -79,6 +100,7 @@ function PendingActionCard({
     createdAt: Date;
     expiresAt: Date | null;
   };
+  canExecute: boolean;
 }) {
   const highRisk = action.riskLevel === "high" || action.riskLevel === "critical";
   return (
@@ -101,11 +123,17 @@ function PendingActionCard({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            <form method="post" action={`/api/actions/${action.id}/execute`}>
-              <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
-                <CheckCircle2 size={15} /> Confirmer et exécuter
-              </button>
-            </form>
+            {canExecute ? (
+              <form method="post" action={`/api/actions/${action.id}/execute`}>
+                <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
+                  <CheckCircle2 size={15} /> Confirmer et exécuter
+                </button>
+              </form>
+            ) : (
+              <Button href="/app/settings" size="sm">
+                Débloquer l'exécution <ArrowRight size={15} />
+              </Button>
+            )}
             <form method="post" action={`/api/actions/${action.id}/reject`}>
               <button className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
                 <XCircle size={15} /> Refuser
