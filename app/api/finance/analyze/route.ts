@@ -5,6 +5,7 @@ import { isPilotziaAdmin } from "@/lib/admin/access";
 import { reserveUsage, refundUsage } from "@/lib/billing/usage-policy";
 import { extractFinancialStatementFromPdf } from "@/lib/intelligence/financial-document";
 import { auditFinancialStatement } from "@/lib/intelligence/financial-audit";
+import { deriveFinancialPriorities } from "@/lib/intelligence/financial-opportunities";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 
@@ -71,6 +72,7 @@ export async function POST(req: NextRequest) {
     const bytes = new Uint8Array(await file.arrayBuffer());
     const extraction = await extractFinancialStatementFromPdf({ pdfBytes: bytes, filename: file.name });
     const audit = auditFinancialStatement(extraction.statement);
+    const priorities = deriveFinancialPriorities(extraction.statement, audit);
 
     await track(EVENTS.FINANCIAL_AUDIT_COMPLETED, {
       companyId: company.id,
@@ -80,6 +82,7 @@ export async function POST(req: NextRequest) {
         ratiosCount: audit.ratios.length,
         alertsCount: audit.alerts.length,
         questionsCount: audit.questions.length,
+        prioritiesCount: priorities.length,
         warningsCount: extraction.warnings.length,
         model: extraction.model,
         inputTokens: extraction.inputTokens,
@@ -95,6 +98,7 @@ export async function POST(req: NextRequest) {
         warnings: extraction.warnings,
       },
       audit,
+      priorities,
       privacy: {
         rawPdfStored: false,
         note: "Le PDF est traité pour cette analyse mais n'est pas enregistré dans la base Pilotzia par cette fonctionnalité.",
