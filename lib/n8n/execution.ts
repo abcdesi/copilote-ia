@@ -3,6 +3,8 @@
 import { prisma } from "@/lib/db/client";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
+import { reserveAutomationExecution } from "@/lib/billing/execution-usage";
 import { webhookPathForCompany } from "./workflows";
 
 interface TriggerableAutomation {
@@ -19,6 +21,25 @@ export async function triggerAutomation(
   const templateId = automation.templateId ?? "relance-prospects";
   const baseUrl = process.env.N8N_API_URL;
   if (!baseUrl) return { ok: false as const, error: "N8N_API_URL manquante." };
+
+  const entitlements = await getCompanyEntitlements(automation.companyId);
+  if (!entitlements.canExecute) {
+    return {
+      ok: false as const,
+      error: "L'exécution réelle des automatisations nécessite une offre Action ou Scale active.",
+      upgradeRequired: true as const,
+    };
+  }
+
+  const usage = await reserveAutomationExecution(automation.companyId);
+  if (!usage.allowed) {
+    return {
+      ok: false as const,
+      error: "La capacité d'exécution incluse dans votre offre est arrivée à sa limite pour cette période.",
+      usageLimited: true as const,
+      reason: usage.reason,
+    };
+  }
 
   const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${webhookPathForCompany(automation.companyId, templateId)}`;
   const startedAt = new Date();
@@ -47,7 +68,7 @@ export async function triggerAutomation(
           itemsProcessed: sentCount,
           durationMs: finishedAt.getTime() - startedAt.getTime(),
           errorCode: runErrors > 0 ? "PARTIAL_EXECUTION_ERRORS" : null,
-          metadata: JSON.stringify({ templateId, errorCount: runErrors }),
+          metadata: JSON.stringify({ templateId, errorCount: runErrors, plan: entitlements.plan }),
           finishedAt,
         },
       }),
@@ -56,7 +77,7 @@ export async function triggerAutomation(
     if (sentCount > 0) {
       await track(EVENTS.AUTOMATION_EXECUTED, {
         companyId: automation.companyId,
-        metadata: { templateId, sentCount, source },
+        metadata: { templateId, sentCount, source, plan: entitlements.plan },
       });
     }
     if (runErrors > 0) {
