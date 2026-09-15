@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { requireSession } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
-import { createCheckoutSession } from "@/lib/billing/stripe";
+import { createBillingPortalSession, createCheckoutSession } from "@/lib/billing/stripe";
 
 const schema = z.object({ plan: z.enum(["starter", "pro", "business"]) });
 
@@ -18,6 +18,15 @@ export async function POST(req: NextRequest) {
   if (!company || !session.user.email) return NextResponse.json({ error: "Compte incomplet." }, { status: 400 });
 
   const sub = company.subscriptions[0];
+  const hasActivePaidSubscription = Boolean(
+    sub && sub.plan !== "free" && ["active", "trialing"].includes(sub.status) && sub.stripeCustomerId
+  );
+
+  if (hasActivePaidSubscription && sub?.stripeCustomerId) {
+    const portal = await createBillingPortalSession(sub.stripeCustomerId);
+    return NextResponse.redirect(portal.url, 303);
+  }
+
   const checkout = await createCheckoutSession({
     companyId: company.id,
     email: session.user.email,
