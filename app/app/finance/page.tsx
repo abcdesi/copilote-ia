@@ -2,16 +2,14 @@ import { ArrowRight, BrainCircuit, FileSearch, ShieldCheck, TrendingUp } from "l
 import { auth } from "@/lib/auth";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { isPilotziaAdmin } from "@/lib/admin/access";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { FinancialAuditUpload } from "@/components/finance/FinancialAuditUpload";
 import { Button } from "@/components/ui/Button";
 
 export default async function FinancePage() {
   const [session, company] = await Promise.all([auth(), getCurrentCompany()]);
-  const subscription = company.subscriptions[0];
-  const scaleActive = Boolean(
-    subscription && subscription.plan === "business" && ["active", "trialing"].includes(subscription.status)
-  );
-  const access = scaleActive || isPilotziaAdmin(session?.user?.email);
+  const entitlements = await getCompanyEntitlements(company.id);
+  const access = entitlements.canUseFinancialAudit || isPilotziaAdmin(session?.user?.email);
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
