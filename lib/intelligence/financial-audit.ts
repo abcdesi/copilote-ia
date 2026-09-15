@@ -95,7 +95,10 @@ export function auditFinancialStatement(input: FinancialStatementInput): Financi
     }
   }
 
-  const receivableDays = input.revenue ? safeDivide((input.accountsReceivable ?? null) * 365, input.revenue) : null;
+  const receivableDays =
+    input.accountsReceivable != null && input.revenue != null
+      ? safeDivide(input.accountsReceivable * 365, input.revenue)
+      : null;
   if (receivableDays != null) {
     ratios.push({
       key: "receivable_days",
@@ -110,7 +113,10 @@ export function auditFinancialStatement(input: FinancialStatementInput): Financi
     }
   } else missingData.push("créances clients et chiffre d'affaires");
 
-  const payableDays = input.revenue ? safeDivide((input.accountsPayable ?? null) * 365, input.revenue) : null;
+  const payableDays =
+    input.accountsPayable != null && input.revenue != null
+      ? safeDivide(input.accountsPayable * 365, input.revenue)
+      : null;
   if (payableDays != null) {
     ratios.push({
       key: "payable_days_proxy",
