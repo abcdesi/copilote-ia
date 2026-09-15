@@ -1,5 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
+import { reserveActionExecution } from "@/lib/billing/execution-usage";
 
 export type SupportedActionKind = "gmail.create_draft" | "calendar.create_event";
 
@@ -92,6 +94,16 @@ export async function executePendingAction(companyId: string, actionId: string) 
     throw new Error("Cette action a expiré.");
   }
 
+  const entitlements = await getCompanyEntitlements(companyId);
+  if (!entitlements.canExecute) {
+    throw new Error("L'exécution réelle des actions est incluse à partir de l'offre Action.");
+  }
+
+  const usage = await reserveActionExecution(companyId);
+  if (!usage.allowed) {
+    throw new Error("La capacité d'exécution incluse dans votre offre est arrivée à sa limite pour cette période.");
+  }
+
   await prisma.pendingAction.update({ where: { id: action.id }, data: { status: "approved" } });
 
   try {
@@ -114,7 +126,7 @@ export async function executePendingAction(companyId: string, actionId: string) 
         data: {
           companyId,
           type: "COPILOT_ACTION_EXECUTED",
-          metadata: JSON.stringify({ provider: action.provider, kind: action.kind, riskLevel: action.riskLevel }),
+          metadata: JSON.stringify({ provider: action.provider, kind: action.kind, riskLevel: action.riskLevel, plan: entitlements.plan }),
         },
       }),
     ]);

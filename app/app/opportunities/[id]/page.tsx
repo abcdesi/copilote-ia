@@ -5,17 +5,22 @@ import { prisma } from "@/lib/db/client";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
 import { Badge } from "@/components/ui/Badge";
+import { Button } from "@/components/ui/Button";
 import { InstallDialog } from "@/components/opportunities/InstallDialog";
 import { IMPACT_LABELS, COMPLEXITY_LABELS, formatEur, formatHours } from "@/lib/format";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const company = await getCurrentCompany();
 
-  const opportunity = await prisma.opportunity.findFirst({ where: { id, companyId: company.id } });
+  const [opportunity, entitlements] = await Promise.all([
+    prisma.opportunity.findFirst({ where: { id, companyId: company.id } }),
+    getCompanyEntitlements(company.id),
+  ]);
   if (!opportunity) notFound();
 
   if (opportunity.status === "detected") {
@@ -50,8 +55,8 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <p className="font-semibold">{isReal ? "⚡ Exécution réelle disponible" : "🧪 Simulation disponible"}</p>
         <p className="mt-1 leading-6">
           {isReal
-            ? "Cette automatisation peut exécuter de vraies actions après installation. Pilotzia vous montre d'abord ce qui sera fait et les permissions nécessaires."
-            : "Cette automatisation permet de valider le fonctionnement et la valeur potentielle sans prétendre agir dans vos applications."}
+            ? "Cette automatisation peut agir réellement après activation sur une offre Action ou Scale. Pilotzia vous montre d'abord ce qui sera fait et les permissions nécessaires."
+            : "Cette recommandation sert aujourd'hui à valider la logique et la valeur potentielle. Pilotzia ne la présente pas comme exécutable tant que son connecteur réel n'est pas prêt."}
         </p>
       </div>
 
@@ -62,12 +67,12 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
-        <h2 className="font-semibold">Ce que cette automatisation va faire</h2>
+        <h2 className="font-semibold">Ce que cette automatisation ferait</h2>
         <ol className="mt-4 space-y-3">
-          {steps.map((step, i) => (
-            <li key={i} className="flex items-start gap-3">
+          {steps.map((step, index) => (
+            <li key={index} className="flex items-start gap-3">
               <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-accent-soft text-xs font-semibold text-accent">
-                {i + 1}
+                {index + 1}
               </span>
               <span className="pt-0.5 text-sm">{step}</span>
             </li>
@@ -119,17 +124,36 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
       </div>
 
       <div className="flex flex-col gap-4 rounded-2xl border border-border bg-card p-6 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <p className="text-sm text-muted-foreground">Prix</p>
-          <p className="text-2xl font-semibold">{formatEur(opportunity.priceEur)}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Installation, tests et surveillance inclus.</p>
+        <div className="max-w-xl">
+          <p className="text-sm font-semibold">
+            {alreadyInstalled
+              ? "Automatisation active"
+              : isReal
+                ? entitlements.canExecute
+                  ? "Prête à être installée"
+                  : "Exécution incluse à partir d'Action"
+                : "Validation en simulation"}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {alreadyInstalled
+              ? "Pilotzia suit désormais son exécution et sa santé."
+              : isReal
+                ? entitlements.canExecute
+                  ? "Aucun achat séparé : l'exécution fait partie de votre abonnement."
+                  : "Vous pouvez analyser cette opportunité et sa logique maintenant ; l'offre Action débloque l'exécution réelle et le monitoring."
+                : "La logique peut être évaluée sans laisser croire qu'une action réelle est déjà disponible."}
+          </p>
         </div>
         {alreadyInstalled ? (
           <div className="flex items-center gap-2 font-medium text-success">
-            <CheckCircle2 size={18} /> Déjà installée
+            <CheckCircle2 size={18} /> Installée
           </div>
+        ) : isReal && entitlements.canExecute ? (
+          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} />
+        ) : isReal ? (
+          <Button href="/app/settings">Débloquer l'exécution</Button>
         ) : (
-          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={opportunity.priceEur} />
+          <Button href="/app/copilot" variant="outline">Approfondir avec le copilote</Button>
         )}
       </div>
     </div>

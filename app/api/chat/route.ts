@@ -22,7 +22,12 @@ export interface CopilotAction {
 }
 
 function isSmartRequest(message: string) {
-  return message.length > 420 || /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis/i.test(message);
+  return (
+    message.length > 420 ||
+    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|audit|finance|financier|bilan|compte de résultat|compte de resultat|marge|trésorerie|tresorerie|rentabil/i.test(
+      message
+    )
+  );
 }
 
 export async function POST(req: NextRequest) {
@@ -60,8 +65,11 @@ export async function POST(req: NextRequest) {
     : { allowed: true as const, paid: false as const, reservationId: null };
 
   if (!usage.allowed) {
-    const reply =
-      "Votre enveloppe d’essai Pilotzia est arrivée à sa limite. Votre contexte, vos connexions et votre historique restent conservés. Activez un abonnement pour reprendre les analyses IA sans repartir de zéro.";
+    const isPaidLimit = usage.reason === "plan_credits_exhausted" || usage.reason === "plan_cost_cap_reached";
+    const reply = isPaidLimit
+      ? "Votre enveloppe mensuelle d'usage intelligent est arrivée à sa limite. Pilotzia conserve tout votre contexte et votre historique. Vous pouvez passer à l'offre supérieure pour continuer immédiatement avec davantage de capacité."
+      : "Votre essai Pilotzia est arrivé à sa limite. Votre contexte, vos connexions et votre historique restent conservés. Activez un abonnement pour reprendre les analyses IA sans repartir de zéro.";
+
     await prisma.chatMessage.create({
       data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
     });
@@ -73,9 +81,11 @@ export async function POST(req: NextRequest) {
       reply,
       action: {
         kind: "navigate",
-        label: "Voir les offres Pilotzia",
+        label: isPaidLimit ? "Augmenter ma capacité" : "Voir les offres Pilotzia",
         href: "/app/settings",
-        description: "Votre contexte reste intact. L’abonnement réactive le copilote et l’usage continu.",
+        description: isPaidLimit
+          ? "Comparez les capacités mensuelles et les fonctions débloquées par chaque offre."
+          : "Votre contexte reste intact. L'abonnement réactive le copilote et l'usage continu.",
       } satisfies CopilotAction,
       usageLimited: true,
       usageReason: usage.reason,

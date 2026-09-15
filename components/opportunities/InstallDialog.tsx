@@ -2,35 +2,35 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CheckCircle2, Loader2 } from "lucide-react";
+import { CheckCircle2, Loader2, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
-import { formatEur } from "@/lib/format";
 
 export function InstallDialog({
   opportunityId,
   title,
-  priceEur,
 }: {
   opportunityId: string;
   title: string;
-  priceEur: number;
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [automationId, setAutomationId] = useState<string | null>(null);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   async function confirmInstall() {
     setStatus("loading");
+    setErrorMessage(null);
     try {
       const res = await fetch(`/api/opportunities/${opportunityId}/install`, { method: "POST" });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error || "Installation impossible.");
       setAutomationId(data.automationId);
       setStatus("done");
       router.refresh();
-    } catch {
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Installation impossible.");
       setStatus("error");
     }
   }
@@ -38,22 +38,25 @@ export function InstallDialog({
   return (
     <Dialog
       open={open}
-      onOpenChange={(v) => {
-        setOpen(v);
-        if (!v) setStatus("idle");
+      onOpenChange={(value) => {
+        setOpen(value);
+        if (!value) {
+          setStatus("idle");
+          setErrorMessage(null);
+        }
       }}
     >
       <DialogTrigger asChild>
-        <Button size="lg">Installer cette automatisation</Button>
+        <Button size="lg">Installer dans Pilotzia</Button>
       </DialogTrigger>
-      <DialogContent title={status === "done" ? "Automatisation installée" : "Confirmer l'installation"}>
+      <DialogContent title={status === "done" ? "Automatisation installée" : "Confirmer l'installation réelle"}>
         {status === "done" ? (
-          <div className="text-center py-2">
+          <div className="py-2 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-success">
               <CheckCircle2 size={24} />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              « {title} » est maintenant active. Nous surveillons son bon fonctionnement pour vous.
+              « {title} » est maintenant active. Pilotzia surveille son exécution et vous remontera les incidents importants.
             </p>
             <Button
               className="mt-5 w-full"
@@ -64,16 +67,14 @@ export function InstallDialog({
           </div>
         ) : (
           <div>
-            <p className="text-sm text-muted-foreground">
-              « {title} » sera installée, testée et surveillée automatiquement. Facturation simulée pour cette
-              version de démonstration — aucun paiement réel n&apos;est effectué.
-            </p>
-            <div className="mt-4 flex items-center justify-between rounded-xl bg-muted px-4 py-3">
-              <span className="text-sm font-medium">Montant</span>
-              <span className="text-sm font-semibold">{formatEur(priceEur)}</span>
+            <div className="flex items-start gap-3 rounded-xl bg-muted px-4 py-3">
+              <ShieldCheck size={18} className="mt-0.5 shrink-0 text-accent" />
+              <p className="text-sm leading-6 text-muted-foreground">
+                L'installation réelle est incluse dans votre offre Action ou Scale. Pilotzia crée le workflow, conserve vos règles de contrôle et ne facture pas cette automatisation séparément.
+              </p>
             </div>
-            {status === "error" && (
-              <p className="mt-3 text-sm text-danger">Une erreur est survenue, réessayez.</p>
+            {status === "error" && errorMessage && (
+              <p className="mt-3 text-sm leading-6 text-danger">{errorMessage}</p>
             )}
             <Button className="mt-5 w-full" onClick={confirmInstall} disabled={status === "loading"}>
               {status === "loading" ? <Loader2 size={16} className="animate-spin" /> : "Confirmer l'installation"}

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
@@ -5,6 +6,11 @@ import { loginAction } from "@/lib/auth/actions";
 import { AuthCard } from "@/components/marketing/AuthCard";
 import { Input, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+
+export const metadata: Metadata = {
+  title: "Connexion",
+  robots: { index: false, follow: false },
+};
 
 export default async function LoginPage({
   searchParams,
@@ -22,13 +28,11 @@ export default async function LoginPage({
   return (
     <AuthCard
       title="Content de vous revoir"
-      subtitle="Connectez-vous pour retrouver votre cockpit d'automatisation."
+      subtitle="Connectez-vous pour retrouver le contexte, les décisions et les actions de votre entreprise."
       footer={
         <>
           Pas encore de compte ?{" "}
-          <Link href="/signup" className="font-medium text-accent">
-            Créer un espace gratuit
-          </Link>
+          <Link href="/signup" className="font-medium text-accent">Créer un espace gratuit</Link>
         </>
       }
     >
@@ -42,9 +46,7 @@ export default async function LoginPage({
           <Label htmlFor="password">Mot de passe</Label>
           <Input id="password" name="password" type="password" required autoComplete="current-password" />
         </div>
-        <Button type="submit" className="w-full mt-2">
-          Se connecter
-        </Button>
+        <Button type="submit" className="mt-2 w-full">Se connecter</Button>
       </form>
     </AuthCard>
   );
