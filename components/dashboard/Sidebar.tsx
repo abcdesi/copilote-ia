@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network } from "lucide-react";
+import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network, ShieldCheck } from "lucide-react";
 import { APP_NAME } from "@/lib/config";
 import { logoutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils/cn";
@@ -19,8 +19,11 @@ const NAV = [
   { href: "/app/settings", label: "Paramètres", icon: Settings },
 ];
 
-export function Sidebar({ companyName }: { companyName: string }) {
+export function Sidebar({ companyName, isAdmin = false }: { companyName: string; isAdmin?: boolean }) {
   const pathname = usePathname();
+  const items = isAdmin
+    ? [...NAV, { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck }]
+    : NAV;
 
   return (
     <aside className="hidden lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-64 lg:flex-col lg:border-r lg:border-border lg:bg-card">
@@ -32,7 +35,7 @@ export function Sidebar({ companyName }: { companyName: string }) {
       </div>
 
       <nav className="flex-1 space-y-0.5 overflow-y-auto px-3">
-        {NAV.map((item) => {
+        {items.map((item) => {
           const active = item.href === "/app" ? pathname === "/app" : pathname.startsWith(item.href);
           const Icon = item.icon;
           return (
