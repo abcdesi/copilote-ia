@@ -1,10 +1,17 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { Check } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { signupAction } from "@/lib/auth/actions";
 import { AuthCard } from "@/components/marketing/AuthCard";
 import { Input, Label } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
+
+export const metadata: Metadata = {
+  title: "Créer votre espace",
+  robots: { index: false, follow: false },
+};
 
 const ERROR_MESSAGES: Record<string, string> = {
   invalid: "Merci de vérifier les informations saisies (mot de passe : 8 caractères minimum et acceptation des conditions requise).",
@@ -23,8 +30,8 @@ export default async function SignupPage({
 
   return (
     <AuthCard
-      title="Créez votre espace gratuitement"
-      subtitle="Commencez par votre diagnostic puis construisez progressivement le contexte utile de votre entreprise."
+      title="Passez de l'hypothèse à votre vraie simulation"
+      subtitle="Créez votre espace. Pilotzia reprend votre première analyse, apprend votre contexte et affine ses recommandations à mesure que vous lui donnez des faits réels."
       footer={
         <>
           Déjà un compte ?{" "}
@@ -32,6 +39,11 @@ export default async function SignupPage({
         </>
       }
     >
+      <div className="mb-5 grid gap-2 rounded-xl bg-accent-soft p-4 text-xs leading-5 text-muted-foreground">
+        <p className="flex gap-2"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> Sans carte bancaire.</p>
+        <p className="flex gap-2"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> 14 jours pour tester l'IA réelle sur votre entreprise.</p>
+        <p className="flex gap-2"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> Votre contexte et votre historique restent disponibles après l'essai.</p>
+      </div>
       <form action={signupAction} className="space-y-4">
         {error && <p className="text-sm text-danger">{ERROR_MESSAGES[error] ?? "Une erreur est survenue."}</p>}
         <div className="space-y-1.5">
@@ -52,7 +64,7 @@ export default async function SignupPage({
             J'accepte les <Link href="/cgv" className="font-medium text-accent" target="_blank">CGV</Link> et reconnais avoir lu la <Link href="/confidentialite" className="font-medium text-accent" target="_blank">politique de confidentialité</Link>.
           </span>
         </label>
-        <Button type="submit" className="w-full mt-2">Créer mon espace gratuitement</Button>
+        <Button type="submit" className="mt-2 w-full">Démarrer ma simulation gratuitement</Button>
       </form>
     </AuthCard>
   );
