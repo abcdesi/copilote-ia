@@ -20,7 +20,7 @@ const EXPLICIT_AUTOMATION_INTENT =
   /\b(automatise|automatiser|automatisation|crée une automatisation|cree une automatisation|ajoute.*opportunit|mets? en place|workflow|processus automatique)\b/i;
 
 const CORRECTION_INTENT =
-  /\b(tu n['’]?as pas répondu|ça ne répond pas|ca ne repond pas|hors sujet|ce n['’]?est pas ma question|réponds à ma question|reponds a ma question)\b/i;
+  /\b(tu n['’]?as pas répondu|ça ne répond pas|ca ne repond pas|hors sujet|ce n['’]?est pas ma question|réponds à ma question|reponds a ma question|pas compris|je n['’]?ai pas compris|je comprends pas|je ne comprends pas|plus clair|reformule)\b/i;
 
 export function isExplicitAutomationRequest(message: string) {
   return EXPLICIT_AUTOMATION_INTENT.test(message);
