@@ -144,7 +144,7 @@ export default async function SettingsPage() {
                 {!active && ready && !usage.paid && (
                   <form method="post" action="/api/billing/checkout" className="mt-5">
                     <input type="hidden" name="plan" value={planKey} />
-                    <Button type="submit" size="sm" variant={recommended ? "default" : "outline"} className="w-full">
+                    <Button type="submit" size="sm" variant={recommended ? "primary" : "outline"} className="w-full">
                       Activer {plan.label}
                     </Button>
                   </form>
