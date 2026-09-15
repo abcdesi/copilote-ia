@@ -24,7 +24,7 @@ export interface CopilotAction {
 function isSmartRequest(message: string) {
   return (
     message.length > 420 ||
-    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|audit|finance|financier|bilan|compte de résultat|compte de resultat|marge|trésorerie|tresorerie|rentabil/i.test(
+    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|audit|finance|financier|bilan|compte de résultat|compte de resultat|marge|trésorerie|tresorerie|rentabil|gagner du temps|perdre du temps|délai de réponse|delai de reponse|objectif|direction|conseil/i.test(
       message
     )
   );
@@ -96,7 +96,7 @@ export async function POST(req: NextRequest) {
     history
       .slice()
       .reverse()
-      .map((m) => ({ role: m.role as "user" | "assistant", content: m.content })),
+      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
     context
   );
 
