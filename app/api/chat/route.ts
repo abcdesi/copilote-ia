@@ -5,6 +5,7 @@ import { requireSession } from "@/lib/companies/current";
 import { buildChatContext } from "@/lib/companies/context";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
+import { inferConversationIntent } from "@/lib/ai/expert-response-policy";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
@@ -22,9 +23,11 @@ export interface CopilotAction {
 }
 
 function isSmartRequest(message: string) {
+  const intent = inferConversationIntent(message);
   return (
     message.length > 420 ||
-    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|audit|finance|financier|bilan|compte de résultat|compte de resultat|marge|trésorerie|tresorerie|rentabil|gagner du temps|perdre du temps|délai de réponse|delai de reponse|objectif|direction|conseil/i.test(
+    (intent !== "general" && intent !== "automation") ||
+    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|audit|finance|financier|bilan|compte de résultat|compte de resultat|roi|risque|direction|conseil/i.test(
       message
     )
   );
