@@ -1,8 +1,7 @@
-import Link from "next/link";
 import { Flame, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { IMPACT_LABELS, COMPLEXITY_SHORT_LABELS, formatEur, formatHours } from "@/lib/format";
+import { IMPACT_LABELS, COMPLEXITY_SHORT_LABELS, formatHours } from "@/lib/format";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 
 export interface OpportunityCardData {
@@ -14,7 +13,6 @@ export interface OpportunityCardData {
   impactLevel: string;
   complexity: string;
   estimatedHoursPerMonth: number;
-  priceEur: number;
 }
 
 export function OpportunityCard({ opportunity, highlight = false }: { opportunity: OpportunityCardData; highlight?: boolean }) {
@@ -29,7 +27,7 @@ export function OpportunityCard({ opportunity, highlight = false }: { opportunit
         </div>
         <div className="flex flex-col items-end gap-1">
           {opportunity.impactLevel === "high" && <Badge tone="success">🔥 Haute priorité</Badge>}
-          <Badge tone={isReal ? "accent" : "neutral"}>{isReal ? "⚡ Exécution réelle" : "🧪 Version simulée"}</Badge>
+          <Badge tone={isReal ? "accent" : "neutral"}>{isReal ? "⚡ Exécution disponible" : "🧪 Simulation"}</Badge>
         </div>
       </div>
 
@@ -46,15 +44,15 @@ export function OpportunityCard({ opportunity, highlight = false }: { opportunit
           <p className="text-sm font-semibold">{COMPLEXITY_SHORT_LABELS[opportunity.complexity] ?? "—"}</p>
         </div>
         <div className="rounded-lg bg-muted py-2">
-          <p className="text-[11px] text-muted-foreground">Coût</p>
-          <p className="text-sm font-semibold">{formatEur(opportunity.priceEur)}</p>
+          <p className="text-[11px] text-muted-foreground">Mode</p>
+          <p className="text-sm font-semibold">{isReal ? "Réel" : "Simulé"}</p>
         </div>
       </div>
 
       <div className="mt-4 flex items-center justify-between">
         <span className="text-xs text-muted-foreground">{IMPACT_LABELS[opportunity.impactLevel]}</span>
         <Button href={`/app/opportunities/${opportunity.id}`} size="sm">
-          Voir l'opportunité
+          Examiner
         </Button>
       </div>
     </div>
