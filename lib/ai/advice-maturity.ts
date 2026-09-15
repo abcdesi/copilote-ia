@@ -50,7 +50,7 @@ export function assessAdviceMaturity(context: ChatContext): AdviceMaturityAssess
     knownSignals.push("observations opérationnelles");
   } else missingSignals.push("activité observée");
 
-  if (context.businessGraph.factCount > 0) {
+  if (context.businessGraph && context.businessGraph.factCount > 0) {
     score += Math.min(15, Math.max(5, context.businessGraph.readinessScore / 7));
     knownSignals.push("graphe métier");
   } else missingSignals.push("faits métier structurés");

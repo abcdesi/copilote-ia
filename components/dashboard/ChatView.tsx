@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useRef, useState } from "react";
+import { FormEvent, ReactNode, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, History, Loader2, Send, ShieldCheck, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -22,10 +22,55 @@ interface CopilotAction {
 
 const STARTERS = [
   "Qu'est-ce qui mérite mon attention aujourd'hui ?",
-  "Qu'est-ce que je pourrais automatiser ensuite ?",
-  "Quels sont mes problèmes aujourd'hui ?",
-  "Que sais-tu déjà de mon entreprise ?",
+  "Où puis-je gagner du temps ou du chiffre d'affaires ?",
+  "Quelle serait ma priorité si tu dirigeais l'entreprise avec moi ?",
+  "Que sais-tu déjà de mon entreprise et qu'est-ce qui te manque ?",
 ];
+
+function renderInlineMarkdown(text: string): ReactNode[] {
+  return text.split(/(\*\*[^*]+\*\*)/g).filter(Boolean).map((part, index) => {
+    if (part.startsWith("**") && part.endsWith("**")) {
+      return <strong key={`${index}-${part}`} className="font-semibold text-foreground">{part.slice(2, -2)}</strong>;
+    }
+    return <span key={`${index}-${part}`}>{part}</span>;
+  });
+}
+
+function RichMessage({ content }: { content: string }) {
+  const blocks = content.split(/\n{2,}/).map((block) => block.trim()).filter(Boolean);
+
+  return (
+    <div className="space-y-3">
+      {blocks.map((block, blockIndex) => {
+        const lines = block.split("\n").map((line) => line.trim()).filter(Boolean);
+        const numbered = lines.length > 1 && lines.every((line) => /^\d+[.)]\s/.test(line));
+
+        if (numbered) {
+          return (
+            <ol key={blockIndex} className="space-y-2 pl-5 list-decimal">
+              {lines.map((line, lineIndex) => (
+                <li key={lineIndex} className="pl-1">
+                  {renderInlineMarkdown(line.replace(/^\d+[.)]\s*/, ""))}
+                </li>
+              ))}
+            </ol>
+          );
+        }
+
+        return (
+          <p key={blockIndex} className="whitespace-pre-line">
+            {lines.map((line, lineIndex) => (
+              <span key={lineIndex}>
+                {renderInlineMarkdown(line)}
+                {lineIndex < lines.length - 1 ? <br /> : null}
+              </span>
+            ))}
+          </p>
+        );
+      })}
+    </div>
+  );
+}
 
 export function ChatView({ initialMessages, companyName }: { initialMessages: ChatViewMessage[]; companyName: string }) {
   const [messages, setMessages] = useState<ChatViewMessage[]>(initialMessages);
@@ -72,8 +117,8 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
     <div className="mx-auto flex h-[calc(100vh-104px)] max-w-3xl flex-col px-4 sm:px-6 lg:h-[calc(100vh-48px)]">
       <div className="flex items-center justify-between border-b border-border py-3">
         <div>
-          <p className="text-sm font-medium">Copilote opérationnel</p>
-          <p className="text-xs text-muted-foreground">Contexte de {companyName}</p>
+          <p className="text-sm font-medium">Conseil opérationnel Pilotzia</p>
+          <p className="text-xs text-muted-foreground">Plus Pilotzia connaît {companyName}, plus ses recommandations deviennent précises et vérifiables.</p>
         </div>
         <Link
           href="/app/copilot/history"
@@ -89,9 +134,9 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-accent-soft text-accent">
               <Bot size={22} />
             </div>
-            <p className="mt-3 font-semibold">Que voulez-vous faire pour {companyName} ?</p>
+            <p className="mt-3 font-semibold">Quelle décision voulez-vous mieux prendre pour {companyName} ?</p>
             <p className="mx-auto mt-1 max-w-xl text-sm leading-6 text-muted-foreground">
-              Posez une question sur vos opérations, vos résultats, vos automatisations ou votre prochaine priorité. Pilotzia vous propose une prochaine étape sans prétendre agir dans un outil qui n'est pas réellement connecté.
+              Au début, Pilotzia raisonne comme un consultant en découverte. Avec votre contexte et vos sources connectées, il devient progressivement plus précis, plus exigeant et plus opérationnel.
             </p>
             <div className="mt-5 flex flex-col items-center gap-2">
               {STARTERS.map((s) => (
@@ -120,11 +165,11 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
             <div className="max-w-[82%] space-y-2">
               <div
                 className={cn(
-                  "rounded-2xl px-4 py-2.5 text-sm leading-6",
+                  "rounded-2xl px-4 py-3 text-sm leading-6",
                   m.role === "user" ? "bg-accent text-accent-foreground" : "border border-border bg-card"
                 )}
               >
-                {m.content}
+                {m.role === "assistant" ? <RichMessage content={m.content} /> : m.content}
               </div>
 
               {m.role === "assistant" && m.action && (
@@ -134,7 +179,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
                       <ShieldCheck size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Prochaine étape sûre</p>
+                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Prochaine étape utile</p>
                       {m.action.description && (
                         <p className="mt-1 text-sm leading-5 text-foreground/75">{m.action.description}</p>
                       )}
@@ -157,7 +202,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
 
         {loading && (
           <div className="flex items-center gap-2 pl-11 text-sm text-muted-foreground">
-            <Loader2 size={14} className="animate-spin" /> Le copilote analyse le contexte…
+            <Loader2 size={14} className="animate-spin" /> Pilotzia confronte la question au contexte disponible…
           </div>
         )}
         <div ref={bottomRef} />
@@ -168,7 +213,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
           <input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder="Que voulez-vous faire ?"
+            placeholder="Posez une question de direction, d'opérations ou de croissance…"
             className="flex-1 bg-transparent px-2 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
           />
           <button

@@ -5,6 +5,8 @@ import { AUTOMATION_CATALOG } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR, KNOWN_TOOLS } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { assessAdviceMaturity, maturityInstruction } from "./advice-maturity";
+import { isExplicitAutomationRequest } from "./advisor-policy";
 
 export type { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 
@@ -165,7 +167,7 @@ async function runClaudeDiagnostic(input: string, existingTools: string[], compa
 }
 
 function shouldUseSmartModel(message: string) {
-  return message.length > 420 || /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis/i.test(message);
+  return message.length > 420 || /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|rentabil|direction|conseil/i.test(message);
 }
 
 function matchCatalogTemplate(message: string, tools: string[]) {
@@ -180,37 +182,72 @@ function matchCatalogTemplate(message: string, tools: string[]) {
   return best && best.score >= 2 ? best.id : undefined;
 }
 
+function isAcknowledgement(message: string) {
+  return /^(ok|okay|d'accord|dac|oui|compris|vas-y|go|parfait|tres bien|tr[eè]s bien)[.!\s]*$/i.test(message.trim());
+}
+
 async function runClaudeChat(messages: ChatMessageInput[], context: ChatContext): Promise<ChatReply> {
-  const system = `Tu es Pilotzia, le copilote opérationnel de l'entreprise ${context.companyName}.
+  const maturity = assessAdviceMaturity(context);
+  const connectedProviders = context.connections
+    .filter((connection) => connection.status === "connected" || connection.status === "active")
+    .map((connection) => connection.provider);
+
+  const system = `Tu es Pilotzia, le copilote opérationnel de l'entreprise ${context.companyName}. Tu dois te comporter comme un consultant senior puis, quand le contexte devient riche, comme un directeur opérationnel chevronné qui connaît l'entreprise.
 
 MISSION
-Aide l'utilisateur à comprendre ce qui mérite son attention, décider quoi améliorer et transformer ses demandes en actions concrètes. Tu n'es pas un chatbot générique ni un simple générateur d'automatisations.
+Aider l'utilisateur à mieux décider : comprendre les problèmes, prioriser les leviers, challenger les évidences, recommander des actions et expliquer les arbitrages. Tu n'es ni un chatbot générique, ni un catalogue d'automatisations, ni un vendeur qui pousse une fonctionnalité hors sujet.
+
+NIVEAU DE CONNAISSANCE ACTUEL
+- maturité du contexte : ${maturity.level} (${maturity.score}/100)
+- signaux disponibles : ${maturity.knownSignals.join(", ") || "très peu"}
+- signaux manquants : ${maturity.missingSignals.join(", ") || "aucun majeur"}
+- sources réellement connectées : ${connectedProviders.join(", ") || "aucune"}
+
+CALIBRAGE DU CONSEIL
+${maturityInstruction(maturity)}
 
 CONTEXTE ENTREPRISE
 ${JSON.stringify(context, null, 2)}
 
-RÈGLES
-- Réponds en français, de façon concise, claire et orientée résultat.
-- Utilise le contexte entreprise quand il est pertinent : objectifs, pertes de temps, outils, automatisations, santé, score et opportunités.
-- Distingue toujours ce que Pilotzia sait de ce qu'il suppose.
+RÈGLES DE RAISONNEMENT
+- Commence par répondre à la vraie question. Ne récite pas le contexte brut.
+- Plus le contexte est pauvre, plus tu dois parler en hypothèses et chercher la donnée qui ferait le plus progresser le diagnostic.
+- Plus le contexte est riche et observé, plus tu dois être précis, priorisé, chiffré et exigeant.
+- Distingue explicitement : faits connus, observations connectées, estimations, hypothèses.
+- Ne prétends jamais connaître les performances d'entreprises similaires à partir de données clients privées. Tu peux utiliser des bonnes pratiques générales et des patterns métier, mais indique qu'il s'agit de références génériques si elles ne proviennent pas de benchmarks agrégés réellement disponibles.
 - Ne prétends jamais avoir lu, modifié ou synchronisé une application externe si aucune intégration réelle n'est disponible dans le contexte.
-- Pour une action sensible (suppression, paiement, désactivation, envoi massif, modification irréversible), demande explicitement confirmation avant de présenter l'action comme exécutée.
-- Quand une demande peut être satisfaite par une automatisation, explique le résultat attendu avant la technique.
-- Si une donnée manque, propose la prochaine étape la plus courte au lieu d'inventer.
+- Ne transforme pas un simple mot-clé en recommandation définitive. Vérifie l'enjeu, la fréquence et l'impact métier.
+- Pour une action sensible (suppression, paiement, désactivation, envoi massif, modification irréversible), demande confirmation.
 - Les valeurs de temps et d'euros sont des estimations, jamais des garanties.
-- Quand c'est utile, termine par une seule prochaine action claire.`;
+- Après un simple "ok", "d'accord" ou acquiescement, ne repars pas à zéro et ne demande pas à l'utilisateur de préciser son objectif. Poursuis la décision précédente et demande uniquement la donnée suivante la plus utile si elle manque.
+
+FORMAT CONSEILLÉ POUR UNE QUESTION SÉRIEUSE
+Utilise 3 ou 4 blocs courts maximum :
+**Ma recommandation** — réponse directe et priorisée.
+**Pourquoi** — faits et logique de décision.
+**Niveau de confiance** — ce qui est connu versus supposé, uniquement si utile.
+**Prochaine décision utile** — une seule action ou question.
+Évite les longues listes et les formules creuses. Sois précis, sobre et actionnable.`;
 
   const transcript = messages
     .slice(-10)
     .map((message) => `${message.role === "user" ? "Utilisateur" : "Pilotzia"}: ${message.content}`)
     .join("\n");
   const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
+  const continuationHint = isAcknowledgement(lastUserMessage)
+    ? "Le dernier message est un acquiescement. Continue naturellement le raisonnement précédent sans redemander l'objectif."
+    : "Réponds directement au dernier message.";
+
   const reply = await callClaude({
     system,
-    userContent: `Voici les derniers échanges. Réponds au dernier message en tenant compte de l'historique :\n\n${transcript}`,
+    userContent: `Voici les derniers échanges. ${continuationHint}\n\n${transcript}`,
     mode: shouldUseSmartModel(lastUserMessage) ? "smart" : "fast",
     companyId: context.companyId,
   });
 
-  return { reply, matchedTemplateId: matchCatalogTemplate(lastUserMessage, context.tools) };
+  const matchedTemplateId = isExplicitAutomationRequest(lastUserMessage)
+    ? matchCatalogTemplate(lastUserMessage, context.tools)
+    : undefined;
+
+  return { reply, matchedTemplateId };
 }
