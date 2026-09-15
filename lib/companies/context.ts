@@ -4,11 +4,20 @@ import { IMPACT_RANK } from "@/lib/format";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
 
+function parseJsonValue(value: string | null) {
+  if (!value) return null;
+  try {
+    return JSON.parse(value) as unknown;
+  } catch {
+    return value;
+  }
+}
+
 export async function buildChatContext(companyId: string): Promise<ChatContext> {
   const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
   if (!graphExists) await rebuildBusinessGraph(companyId);
 
-  const [company, automations, opportunities, connections, observations, businessGraph] = await Promise.all([
+  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -21,6 +30,23 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     }),
     getLatestGoogleOperationalSnapshot(companyId),
     getBusinessGraphSummary(companyId),
+    prisma.businessFact.findMany({
+      where: {
+        companyId,
+        OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+      },
+      orderBy: [{ confidence: "desc" }, { observedAt: "desc" }],
+      take: 30,
+      select: {
+        predicate: true,
+        valueJson: true,
+        sourceProvider: true,
+        confidence: true,
+        observedAt: true,
+        subject: { select: { name: true } },
+        object: { select: { name: true } },
+      },
+    }),
   ]);
 
   opportunities.sort(
@@ -53,6 +79,14 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       freshSourceCount: businessGraph.freshSourceCount,
       entityTypes: businessGraph.entityTypes,
     },
+    evidence: graphFacts.map((fact) => ({
+      subject: fact.subject.name,
+      predicate: fact.predicate,
+      value: fact.object?.name ?? parseJsonValue(fact.valueJson),
+      source: fact.sourceProvider,
+      confidence: fact.confidence,
+      observedAt: fact.observedAt.toISOString(),
+    })),
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,
@@ -65,5 +99,15 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     topOpportunity: opportunities[0]
       ? { title: opportunities[0].title, estimatedHoursPerMonth: opportunities[0].estimatedHoursPerMonth }
       : null,
+    topOpportunities: opportunities.slice(0, 8).map((opportunity) => ({
+      id: opportunity.id,
+      title: opportunity.title,
+      category: opportunity.category,
+      impactLevel: opportunity.impactLevel,
+      complexity: opportunity.complexity,
+      estimatedHoursPerMonth: opportunity.estimatedHoursPerMonth,
+      estimatedValueEur: opportunity.estimatedValueEur,
+      status: opportunity.status,
+    })),
   };
 }
