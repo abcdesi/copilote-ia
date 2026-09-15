@@ -6,22 +6,32 @@ function shareSecret() {
   return secret;
 }
 
-function signatureFor(diagnosticId: string) {
-  return createHmac("sha256", shareSecret()).update(`pilotzia-diagnostic:${diagnosticId}`).digest("base64url");
+function shareTtlDays() {
+  const parsed = Number(process.env.PILOTZIA_DIAGNOSTIC_SHARE_TTL_DAYS || "30");
+  return Number.isFinite(parsed) ? Math.max(1, Math.min(365, Math.round(parsed))) : 30;
+}
+
+function signatureFor(diagnosticId: string, expiresAtUnix: string) {
+  return createHmac("sha256", shareSecret())
+    .update(`pilotzia-diagnostic:${diagnosticId}:${expiresAtUnix}`)
+    .digest("base64url");
 }
 
 export function createDiagnosticShareToken(diagnosticId: string) {
-  return `${diagnosticId}.${signatureFor(diagnosticId)}`;
+  const expiresAtUnix = String(Math.floor(Date.now() / 1000) + shareTtlDays() * 86400);
+  return `${diagnosticId}.${expiresAtUnix}.${signatureFor(diagnosticId, expiresAtUnix)}`;
 }
 
 export function verifyDiagnosticShareToken(token: string) {
-  const split = token.lastIndexOf(".");
-  if (split <= 0) return null;
-  const diagnosticId = token.slice(0, split);
-  const signature = token.slice(split + 1);
-  if (!diagnosticId || !signature) return null;
+  const parts = token.split(".");
+  if (parts.length !== 3) return null;
+  const [diagnosticId, expiresAtUnix, signature] = parts;
+  if (!diagnosticId || !expiresAtUnix || !signature) return null;
 
-  const expected = signatureFor(diagnosticId);
+  const expiresAt = Number(expiresAtUnix);
+  if (!Number.isFinite(expiresAt) || expiresAt <= Math.floor(Date.now() / 1000)) return null;
+
+  const expected = signatureFor(diagnosticId, expiresAtUnix);
   const candidateBuffer = Buffer.from(signature, "utf8");
   const expectedBuffer = Buffer.from(expected, "utf8");
   if (candidateBuffer.length !== expectedBuffer.length) return null;
