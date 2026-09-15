@@ -2,18 +2,20 @@ import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
+import { getTrialJourneyState } from "@/lib/billing/trial-journey";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { ScoreGauge } from "@/components/ui/ScoreGauge";
 import { Button } from "@/components/ui/Button";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
 import { PilotziaFeed } from "@/components/dashboard/PilotziaFeed";
+import { TrialJourney } from "@/components/dashboard/TrialJourney";
 import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 
 export default async function DashboardHomePage() {
   const company = await getCurrentCompany();
 
-  const [automations, opportunities, pendingActions, googleSnapshot] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
@@ -33,6 +35,7 @@ export default async function DashboardHomePage() {
       console.error("Google operational snapshot unavailable on dashboard", error);
       return null;
     }),
+    getTrialJourneyState(company.id),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -40,6 +43,7 @@ export default async function DashboardHomePage() {
   const activeAutomations = automations.filter((a) => a.status === "active");
   const totalHours = activeAutomations.reduce((s, a) => s + a.estimatedHoursPerMonth, 0);
   const totalValue = activeAutomations.reduce((s, a) => s + a.estimatedValueEur, 0);
+  const identifiedHours = Math.max(totalHours, opportunities.reduce((sum, opportunity) => sum + opportunity.estimatedHoursPerMonth, 0));
 
   const countable = automations.filter((a) => a.status !== "inactive");
   const healthCounts = {
@@ -132,6 +136,22 @@ export default async function DashboardHomePage() {
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
       <MorningBrief firstName={firstName} items={briefItems} stats={briefStats} priority={briefPriority} />
+
+      <TrialJourney
+        paid={trialJourney.usage.paid}
+        trialStartedAt={trialJourney.usage.trialStartedAt}
+        trialEndsAt={trialJourney.usage.trialEndsAt}
+        trialActive={trialJourney.usage.trialActive}
+        trialExpired={trialJourney.usage.trialExpired}
+        creditsUsed={trialJourney.usage.creditsUsed}
+        creditsLimit={trialJourney.usage.creditsLimit}
+        hasCompanyContext={trialJourney.hasCompanyContext}
+        hasConnection={trialJourney.hasConnection}
+        opportunitiesCount={opportunities.length}
+        pendingActionsCount={pendingActions.length}
+        activeAutomationsCount={activeAutomations.length}
+        totalHoursPerMonth={identifiedHours}
+      />
 
       {googleSnapshot && (
         <div className="grid gap-3 sm:grid-cols-3">
