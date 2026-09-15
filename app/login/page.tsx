@@ -11,7 +11,10 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string }>;
 }) {
-  const session = await auth();
+  const session = await auth().catch((error) => {
+    console.error("Unable to read auth session on login page", error);
+    return null;
+  });
   if (session) redirect("/app");
 
   const { error } = await searchParams;
