@@ -48,6 +48,14 @@ export interface ChatContext {
     freshSourceCount: number;
     entityTypes: Array<{ type: string; count: number }>;
   } | null;
+  evidence?: Array<{
+    subject: string;
+    predicate: string;
+    value: unknown;
+    source: string;
+    confidence: number;
+    observedAt: string;
+  }>;
   automations: {
     name: string;
     status: string;
@@ -58,6 +66,16 @@ export interface ChatContext {
   totalHoursSavedThisMonth: number;
   totalValueEurThisMonth: number;
   topOpportunity?: { title: string; estimatedHoursPerMonth: number } | null;
+  topOpportunities?: Array<{
+    id: string;
+    title: string;
+    category: string;
+    impactLevel: string;
+    complexity: string;
+    estimatedHoursPerMonth: number;
+    estimatedValueEur: number;
+    status: string;
+  }>;
 }
 
 export interface ChatMessageInput {

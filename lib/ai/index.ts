@@ -1,12 +1,18 @@
 import { z } from "zod";
-import { runMockChat, runMockDiagnostic } from "./mock-engine";
+import { runMockDiagnostic } from "./mock-engine";
+import { runExpertFallbackChat } from "./expert-fallback";
 import { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 import { AUTOMATION_CATALOG } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR, KNOWN_TOOLS } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import { assessAdviceMaturity, maturityInstruction } from "./advice-maturity";
-import { isExplicitAutomationRequest } from "./advisor-policy";
+import { findConfidentTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
+import {
+  compactExpertEvidence,
+  expertOperatingDoctrine,
+  inferConversationIntent,
+} from "./expert-response-policy";
 
 export type { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
 
@@ -32,12 +38,12 @@ export async function runDiagnostic(input: string, existingTools: string[] = [],
 }
 
 export async function runChat(messages: ChatMessageInput[], context: ChatContext): Promise<ChatReply> {
-  if (!hasClaudeKey()) return runMockChat(messages, context);
+  if (!hasClaudeKey()) return runExpertFallbackChat(messages, context);
   try {
     return await runClaudeChat(messages, context);
   } catch (error) {
     console.error("Real chat fallback", error);
-    return runMockChat(messages, context);
+    return runExpertFallbackChat(messages, context);
   }
 }
 
@@ -167,19 +173,18 @@ async function runClaudeDiagnostic(input: string, existingTools: string[], compa
 }
 
 function shouldUseSmartModel(message: string) {
-  return message.length > 420 || /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|rentabil|direction|conseil/i.test(message);
+  const intent = inferConversationIntent(message);
+  return (
+    message.length > 420 ||
+    (intent !== "general" && intent !== "automation") ||
+    /analyse|stratég|strategie|plan|compare|diagnostic|priorit|pourquoi|optimis|rentabil|direction|conseil|audit|bilan|compte de résultat|compte de resultat|roi|risque/i.test(
+      message
+    )
+  );
 }
 
 function matchCatalogTemplate(message: string, tools: string[]) {
-  const normalized = message.toLowerCase();
-  let best: { id: string; score: number } | null = null;
-  for (const template of AUTOMATION_CATALOG) {
-    const keywordScore = template.keywords.reduce((score, keyword) => score + (normalized.includes(keyword.toLowerCase()) ? 2 : 0), 0);
-    const toolScore = template.relevantTools.reduce((score, tool) => score + (tools.includes(tool) ? 0.35 : 0), 0);
-    const score = keywordScore + toolScore;
-    if (score > 0 && (!best || score > best.score)) best = { id: template.id, score };
-  }
-  return best && best.score >= 2 ? best.id : undefined;
+  return findConfidentTemplateMatch(message, AUTOMATION_CATALOG, tools)?.id;
 }
 
 function isAcknowledgement(message: string) {
@@ -188,59 +193,68 @@ function isAcknowledgement(message: string) {
 
 async function runClaudeChat(messages: ChatMessageInput[], context: ChatContext): Promise<ChatReply> {
   const maturity = assessAdviceMaturity(context);
-  const connectedProviders = context.connections
-    .filter((connection) => connection.status === "connected" || connection.status === "active")
-    .map((connection) => connection.provider);
+  const evidence = compactExpertEvidence(context);
+  const doctrine = expertOperatingDoctrine(messages, context);
 
-  const system = `Tu es Pilotzia, le copilote opérationnel de l'entreprise ${context.companyName}. Tu dois te comporter comme un consultant senior puis, quand le contexte devient riche, comme un directeur opérationnel chevronné qui connaît l'entreprise.
+  const system = `Tu es Pilotzia, le copilote opérationnel de ${context.companyName}. Ton niveau attendu est celui d'un consultant de direction expérimenté qui sait aussi agir dans un logiciel opérationnel.
 
-MISSION
-Aider l'utilisateur à mieux décider : comprendre les problèmes, prioriser les leviers, challenger les évidences, recommander des actions et expliquer les arbitrages. Tu n'es ni un chatbot générique, ni un catalogue d'automatisations, ni un vendeur qui pousse une fonctionnalité hors sujet.
+${doctrine}
 
-NIVEAU DE CONNAISSANCE ACTUEL
-- maturité du contexte : ${maturity.level} (${maturity.score}/100)
+NIVEAU DE CONNAISSANCE
+- maturité : ${maturity.level} (${maturity.score}/100)
 - signaux disponibles : ${maturity.knownSignals.join(", ") || "très peu"}
 - signaux manquants : ${maturity.missingSignals.join(", ") || "aucun majeur"}
-- sources réellement connectées : ${connectedProviders.join(", ") || "aucune"}
 
-CALIBRAGE DU CONSEIL
+CALIBRAGE
 ${maturityInstruction(maturity)}
 
-CONTEXTE ENTREPRISE
-${JSON.stringify(context, null, 2)}
+DOSSIER ENTREPRISE — UTILISE-LE, NE LE RÉCITE PAS
+${JSON.stringify(evidence, null, 2)}
 
-RÈGLES DE RAISONNEMENT
-- Commence par répondre à la vraie question. Ne récite pas le contexte brut.
-- Plus le contexte est pauvre, plus tu dois parler en hypothèses et chercher la donnée qui ferait le plus progresser le diagnostic.
-- Plus le contexte est riche et observé, plus tu dois être précis, priorisé, chiffré et exigeant.
-- Distingue explicitement : faits connus, observations connectées, estimations, hypothèses.
-- Ne prétends jamais connaître les performances d'entreprises similaires à partir de données clients privées. Tu peux utiliser des bonnes pratiques générales et des patterns métier, mais indique qu'il s'agit de références génériques si elles ne proviennent pas de benchmarks agrégés réellement disponibles.
-- Ne prétends jamais avoir lu, modifié ou synchronisé une application externe si aucune intégration réelle n'est disponible dans le contexte.
-- Ne transforme pas un simple mot-clé en recommandation définitive. Vérifie l'enjeu, la fréquence et l'impact métier.
-- Pour une action sensible (suppression, paiement, désactivation, envoi massif, modification irréversible), demande confirmation.
-- Les valeurs de temps et d'euros sont des estimations, jamais des garanties.
-- Après un simple "ok", "d'accord" ou acquiescement, ne repars pas à zéro et ne demande pas à l'utilisateur de préciser son objectif. Poursuis la décision précédente et demande uniquement la donnée suivante la plus utile si elle manque.
+HIÉRARCHIE DE PREUVE
+1. observations réelles et données connectées fraîches ;
+2. faits structurés du Business Graph avec provenance et confiance ;
+3. informations déclarées par l'utilisateur ;
+4. opportunités/estimations Pilotzia ;
+5. bonnes pratiques générales ;
+6. hypothèses.
+Quand deux sources se contredisent, privilégie la plus récente, la plus directe et la mieux sourcée. Signale brièvement l'incertitude si elle change la décision.
 
-FORMAT CONSEILLÉ POUR UNE QUESTION SÉRIEUSE
-Utilise 3 ou 4 blocs courts maximum :
-**Ma recommandation** — réponse directe et priorisée.
-**Pourquoi** — faits et logique de décision.
-**Niveau de confiance** — ce qui est connu versus supposé, uniquement si utile.
-**Prochaine décision utile** — une seule action ou question.
-Évite les longues listes et les formules creuses. Sois précis, sobre et actionnable.`;
+LIMITES
+- N'invente jamais un chiffre, une connexion, un benchmark client, une lecture de document ou une action exécutée.
+- N'utilise jamais des données privées d'une autre entreprise comme exemple ou benchmark individuel.
+- Une estimation catalogue n'est pas une mesure réelle.
+- Pour une action sensible ou irréversible, exige une validation explicite.
+- Si Pilotzia ne dispose pas encore d'une donnée nécessaire, explique exactement laquelle permettrait de trancher ; ne transforme pas cela en interrogatoire.
 
-  const transcript = messages
-    .slice(-10)
+OBJECTIF DE CHAQUE RÉPONSE
+Faire progresser une décision métier. L'utilisateur doit sentir que tu te souviens de ce qu'il vient de dire, que tu comprends son entreprise et que tu sais distinguer conseil, preuve, hypothèse et action.`;
+
+  const transcriptMessages = messages.slice(-12);
+  const transcript = transcriptMessages
     .map((message) => `${message.role === "user" ? "Utilisateur" : "Pilotzia"}: ${message.content}`)
     .join("\n");
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user")?.content ?? "";
-  const continuationHint = isAcknowledgement(lastUserMessage)
-    ? "Le dernier message est un acquiescement. Continue naturellement le raisonnement précédent sans redemander l'objectif."
-    : "Réponds directement au dernier message.";
+  const lastUserIndex = transcriptMessages.map((message) => message.role).lastIndexOf("user");
+  const lastUserMessage = lastUserIndex >= 0 ? transcriptMessages[lastUserIndex].content : "";
+  const previousAssistant = [...transcriptMessages.slice(0, lastUserIndex)]
+    .reverse()
+    .find((message) => message.role === "assistant")?.content ?? "";
+
+  const hints: string[] = [];
+  if (isAcknowledgement(lastUserMessage)) {
+    hints.push("Le dernier message est un acquiescement : poursuis la décision en cours, sans redemander l'objectif.");
+  }
+  if (isCorrectionRequest(lastUserMessage)) {
+    hints.push("Le dernier message signale que la réponse précédente n'a pas convenu : répare-la directement, plus simplement et plus concrètement, sans repartir de zéro.");
+  }
+  if (lastUserMessage.trim().length <= 80 && previousAssistant.includes("?")) {
+    hints.push("Le dernier message court est probablement la réponse à la question précédente : traite-le comme une information acquise et avance d'un cran.");
+  }
+  if (hints.length === 0) hints.push("Réponds directement au dernier message dans la continuité de l'échange.");
 
   const reply = await callClaude({
     system,
-    userContent: `Voici les derniers échanges. ${continuationHint}\n\n${transcript}`,
+    userContent: `${hints.join("\n")}\n\nConversation récente :\n${transcript}`,
     mode: shouldUseSmartModel(lastUserMessage) ? "smart" : "fast",
     companyId: context.companyId,
   });
