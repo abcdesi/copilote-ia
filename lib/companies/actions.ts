@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { syncBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import type { KnowledgeSectionKey } from "@/lib/companies/knowledge-model";
@@ -54,6 +55,7 @@ const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
 
 async function refreshGraph(companyId: string) {
   await rebuildBusinessGraph(companyId);
+  await syncBusinessRhythms(companyId);
   revalidatePath("/app/context");
 }
 
