@@ -91,11 +91,17 @@ async function main() {
     assert.equal(coverage.overall, 78);
 
     const chatContext = await buildChatContext(company.id);
-    assert.match(chatContext.domainContexts.hr ?? "", /rh1/);
-    assert.match(chatContext.domainContexts.finance ?? "", /finance1/);
-    assert.equal(chatContext.knowledgeCoverage.overall, 78);
-    assert.equal(chatContext.evidence.some((fact) => fact.predicate === "hr_context"), false);
-    assert.equal(chatContext.evidence.some((fact) => fact.predicate === "finance_context"), false);
+    if (!chatContext.domainContexts || !chatContext.knowledgeCoverage || !chatContext.evidence) {
+      throw new Error("Le contexte du copilote doit exposer domaines, couverture et preuves");
+    }
+    const initialDomains = chatContext.domainContexts;
+    const initialKnowledge = chatContext.knowledgeCoverage;
+    const initialEvidence = chatContext.evidence;
+    assert.match(initialDomains.hr ?? "", /rh1/);
+    assert.match(initialDomains.finance ?? "", /finance1/);
+    assert.equal(initialKnowledge.overall, 78);
+    assert.equal(initialEvidence.some((fact) => fact.predicate === "hr_context"), false);
+    assert.equal(initialEvidence.some((fact) => fact.predicate === "finance_context"), false);
 
     const summary = buildCompanyProfileSummary(persisted);
     assert.equal(summary.length, 12);
@@ -125,8 +131,13 @@ async function main() {
     assert.match(modifiedSummary.find((item) => item.key === "hr")?.summary ?? "", /rhmodifie1/);
 
     const modifiedChatContext = await buildChatContext(company.id);
-    assert.match(modifiedChatContext.domainContexts.hr ?? "", /rhmodifie1/);
-    assert.equal(modifiedChatContext.evidence.some((fact) => fact.predicate === "hr_context"), false);
+    if (!modifiedChatContext.domainContexts || !modifiedChatContext.evidence) {
+      throw new Error("Le contexte modifié du copilote doit rester complet");
+    }
+    const modifiedDomains = modifiedChatContext.domainContexts;
+    const modifiedEvidence = modifiedChatContext.evidence;
+    assert.match(modifiedDomains.hr ?? "", /rhmodifie1/);
+    assert.equal(modifiedEvidence.some((fact) => fact.predicate === "hr_context"), false);
 
     console.log("✓ Persistance Company validée pour toutes les rubriques métier");
     console.log(`✓ ${profileFacts.length} faits déclaratifs reconstruits avec provenance dans le Business Graph`);
