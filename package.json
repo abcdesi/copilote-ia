@@ -8,7 +8,7 @@
     "start": "next start",
     "lint": "eslint",
     "test:knowledge": "tsx scripts/test-company-knowledge.ts && tsx scripts/test-context-intelligence.ts",
-    "test:persistence": "tsx scripts/test-company-persistence.ts",
+    "test:persistence": "tsx scripts/test-company-persistence.ts && tsx scripts/test-company-history.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
