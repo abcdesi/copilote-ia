@@ -52,6 +52,17 @@ export interface ChatContext {
       dimensions?: Array<{ key: string; label: string; status: string; question: string }>;
     }>;
   } | null;
+  businessRhythms?: Array<{
+    key: string;
+    domain: string;
+    title: string;
+    cadence: string;
+    months: number[];
+    nextExpectedAt: string;
+    leadDays: number;
+    confidence: number;
+    summary: string;
+  }>;
   tools: string[];
   connections: {
     provider: string;
