@@ -37,7 +37,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
         NOT: {
           sourceProvider: "pilotzia",
-          sourceRef: { startsWith: "graph:company:" },
+          sourceRef: { startsWith: "graph:" },
         },
       },
       orderBy: [{ confidence: "desc" }, { observedAt: "desc" }],
