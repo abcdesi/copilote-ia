@@ -42,7 +42,15 @@ export interface ChatContext {
   knowledgeCoverage?: {
     overall: number;
     level: string;
-    sections: Array<{ key: string; label: string; score: number }>;
+    sections: Array<{
+      key: string;
+      label: string;
+      score: number;
+      freshness?: string;
+      lastUpdatedAt?: string | null;
+      nextQuestion?: string | null;
+      dimensions?: Array<{ key: string; label: string; status: string; question: string }>;
+    }>;
   } | null;
   tools: string[];
   connections: {
