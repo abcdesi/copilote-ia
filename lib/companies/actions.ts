@@ -194,27 +194,8 @@ export async function updateCompanyAction(formData: FormData) {
 
   const previous = company as unknown as Record<string, unknown>;
   const changes = changedSections(previous, parsed.data);
-  await prisma.$transaction([
-    prisma.company.update({ where: { id: company.id }, data: parsed.data }),
-    ...changes.changedFields.map((field) =>
-      prisma.event.create({
-        data: {
-          type: "COMPANY_CONTEXT_REVISION",
-          userId: session.user.id,
-          companyId: company.id,
-          metadata: JSON.stringify({
-            v: 1,
-            section: FIELD_SECTION[field],
-            field,
-            previous: serializeHistoryValue(previous[field as string]),
-            next: serializeHistoryValue(parsed.data[field]),
-            source: "company_profile",
-            effectiveAt: new Date().toISOString(),
-          }),
-        },
-      })
-    ),
-  ]);
+  await prisma.company.update({ where: { id: company.id }, data: parsed.data });
+  await recordContextHistory(session.user.id, company.id, previous, parsed.data, changes.changedFields);
   await trackContextChange(session.user.id, company.id, changes.sections, changes.changedFields.length);
   await refreshGraph(company.id);
   revalidatePath("/app/company");
