@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock3, Database, FileText, PencilLine } from "lucide-react";
+import { Clock3, Database, FileText, History, PencilLine } from "lucide-react";
 import type { CompanyProfileSummaryItem } from "@/lib/companies/profile-summary";
 import type { KnowledgeSection } from "@/lib/companies/knowledge-model";
 
@@ -38,7 +38,12 @@ export function CompanyProfileSummary({
             Pilotzia mesure des informations distinctes et utiles, pas la quantité de texte. Répéter une même idée ne fait donc pas monter le score.
             Chaque rubrique montre ce qui est déjà compris, ce qui manque et ce qui doit être actualisé quand la situation de l'entreprise évolue.
           </p>
-          <p className="mt-2 text-xs text-muted-foreground">Dernière mise à jour générale du dossier : {updatedLabel}</p>
+          <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+            <span>Dernière mise à jour générale du dossier : {updatedLabel}</span>
+            <Link href="/app/company/history" className="inline-flex items-center gap-1 font-semibold text-accent">
+              <History size={13} /> Voir l'historique
+            </Link>
+          </div>
         </div>
       </div>
 
@@ -91,7 +96,7 @@ export function CompanyProfileSummary({
         <div>
           <p className="text-sm font-semibold">Où Pilotzia conserve ces informations</p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
-            Le dossier « Mon entreprise » est enregistré dans la base PostgreSQL de votre espace Pilotzia. Le Business Graph en crée une représentation structurée avec provenance pour le raisonnement. Le journal d'évolution mémorise uniquement quelles rubriques ont changé et quand, sans recopier le texte brut dans l'analytics. Les connexions externes restent séparées et leurs jetons d'accès sont stockés chiffrés.
+            Le dossier « Mon entreprise » conserve l'état actuel. Un journal historique séparé conserve chaque évolution avec ancienne valeur, nouvelle valeur, rubrique, source et date. Le Business Graph utilise l'état actuel et ne mobilise l'historique que lorsqu'il apporte un éclairage utile. Les connexions externes restent séparées et leurs jetons d'accès sont stockés chiffrés. Si l'entreprise est supprimée, ce journal historique est supprimé avec elle.
           </p>
         </div>
       </div>
