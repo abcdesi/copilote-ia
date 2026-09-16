@@ -66,11 +66,13 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
     }),
   ]);
 
-  // Les faits `graph:*` sont des projections du dossier ou des outils déclarés par le client.
-  // Ils restent utiles au Business Graph, mais ne constituent pas une preuve indépendante et
-  // ne doivent donc pas augmenter deux fois la couverture de connaissance.
+  // Les faits `graph:*` et la mémoire compacte `pilotzia-memory` sont des dérivés de données
+  // déjà connues par Pilotzia. Ils sont utiles au raisonnement et à l'anticipation, mais ne
+  // constituent pas une preuve indépendante et ne doivent jamais gonfler le score de couverture.
   const independentFacts = facts.filter(
-    (fact) => !(fact.sourceProvider === "pilotzia" && fact.sourceRef?.startsWith("graph:"))
+    (fact) =>
+      !(fact.sourceProvider === "pilotzia" && fact.sourceRef?.startsWith("graph:")) &&
+      fact.sourceProvider !== "pilotzia-memory"
   );
 
   const sectionUpdatedAt: Partial<Record<KnowledgeSectionKey, string | null>> = {};

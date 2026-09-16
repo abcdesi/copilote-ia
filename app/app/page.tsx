@@ -1,6 +1,7 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
+import { getBusinessRhythmReminders } from "@/lib/business-graph/rhythms";
 import { prisma } from "@/lib/db/client";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getTrialJourneyState } from "@/lib/billing/trial-journey";
@@ -60,6 +61,7 @@ export default async function DashboardHomePage() {
   const topOpportunity = opportunities[0];
   const moreOpportunities = opportunities.slice(1, 3);
   const firstName = company.name.split(" ")[0];
+  const rhythmReminders = getBusinessRhythmReminders(company);
 
   const attentionCount = healthCounts.orange + healthCounts.red;
   const briefItems: MorningBriefItem[] = [];
@@ -76,6 +78,14 @@ export default async function DashboardHomePage() {
       tone: "danger",
       text: `${attentionCount} automatisation${attentionCount > 1 ? "s nécessitent" : " nécessite"} votre attention`,
       href: "/app/automations",
+    });
+  }
+  for (const rhythm of rhythmReminders) {
+    const timing = rhythm.daysUntil === 0 ? "est attendue maintenant" : `revient dans environ ${rhythm.daysUntil} jour${rhythm.daysUntil > 1 ? "s" : ""}`;
+    briefItems.push({
+      tone: "accent",
+      text: `${rhythm.title} ${timing} — Pilotzia l'a repéré comme un rythme récurrent à anticiper`,
+      href: `/app/company#${rhythm.domain}`,
     });
   }
   if (googleSnapshot && googleSnapshot.unreadInboxLast7Days > 0) {
@@ -125,6 +135,13 @@ export default async function DashboardHomePage() {
       description: "Pilotzia a préparé cette action. Vérifiez son impact puis confirmez ou refusez son exécution.",
       href: "/app/actions",
       isHighImpact: pendingActions[0].riskLevel === "high" || pendingActions[0].riskLevel === "critical",
+    };
+  } else if (rhythmReminders[0] && rhythmReminders[0].daysUntil <= 14) {
+    briefPriority = {
+      title: `Anticiper : ${rhythmReminders[0].title}`,
+      description: "Ce rythme revient bientôt d'après le contexte mémorisé. Vérifiez qu'il est toujours d'actualité puis préparez les actions utiles avant le pic.",
+      href: `/app/company#${rhythmReminders[0].domain}`,
+      isHighImpact: false,
     };
   } else if (topOpportunity) {
     briefPriority = {
