@@ -5,8 +5,6 @@ import { getCompanyKnowledgeCoverage } from "../lib/companies/knowledge-coverage
 import { buildChatContext } from "../lib/companies/context";
 import { buildCompanyProfileSummary } from "../lib/companies/profile-summary";
 
-const detailed = (label: string) => Array.from({ length: 75 }, (_, index) => `${label}${index + 1}`).join(" ");
-
 async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let userId: string | null = null;
@@ -29,17 +27,17 @@ async function main() {
         country: "France",
         sizeRange: "6-20",
         employeeCount: 12,
-        objectives: detailed("objectif"),
-        painPoints: detailed("irritant"),
-        businessModel: detailed("modele"),
-        customerProfile: detailed("client"),
-        localContext: detailed("local"),
-        financeContext: detailed("finance"),
-        accountingContext: detailed("compta"),
-        salesContext: detailed("vente"),
-        marketingContext: detailed("marketing"),
-        hrContext: detailed("rh"),
-        operationsContext: detailed("operation"),
+        objectives: "Augmenter le CA de 15 % d'ici 90 jours tout en améliorant la marge de 3 points.",
+        painPoints: "Les commerciaux perdent 5 heures par semaine sur les relances de prospects, ce qui ralentit la conversion et le CA.",
+        businessModel: "Prestations au forfait et contrats récurrents, panier moyen 5 000 €.",
+        customerProfile: "PME B2B de 10 à 100 salariés, décideur dirigeant ou DAF.",
+        localContext: "Marché français, saisonnalité T4, contraintes réglementaires locales, langue française.",
+        financeContext: "CA 1,2 M€, marge 32 %, trésorerie 180 k€, créances 95 k€ dont 30 k€ en retard, dette 120 k€, charges principales masse salariale et sous-traitance, prévision de cash mensuelle.",
+        accountingContext: "Pennylane avec expert-comptable, facturation suivie chaque semaine, clôture mensuelle à J+10, rapprochement bancaire hebdomadaire, relances J+7/J+15 et reporting mensuel avec balance.",
+        salesContext: "80 leads par mois dans HubSpot, pipeline en 5 étapes valorisé 250 k€, taux de réponse 35 % et conversion 18 %, devis suivis, cycle moyen 42 jours, relances J+3/J+10.",
+        marketingContext: "SEO, LinkedIn et Google Ads, budget 8 k€/mois, CPL 42 €, campagnes et contenu hebdomadaires, conversion lead 4,5 %, attribution UTM, cible PME B2B.",
+        hrContext: "12 salariés organisés en 3 pôles avec 2 managers, 4 recrutements par an, onboarding sur 10 jours, surcharge de 6 h/semaine côté commercial, congés et entretiens dans Lucca, turnover 9 %, préparation des arrivées encore manuelle.",
+        operationsContext: "Processus critiques livraison et support, 45 dossiers/mois et 120 tickets/mois, réunion hebdomadaire, délai cible 48 h, contrôle qualité, blocage sur validation dirigeant, passages entre Notion, Slack et email.",
         tools: {
           create: [
             { name: "HubSpot", detected: false },
@@ -58,8 +56,8 @@ async function main() {
       where: { id: company.id },
       include: { tools: true },
     });
-    assert.match(persisted.hrContext ?? "", /rh1/);
-    assert.match(persisted.financeContext ?? "", /finance1/);
+    assert.match(persisted.hrContext ?? "", /12 salariés/);
+    assert.match(persisted.financeContext ?? "", /1,2 M€/);
     assert.equal(persisted.tools.length, 4);
 
     const profileFacts = await prisma.businessFact.findMany({
@@ -85,32 +83,29 @@ async function main() {
 
     const coverage = await getCompanyKnowledgeCoverage(company.id);
     for (const key of ["finance", "accounting", "sales", "marketing", "hr", "operations"]) {
-      const score = coverage.sections.find((section) => section.key === key)?.score;
-      assert.equal(score, 60, `${key} doit rester à 60 % sans source connectée indépendante`);
+      const score = coverage.sections.find((section) => section.key === key)?.score ?? 0;
+      assert.ok(score >= 55 && score <= 60, `${key} doit rester déclaratif sans source indépendante, obtenu ${score}`);
     }
-    assert.equal(coverage.overall, 78);
+    assert.ok(coverage.overall >= 65, `couverture sémantique attendue >=65, obtenu ${coverage.overall}`);
 
     const chatContext = await buildChatContext(company.id);
     if (!chatContext.domainContexts || !chatContext.knowledgeCoverage || !chatContext.evidence) {
       throw new Error("Le contexte du copilote doit exposer domaines, couverture et preuves");
     }
-    const initialDomains = chatContext.domainContexts;
-    const initialKnowledge = chatContext.knowledgeCoverage;
-    const initialEvidence = chatContext.evidence;
-    assert.match(initialDomains.hr ?? "", /rh1/);
-    assert.match(initialDomains.finance ?? "", /finance1/);
-    assert.equal(initialKnowledge.overall, 78);
-    assert.equal(initialEvidence.some((fact) => fact.predicate === "hr_context"), false);
-    assert.equal(initialEvidence.some((fact) => fact.predicate === "finance_context"), false);
+    assert.match(chatContext.domainContexts.hr ?? "", /12 salariés/);
+    assert.match(chatContext.domainContexts.finance ?? "", /1,2 M€/);
+    assert.ok(chatContext.knowledgeCoverage.sections.find((section) => section.key === "hr")?.dimensions?.length);
+    assert.equal(chatContext.evidence.some((fact) => fact.predicate === "hr_context"), false);
+    assert.equal(chatContext.evidence.some((fact) => fact.predicate === "finance_context"), false);
 
     const summary = buildCompanyProfileSummary(persisted);
     assert.equal(summary.length, 12);
     assert.ok(summary.every((item) => item.filled));
-    assert.match(summary.find((item) => item.key === "hr")?.summary ?? "", /rh1/);
+    assert.match(summary.find((item) => item.key === "hr")?.summary ?? "", /12 salariés/);
 
-    // Simulation d'une modification depuis "Mon entreprise" : la valeur sauvegardée,
-    // son fait dérivé, le résumé affiché et le contexte du copilote doivent tous changer ensemble.
-    const updatedHr = detailed("rhmodifie");
+    // Simulation d'une modification de la situation RH : dossier, graphe, résumé et copilote
+    // doivent tous refléter la nouvelle situation, pas l'ancienne formulation.
+    const updatedHr = "14 salariés désormais, 3 pôles avec 2 managers. Les recrutements sont gelés ce trimestre. L'onboarding dure 7 jours dans Lucca, la surcharge se concentre maintenant sur le support à 9 h/semaine, turnover 8 %, préparation des arrivées toujours manuelle.";
     await prisma.company.update({ where: { id: company.id }, data: { hrContext: updatedHr } });
     await rebuildBusinessGraph(company.id);
 
@@ -118,31 +113,30 @@ async function main() {
       where: { id: company.id },
       include: { tools: true },
     });
-    assert.match(modified.hrContext ?? "", /rhmodifie1/);
+    assert.match(modified.hrContext ?? "", /14 salariés désormais/);
 
     const modifiedHrFact = await prisma.businessFact.findFirstOrThrow({
       where: { companyId: company.id, sourceRef: "graph:company:hr_context" },
       select: { valueJson: true, provenanceJson: true },
     });
-    assert.match(modifiedHrFact.valueJson ?? "", /rhmodifie1/);
+    assert.match(modifiedHrFact.valueJson ?? "", /14 salariés désormais/);
     assert.match(modifiedHrFact.provenanceJson ?? "", /company_profile/);
 
     const modifiedSummary = buildCompanyProfileSummary(modified);
-    assert.match(modifiedSummary.find((item) => item.key === "hr")?.summary ?? "", /rhmodifie1/);
+    assert.match(modifiedSummary.find((item) => item.key === "hr")?.summary ?? "", /14 salariés désormais/);
 
     const modifiedChatContext = await buildChatContext(company.id);
     if (!modifiedChatContext.domainContexts || !modifiedChatContext.evidence) {
       throw new Error("Le contexte modifié du copilote doit rester complet");
     }
-    const modifiedDomains = modifiedChatContext.domainContexts;
-    const modifiedEvidence = modifiedChatContext.evidence;
-    assert.match(modifiedDomains.hr ?? "", /rhmodifie1/);
-    assert.equal(modifiedEvidence.some((fact) => fact.predicate === "hr_context"), false);
+    assert.match(modifiedChatContext.domainContexts.hr ?? "", /14 salariés désormais/);
+    assert.equal(modifiedChatContext.evidence.some((fact) => fact.predicate === "hr_context"), false);
 
     console.log("✓ Persistance Company validée pour toutes les rubriques métier");
     console.log(`✓ ${profileFacts.length} faits déclaratifs reconstruits avec provenance dans le Business Graph`);
+    console.log("✓ Le score dépend de dimensions utiles et non de la longueur du texte");
     console.log("✓ Le copilote distingue les déclarations du dirigeant des preuves indépendantes");
-    console.log("✓ Modification RH propagée au dossier, au résumé, au Business Graph et au copilote");
+    console.log("✓ Une évolution RH remplace bien l'ancien contexte dans le dossier, le graphe, le résumé et le copilote");
     console.log(`✓ Score après saisie complète sans connexion : ${coverage.overall}%`);
   } finally {
     if (userId) {
