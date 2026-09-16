@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { Brain, Database, Sparkles, Target } from "lucide-react";
+import { ArrowRight, Brain, CheckCircle2, Database, Route, Sparkles, Target } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
-import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
+import { getCompanyKnowledgeCoverage, type KnowledgeGuidanceStep } from "@/lib/companies/knowledge-coverage";
 import { updateCompanyAction } from "@/lib/companies/actions";
 import { RadarChart } from "@/components/knowledge/RadarChart";
 import { Input, Label, Textarea } from "@/components/ui/Input";
@@ -25,9 +25,9 @@ export default async function CompanyPage() {
             peuvent devenir précises, personnalisées et fondées sur votre réalité.
           </p>
         </div>
-        {coverage.nextSection && (
-          <Button href={coverage.nextSection.href} size="sm">
-            Améliorer {coverage.nextSection.label.toLowerCase()}
+        {coverage.guidanceSteps[0] && (
+          <Button href={coverage.guidanceSteps[0].href} size="sm">
+            Faire la prochaine étape
           </Button>
         )}
       </div>
@@ -59,12 +59,70 @@ export default async function CompanyPage() {
             </div>
           </div>
 
+          {coverage.nextMilestone && (
+            <div className="mt-4 rounded-xl border border-accent/20 bg-card/80 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Prochain palier</p>
+                  <p className="mt-1 font-semibold">{coverage.nextMilestone.label} · {coverage.nextMilestone.score}%</p>
+                </div>
+                <span className="rounded-full bg-accent-soft px-3 py-1 text-xs font-semibold text-accent">
+                  encore {coverage.nextMilestone.remaining} pts
+                </span>
+              </div>
+              <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                <div className="h-full rounded-full bg-accent" style={{ width: `${Math.min(100, (coverage.overall / coverage.nextMilestone.score) * 100)}%` }} />
+              </div>
+            </div>
+          )}
+
           <div className="mt-5 grid gap-2 md:grid-cols-2">
             {coverage.sections.map((section) => (
               <CoverageRow key={section.key} section={section} />
             ))}
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+              <Route size={18} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Parcours recommandé</p>
+              <h2 className="mt-1 text-lg font-semibold">Les prochaines étapes pour rendre Pilotzia plus précis</h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+                Pilotzia ne vous demande pas de tout remplir. Il classe les prochaines étapes selon le manque actuel,
+                leur poids dans le score et leur pertinence par rapport aux objectifs et blocages que vous avez déjà déclarés.
+              </p>
+            </div>
+          </div>
+          {coverage.guidanceSteps[0] && (
+            <Button href={coverage.guidanceSteps[0].href} size="sm">
+              Commencer par {coverage.guidanceSteps[0].label.toLowerCase()}
+            </Button>
+          )}
+        </div>
+
+        {coverage.guidanceSteps.length > 0 ? (
+          <div className="mt-6 grid gap-3 lg:grid-cols-2">
+            {coverage.guidanceSteps.map((step, index) => (
+              <GuidanceStepCard key={step.sectionKey} step={step} index={index} />
+            ))}
+          </div>
+        ) : (
+          <div className="mt-6 flex items-start gap-3 rounded-xl border border-success/20 bg-success-soft p-4">
+            <CheckCircle2 size={18} className="mt-0.5 shrink-0 text-success" />
+            <div>
+              <p className="font-medium">Votre profil est déjà très bien renseigné</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                La prochaine progression viendra surtout de sources connectées, de données récentes et de résultats mesurés dans le temps.
+              </p>
+            </div>
+          </div>
+        )}
       </section>
 
       <div className="rounded-2xl border border-border bg-card p-5">
@@ -254,6 +312,32 @@ export default async function CompanyPage() {
         </div>
       </section>
     </div>
+  );
+}
+
+function GuidanceStepCard({ step, index }: { step: KnowledgeGuidanceStep; index: number }) {
+  return (
+    <Link href={step.href} className="group rounded-2xl border border-border p-4 transition hover:border-accent/40 hover:bg-accent-soft/30">
+      <div className="flex items-start gap-3">
+        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-soft text-sm font-semibold text-accent">
+          {index + 1}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <p className="font-semibold">{step.title}</p>
+              {step.priority === "haute" && <Badge tone="accent">prioritaire</Badge>}
+            </div>
+            <span className="text-xs font-semibold tabular-nums text-accent">{step.currentScore}%</span>
+          </div>
+          <p className="mt-2 text-sm leading-6 text-foreground/80">{step.action}</p>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">Pourquoi : {step.why}</p>
+          <span className="mt-3 inline-flex items-center gap-1 text-xs font-semibold text-accent">
+            Compléter cette étape <ArrowRight size={13} className="transition group-hover:translate-x-0.5" />
+          </span>
+        </div>
+      </div>
+    </Link>
   );
 }
 
