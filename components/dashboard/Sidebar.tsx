@@ -20,7 +20,15 @@ const NAV = [
   { href: "/app/settings", label: "Paramètres", icon: Settings },
 ];
 
-export function Sidebar({ companyName, isAdmin = false }: { companyName: string; isAdmin?: boolean }) {
+export function Sidebar({
+  companyName,
+  knowledgeScore,
+  isAdmin = false,
+}: {
+  companyName: string;
+  knowledgeScore?: number;
+  isAdmin?: boolean;
+}) {
   const pathname = usePathname();
   const items = isAdmin
     ? [...NAV, { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck }]
@@ -53,8 +61,21 @@ export function Sidebar({ companyName, isAdmin = false }: { companyName: string;
         })}
       </nav>
 
+      {typeof knowledgeScore === "number" && knowledgeScore < 90 && (
+        <Link href="/app/company" className="mx-3 mb-3 rounded-xl border border-accent/20 bg-accent-soft p-3 transition hover:border-accent/40">
+          <div className="flex items-center justify-between gap-2 text-xs font-semibold">
+            <span>Connaissance entreprise</span>
+            <span className="tabular-nums text-accent">{knowledgeScore}%</span>
+          </div>
+          <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-card">
+            <div className="h-full rounded-full bg-accent" style={{ width: `${knowledgeScore}%` }} />
+          </div>
+          <p className="mt-2 text-[11px] leading-4 text-muted-foreground">Complétez votre contexte pour affiner les conseils.</p>
+        </Link>
+      )}
+
       <form action={logoutAction} className="px-3 pb-5">
-        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors">
+        <button className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground">
           <LogOut size={18} />
           Se déconnecter
         </button>
