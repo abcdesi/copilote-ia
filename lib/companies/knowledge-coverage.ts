@@ -22,12 +22,31 @@ export interface KnowledgeSection {
   href: string;
 }
 
+export interface KnowledgeGuidanceStep {
+  sectionKey: KnowledgeSectionKey;
+  label: string;
+  currentScore: number;
+  href: string;
+  title: string;
+  action: string;
+  why: string;
+  priority: "haute" | "moyenne";
+}
+
+export interface KnowledgeMilestone {
+  score: number;
+  label: string;
+  remaining: number;
+}
+
 export interface CompanyKnowledgeCoverage {
   overall: number;
   level: "faible" | "partiel" | "solide" | "avance";
   sections: KnowledgeSection[];
   radar: Array<{ label: string; score: number }>;
   nextSection: KnowledgeSection | null;
+  guidanceSteps: KnowledgeGuidanceStep[];
+  nextMilestone: KnowledgeMilestone | null;
   message: string;
 }
 
@@ -37,7 +56,94 @@ const DOMAIN_KEYWORDS: Record<"finance" | "accounting" | "sales" | "marketing" |
   sales: ["sales", "commercial", "prospect", "lead", "crm", "pipeline", "devis", "hubspot", "pipedrive", "salesforce"],
   marketing: ["marketing", "campagne", "ads", "acquisition", "seo", "contenu", "mailchimp", "meta", "google_ads", "newsletter"],
   hr: ["rh", "human", "recrut", "employee", "salar", "onboarding", "talent", "factorial", "lucca", "bamboo"],
-  operations: ["operation", "process", "workflow", "meeting", "calendar", "notion", "slack", "teams", "support", "production", "delivery"],
+  operations: ["operation", "process", "workflow", "meeting", "calendar", "notion", "slack", "teams", "support", "production", "delivery", "temps", "delai"],
+};
+
+const SECTION_GUIDANCE: Record<KnowledgeSectionKey, { title: string; action: string; why: string }> = {
+  activity: {
+    title: "Décrire clairement votre activité et vos clients",
+    action: "Renseignez votre secteur, votre modèle économique et le profil de vos clients principaux.",
+    why: "C'est la base qui permet à Pilotzia d'éviter les conseils génériques et d'adapter ses raisonnements à votre marché.",
+  },
+  team: {
+    title: "Préciser la taille et l'organisation de l'équipe",
+    action: "Indiquez la taille de l'équipe, l'effectif réel et les principaux rôles ou contraintes d'organisation.",
+    why: "Une recommandation réaliste dépend fortement des ressources disponibles et de la manière dont le travail est réparti.",
+  },
+  objectives: {
+    title: "Fixer 2 à 3 objectifs mesurables",
+    action: "Décrivez vos priorités à 90 jours avec un indicateur : CA, marge, trésorerie, délai, temps gagné ou qualité.",
+    why: "Les objectifs permettent au copilote de classer les opportunités selon ce qui compte réellement pour vous.",
+  },
+  painPoints: {
+    title: "Quantifier vos pertes de temps et points de blocage",
+    action: "Ajoutez les irritants récurrents avec leur fréquence, le temps consommé et, si possible, leur impact business.",
+    why: "La fréquence et l'impact transforment une impression en priorité opérationnelle exploitable.",
+  },
+  applications: {
+    title: "Relier vos outils et sources réelles",
+    action: "Ajoutez les applications utilisées puis connectez au moins une source utile quand l'intégration est disponible.",
+    why: "Les connexions réelles donnent à Pilotzia des faits observés et réduisent la part d'hypothèses dans ses conseils.",
+  },
+  local: {
+    title: "Donner le contexte local de votre activité",
+    action: "Renseignez le pays ou la zone principale, puis les contraintes locales utiles : saisonnalité, réglementation, langue ou marché.",
+    why: "Le contexte local peut changer les priorités commerciales, financières et opérationnelles.",
+  },
+  finance: {
+    title: "Donner une première lecture financière",
+    action: "Ajoutez CA, marge, trésorerie, créances, dettes, principaux coûts et saisonnalité. Importez ensuite des données réelles quand possible.",
+    why: "Ces éléments permettent de distinguer une optimisation de temps d'un vrai enjeu de marge ou de trésorerie.",
+  },
+  accounting: {
+    title: "Décrire votre fonctionnement comptable",
+    action: "Précisez l'outil comptable, la facturation, la clôture, les rapprochements, les relances et le rythme de reporting.",
+    why: "Pilotzia peut alors détecter les tâches répétitives, les risques de retard et les opportunités de contrôle ou d'automatisation.",
+  },
+  sales: {
+    title: "Documenter votre moteur commercial",
+    action: "Renseignez leads, pipeline, taux de réponse, devis, cycle de vente, relances et CRM.",
+    why: "Avec ces données, Pilotzia peut relier les actions recommandées au revenu plutôt qu'au seul gain de temps.",
+  },
+  marketing: {
+    title: "Décrire vos canaux d'acquisition",
+    action: "Ajoutez canaux, budget, campagnes, coût par lead, conversion, contenu et méthode d'attribution si elle existe.",
+    why: "Cela permet de chercher les goulets d'acquisition et les dépenses peu productives au lieu de proposer des actions marketing génériques.",
+  },
+  hr: {
+    title: "Cartographier les processus RH utiles",
+    action: "Décrivez l'organisation, les recrutements, l'onboarding, la charge et les indicateurs agrégés sans données personnelles sensibles.",
+    why: "Pilotzia peut ainsi repérer les frictions de processus tout en restant au bon niveau de confidentialité.",
+  },
+  operations: {
+    title: "Décrire vos processus les plus critiques",
+    action: "Ajoutez production, support, réunions, volumes, délais, contrôles et principaux points de blocage.",
+    why: "C'est ce qui permet d'identifier les nœuds opérationnels et de recommander les automatisations les plus utiles.",
+  },
+};
+
+const SECTION_GLOBAL_WEIGHT: Record<KnowledgeSectionKey, number> = {
+  activity: 0.55 / 6,
+  team: 0.55 / 6,
+  objectives: 0.55 / 6,
+  painPoints: 0.55 / 6,
+  applications: 0.55 / 6,
+  local: 0.55 / 6,
+  finance: 0.45 / 6,
+  accounting: 0.45 / 6,
+  sales: 0.45 / 6,
+  marketing: 0.45 / 6,
+  hr: 0.45 / 6,
+  operations: 0.45 / 6,
+};
+
+const RELEVANCE_KEYWORDS: Partial<Record<KnowledgeSectionKey, string[]>> = {
+  finance: ["marge", "tresorer", "cash", "cout", "rentabil", "finance", "ebit", "dette"],
+  accounting: ["factur", "impaye", "compta", "cloture", "rapproch"],
+  sales: ["ca", "vente", "commercial", "prospect", "lead", "devis", "pipeline", "client"],
+  marketing: ["marketing", "acquisition", "seo", "campagne", "pub", "ads", "conversion"],
+  hr: ["rh", "recrut", "equipe", "onboarding", "salar", "talent"],
+  operations: ["temps", "delai", "process", "operation", "workflow", "support", "production", "reunion", "blocage"],
 };
 
 function normalize(value: string) {
@@ -96,6 +202,46 @@ function domainScore(input: {
     [facts, 25],
     [connections, 15],
   ]);
+}
+
+function buildGuidanceSteps(sections: KnowledgeSection[], intentText: string): KnowledgeGuidanceStep[] {
+  return sections
+    .filter((section) => section.score < 90)
+    .map((section) => {
+      const keywords = RELEVANCE_KEYWORDS[section.key] ?? [];
+      const relevant = keywords.some((keyword) => intentText.includes(normalize(keyword)));
+      const foundationBoost = ["objectives", "painPoints", "activity", "applications"].includes(section.key) ? 1.15 : 1;
+      const relevanceBoost = relevant ? 1.4 : 1;
+      const priorityScore = (100 - section.score) * SECTION_GLOBAL_WEIGHT[section.key] * foundationBoost * relevanceBoost;
+      const guidance = SECTION_GUIDANCE[section.key];
+      return {
+        priorityScore,
+        step: {
+          sectionKey: section.key,
+          label: section.label,
+          currentScore: section.score,
+          href: section.href,
+          title: guidance.title,
+          action: guidance.action,
+          why: guidance.why,
+          priority: "moyenne" as const,
+        },
+      };
+    })
+    .sort((a, b) => b.priorityScore - a.priorityScore || a.step.currentScore - b.step.currentScore)
+    .slice(0, 4)
+    .map(({ step }, index) => ({ ...step, priority: index < 2 ? "haute" : "moyenne" }));
+}
+
+function getNextMilestone(overall: number): KnowledgeMilestone | null {
+  const milestones = [
+    { score: 35, label: "Base exploitable" },
+    { score: 60, label: "Contexte solide" },
+    { score: 80, label: "Conseil avancé" },
+    { score: 90, label: "Couverture très complète" },
+  ];
+  const next = milestones.find((milestone) => overall < milestone.score);
+  return next ? { ...next, remaining: next.score - overall } : null;
 }
 
 export async function getCompanyKnowledgeCoverage(companyId: string): Promise<CompanyKnowledgeCoverage> {
@@ -206,6 +352,10 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
     { label: "Données", score: applicationsScore },
   ];
 
+  const intentText = normalize(`${company.objectives ?? ""} ${company.painPoints ?? ""}`);
+  const guidanceSteps = buildGuidanceSteps(sections, intentText);
+  const nextMilestone = getNextMilestone(overall);
+
   const message = overall >= 80
     ? "Votre contexte est suffisamment riche pour produire des recommandations très personnalisées. Les données connectées restent prioritaires pour confirmer les hypothèses."
     : overall >= 60
@@ -214,5 +364,5 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
         ? "Pilotzia peut déjà conseiller, mais une partie des réponses repose encore sur des hypothèses. Quelques informations ciblées feront fortement progresser la précision."
         : "Pilotzia connaît encore peu votre entreprise. Les premières recommandations restent utiles, mais elles sont volontairement prudentes tant que le contexte n'est pas mieux renseigné.";
 
-  return { overall, level, sections, radar, nextSection, message };
+  return { overall, level, sections, radar, nextSection, guidanceSteps, nextMilestone, message };
 }
