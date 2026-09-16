@@ -1,167 +1,297 @@
-import { Brain, CheckCircle2, CircleDashed, Target } from "lucide-react";
+import Link from "next/link";
+import { Brain, Database, Sparkles, Target } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
+import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { updateCompanyAction } from "@/lib/companies/actions";
+import { RadarChart } from "@/components/knowledge/RadarChart";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
-const COUNTRY_OPTIONS = ["France", "Belgique", "Suisse", "Canada", "Autre"];
 
 export default async function CompanyPage() {
   const company = await getCurrentCompany();
-  const memorySignals = [
-    Boolean(company.industry),
-    Boolean(company.country),
-    Boolean(company.sizeRange),
-    Boolean(company.objectives),
-    Boolean(company.painPoints),
-    company.tools.length > 0,
-  ];
-  const completedSignals = memorySignals.filter(Boolean).length;
-  const memoryScore = Math.round((completedSignals / memorySignals.length) * 100);
+  const coverage = await getCompanyKnowledgeCoverage(company.id);
 
   return (
-    <div className="mx-auto max-w-4xl space-y-6 px-4 py-8 sm:px-6">
-      <div>
-        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Mémoire de l'entreprise</p>
-        <h1 className="mt-1 text-2xl font-semibold tracking-tight">Mon entreprise</h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Ce profil donne au copilote le contexte durable dont il a besoin pour mieux prioriser ses recommandations et
-          éviter de vous reposer les mêmes questions.
-        </p>
+    <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Contexte de l'entreprise</p>
+          <h1 className="mt-1 text-2xl font-semibold tracking-tight">Mon entreprise</h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            Plus Pilotzia comprend votre activité, vos chiffres, vos équipes et vos processus, plus ses recommandations
+            peuvent devenir précises, personnalisées et fondées sur votre réalité.
+          </p>
+        </div>
+        {coverage.nextSection && (
+          <Button href={coverage.nextSection.href} size="sm">
+            Améliorer {coverage.nextSection.label.toLowerCase()}
+          </Button>
+        )}
       </div>
 
-      <section className="grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-        <div className="rounded-2xl border border-accent/20 bg-accent-soft p-6">
-          <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-accent">
-              <Brain size={19} />
-            </div>
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <h2 className="font-semibold">Ce que Pilotzia connaît déjà</h2>
-                <Badge tone="accent">{memoryScore}% complet</Badge>
-              </div>
-              <p className="mt-1 text-sm leading-6 text-foreground/75">
-                Secteur, taille, objectifs, pertes de temps et applications alimentent directement le contexte du copilote.
-              </p>
-            </div>
+      <section className="grid gap-5 rounded-2xl border border-accent/20 bg-accent-soft p-5 lg:grid-cols-[0.85fr_1.35fr] lg:p-6">
+        <div className="flex flex-col items-center justify-center rounded-2xl bg-card/70 p-4 text-center">
+          <div className="flex items-center gap-2">
+            <Brain size={18} className="text-accent" />
+            <h2 className="font-semibold">Niveau de connaissance</h2>
           </div>
-
-          <div className="mt-5 grid gap-2 sm:grid-cols-2">
-            <MemorySignal label="Activité" ready={Boolean(company.industry)} />
-            <MemorySignal label="Taille de l'équipe" ready={Boolean(company.sizeRange)} />
-            <MemorySignal label="Objectifs" ready={Boolean(company.objectives)} />
-            <MemorySignal label="Pertes de temps" ready={Boolean(company.painPoints)} />
-            <MemorySignal label="Applications utilisées" ready={company.tools.length > 0} />
-            <MemorySignal label="Pays / contexte local" ready={Boolean(company.country)} />
+          <div className="mt-2 flex items-end gap-2">
+            <span className="text-4xl font-semibold tracking-tight">{coverage.overall}%</span>
+            <Badge tone="accent">{coverage.level}</Badge>
           </div>
+          <RadarChart items={coverage.radar} size={330} />
+          <p className="mt-1 max-w-sm text-xs leading-5 text-muted-foreground">
+            Ce score mesure la couverture des informations disponibles, pas la performance de votre entreprise.
+          </p>
         </div>
 
-        <div className="rounded-2xl border border-border bg-card p-6">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted text-foreground">
-            <Target size={18} />
+        <div>
+          <div className="flex items-start gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-card text-accent">
+              <Target size={18} />
+            </div>
+            <div>
+              <h2 className="font-semibold">La précision du conseil progresse avec vos données</h2>
+              <p className="mt-1 text-sm leading-6 text-foreground/75">{coverage.message}</p>
+            </div>
           </div>
-          <h2 className="mt-4 font-semibold">Pourquoi c'est utile</h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Plus le contexte est précis, plus Pilotzia peut distinguer une bonne idée générique d'une priorité réellement adaptée à votre entreprise.
-          </p>
+
+          <div className="mt-5 grid gap-2 md:grid-cols-2">
+            {coverage.sections.map((section) => (
+              <CoverageRow key={section.key} section={section} />
+            ))}
+          </div>
         </div>
       </section>
 
-      <form action={updateCompanyAction} className="space-y-5 rounded-2xl border border-border bg-card p-6">
-        <div className="space-y-1.5">
-          <Label htmlFor="name">Nom de l'entreprise</Label>
-          <Input id="name" name="name" defaultValue={company.name} required />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="industry">Activité</Label>
-          <Input id="industry" name="industry" defaultValue={company.industry ?? ""} placeholder="Agence marketing, e-commerce…" />
-        </div>
-
-        <div className="grid grid-cols-2 gap-4">
-          <div className="space-y-1.5">
-            <Label htmlFor="country">Pays</Label>
-            <select
-              id="country"
-              name="country"
-              defaultValue={company.country ?? "France"}
-              className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
-            >
-              {COUNTRY_OPTIONS.map((c) => (
-                <option key={c} value={c}>{c}</option>
-              ))}
-            </select>
+      <div className="rounded-2xl border border-border bg-card p-5">
+        <div className="flex items-start gap-3">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-muted text-foreground">
+            <Database size={18} />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="sizeRange">Taille</Label>
-            <select
-              id="sizeRange"
-              name="sizeRange"
-              defaultValue={company.sizeRange ?? "6-20"}
-              className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
-            >
-              {SIZE_OPTIONS.map((s) => (
-                <option key={s} value={s}>{s} employés</option>
-              ))}
-            </select>
-          </div>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="employeeCount">Nombre d'employés (optionnel)</Label>
-          <Input id="employeeCount" name="employeeCount" type="number" min={1} defaultValue={company.employeeCount ?? ""} />
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="painPoints">Principales pertes de temps</Label>
-          <Textarea
-            id="painPoints"
-            name="painPoints"
-            rows={4}
-            defaultValue={company.painPoints ?? ""}
-            placeholder="Ex. relances prospects, tri des demandes clients, reporting hebdomadaire…"
-          />
-          <p className="text-xs text-muted-foreground">Décrivez les tâches répétitives, les blocages et les points de friction récurrents.</p>
-        </div>
-
-        <div className="space-y-1.5">
-          <Label htmlFor="objectives">Objectifs</Label>
-          <Textarea
-            id="objectives"
-            name="objectives"
-            rows={4}
-            defaultValue={company.objectives ?? ""}
-            placeholder="Ex. réduire le temps administratif, augmenter le taux de relance, améliorer le délai de réponse…"
-          />
-          <p className="text-xs text-muted-foreground">Ces objectifs servent à arbitrer entre plusieurs opportunités possibles.</p>
-        </div>
-
-        <Button type="submit">Mettre à jour la mémoire</Button>
-      </form>
-
-      <div className="rounded-2xl border border-border bg-card p-6">
-        <div className="flex items-center justify-between gap-3">
           <div>
-            <h2 className="font-semibold">Applications connues</h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {company.tools.length ? company.tools.map((t) => t.name).join(" · ") : "Aucune application renseignée pour l'instant."}
+            <h2 className="font-semibold">Comment le pourcentage est calculé</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Pilotzia compte les informations réellement renseignées, la profondeur du contexte, les outils déclarés,
+              les connexions actives et les faits structurés disponibles. Une case vide n'est jamais considérée comme connue.
             </p>
           </div>
-          <Button href="/app/tools" variant="outline" size="sm">Gérer</Button>
         </div>
       </div>
+
+      <form action={updateCompanyAction} className="space-y-6">
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <div className="mb-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Fondations</p>
+            <h2 className="mt-1 text-lg font-semibold">Ce que Pilotzia doit savoir pour comprendre votre entreprise</h2>
+          </div>
+
+          <div className="space-y-5">
+            <div className="space-y-1.5">
+              <Label htmlFor="name">Nom de l'entreprise</Label>
+              <Input id="name" name="name" defaultValue={company.name} required />
+            </div>
+
+            <div id="activity" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="industry">Activité / secteur</Label>
+                <Input id="industry" name="industry" defaultValue={company.industry ?? ""} placeholder="Agence marketing, cabinet de conseil, e-commerce…" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="businessModel">Modèle économique</Label>
+                <Input id="businessModel" name="businessModel" defaultValue={company.businessModel ?? ""} placeholder="Abonnement, prestations, marge sur vente, commission…" />
+              </div>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label htmlFor="customerProfile">Clients principaux</Label>
+              <Textarea
+                id="customerProfile"
+                name="customerProfile"
+                rows={3}
+                defaultValue={company.customerProfile ?? ""}
+                placeholder="Ex. PME de 10 à 50 salariés, décisionnaire dirigeant, panier moyen, cycle d'achat…"
+              />
+            </div>
+
+            <div id="team" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="sizeRange">Taille de l'équipe</Label>
+                <select
+                  id="sizeRange"
+                  name="sizeRange"
+                  defaultValue={company.sizeRange ?? ""}
+                  className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+                >
+                  <option value="">Non renseigné</option>
+                  {SIZE_OPTIONS.map((size) => (
+                    <option key={size} value={size}>{size} employés</option>
+                  ))}
+                </select>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="employeeCount">Nombre d'employés</Label>
+                <Input id="employeeCount" name="employeeCount" type="number" min={1} defaultValue={company.employeeCount ?? ""} placeholder="Ex. 18" />
+              </div>
+            </div>
+
+            <div id="local" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="country">Pays / zone principale</Label>
+                <Input id="country" name="country" defaultValue={company.country ?? ""} placeholder="Ex. France, Martinique, Belgique…" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="localContext">Contexte local utile</Label>
+                <Input id="localContext" name="localContext" defaultValue={company.localContext ?? ""} placeholder="Marché local, saisonnalité, réglementation, langue…" />
+              </div>
+            </div>
+
+            <div id="objectives" className="space-y-1.5 scroll-mt-24">
+              <Label htmlFor="objectives">Objectifs prioritaires</Label>
+              <Textarea
+                id="objectives"
+                name="objectives"
+                rows={4}
+                defaultValue={company.objectives ?? ""}
+                placeholder="Ex. réduire de 20 % le temps administratif, raccourcir le cycle de vente, améliorer la marge…"
+              />
+              <p className="text-xs text-muted-foreground">Précisez idéalement l'horizon et l'indicateur que vous voulez améliorer.</p>
+            </div>
+
+            <div id="painPoints" className="space-y-1.5 scroll-mt-24">
+              <Label htmlFor="painPoints">Pertes de temps, blocages et irritants</Label>
+              <Textarea
+                id="painPoints"
+                name="painPoints"
+                rows={4}
+                defaultValue={company.painPoints ?? ""}
+                placeholder="Ex. relances oubliées, reporting manuel 5 h/semaine, devis trop lents, factures impayées…"
+              />
+              <p className="text-xs text-muted-foreground">Le volume, la fréquence et l'impact rendent la priorisation beaucoup plus fiable.</p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-2xl border border-border bg-card p-6">
+          <div className="mb-5">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Domaines métier</p>
+            <h2 className="mt-1 text-lg font-semibold">Donnez au copilote la profondeur d'un vrai comité de direction</h2>
+            <p className="mt-2 text-sm leading-6 text-muted-foreground">
+              Renseignez seulement ce que vous connaissez. Pilotzia distingue vos déclarations des données réellement connectées.
+            </p>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <DomainField
+              id="finance"
+              name="financeContext"
+              label="Finance"
+              value={company.financeContext}
+              placeholder="CA, marge, trésorerie, créances, dettes, saisonnalité, principaux coûts, objectifs financiers…"
+            />
+            <DomainField
+              id="accounting"
+              name="accountingContext"
+              label="Comptabilité"
+              value={company.accountingContext}
+              placeholder="Outil comptable, facturation, clôture, rapprochements, relances, fréquence de reporting…"
+            />
+            <DomainField
+              id="sales"
+              name="salesContext"
+              label="Commercial"
+              value={company.salesContext}
+              placeholder="Nombre de leads, pipeline, taux de réponse, devis, cycle de vente, relances, CRM…"
+            />
+            <DomainField
+              id="marketing"
+              name="marketingContext"
+              label="Marketing"
+              value={company.marketingContext}
+              placeholder="Canaux, budget, acquisition, coût par lead, campagnes, contenu, conversion, attribution…"
+            />
+            <DomainField
+              id="hr"
+              name="hrContext"
+              label="RH"
+              value={company.hrContext}
+              placeholder="Organisation, recrutements, onboarding, charge, rôles, processus RH et indicateurs agrégés…"
+              hint="Évitez les données personnelles ou sensibles sur des salariés ; privilégiez les processus et métriques agrégées."
+            />
+            <DomainField
+              id="operations"
+              name="operationsContext"
+              label="Opérations"
+              value={company.operationsContext}
+              placeholder="Processus clés, production, support, réunions, délais, volumes, contrôles, points de blocage…"
+            />
+          </div>
+        </section>
+
+        <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <Sparkles size={18} className="shrink-0 text-accent" />
+            <p className="text-sm text-muted-foreground">
+              Chaque information utile enregistrée enrichit le contexte du copilote et le Business Graph.
+            </p>
+          </div>
+          <Button type="submit">Enregistrer et améliorer mes recommandations</Button>
+        </div>
+      </form>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Applications et sources de données</h2>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {company.tools.length ? company.tools.map((tool) => tool.name).join(" · ") : "Aucune application renseignée pour l'instant."}
+            </p>
+          </div>
+          <Button href="/app/tools" variant="outline" size="sm">Gérer mes connexions</Button>
+        </div>
+      </section>
     </div>
   );
 }
 
-function MemorySignal({ label, ready }: { label: string; ready: boolean }) {
+function CoverageRow({ section }: { section: { label: string; score: number; description: string; href: string } }) {
   return (
-    <div className="flex items-center gap-2 rounded-xl bg-card/80 px-3 py-2 text-sm">
-      {ready ? <CheckCircle2 size={15} className="shrink-0 text-success" /> : <CircleDashed size={15} className="shrink-0 text-muted-foreground" />}
-      <span className={ready ? "text-foreground" : "text-muted-foreground"}>{label}</span>
+    <Link href={section.href} className="rounded-xl border border-border/70 bg-card/80 p-3 transition hover:border-accent/40">
+      <div className="flex items-center justify-between gap-3">
+        <span className="text-sm font-medium">{section.label}</span>
+        <span className="text-sm font-semibold tabular-nums">{section.score}%</span>
+      </div>
+      <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-accent" style={{ width: `${section.score}%` }} />
+      </div>
+      <p className="mt-2 text-[11px] leading-4 text-muted-foreground">{section.description}</p>
+    </Link>
+  );
+}
+
+function DomainField({
+  id,
+  name,
+  label,
+  value,
+  placeholder,
+  hint,
+}: {
+  id: string;
+  name: string;
+  label: string;
+  value: string | null;
+  placeholder: string;
+  hint?: string;
+}) {
+  return (
+    <div id={id} className="space-y-1.5 scroll-mt-24">
+      <Label htmlFor={name}>{label}</Label>
+      <Textarea id={name} name={name} rows={5} defaultValue={value ?? ""} placeholder={placeholder} />
+      {hint && <p className="text-xs leading-5 text-muted-foreground">{hint}</p>}
     </div>
   );
 }
