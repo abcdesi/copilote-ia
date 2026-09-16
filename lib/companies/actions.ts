@@ -53,6 +53,25 @@ const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
   operations: ["operationsContext"],
 };
 
+const FIELD_SECTION: Record<keyof CompanyUpdate, KnowledgeSectionKey> = {
+  name: "activity",
+  industry: "activity",
+  country: "local",
+  sizeRange: "team",
+  employeeCount: "team",
+  objectives: "objectives",
+  painPoints: "painPoints",
+  businessModel: "activity",
+  customerProfile: "activity",
+  localContext: "local",
+  financeContext: "finance",
+  marketingContext: "marketing",
+  accountingContext: "accounting",
+  salesContext: "sales",
+  hrContext: "hr",
+  operationsContext: "operations",
+};
+
 async function refreshGraph(companyId: string) {
   await rebuildBusinessGraph(companyId);
   await syncBusinessRhythms(companyId);
@@ -77,6 +96,62 @@ function changedSections(previous: Record<string, unknown>, next: CompanyUpdate)
     SECTION_FIELDS[section].some((field) => changedFields.includes(field))
   );
   return { changedFields, sections };
+}
+
+function serializeHistoryValue(value: unknown) {
+  if (value === undefined) return null;
+  return value;
+}
+
+async function recordContextHistory(
+  userId: string,
+  companyId: string,
+  previous: Record<string, unknown>,
+  next: CompanyUpdate,
+  changedFields: Array<keyof CompanyUpdate>
+) {
+  if (!changedFields.length) return;
+  const effectiveAt = new Date().toISOString();
+  await prisma.event.createMany({
+    data: changedFields.map((field) => ({
+      type: "COMPANY_CONTEXT_REVISION",
+      userId,
+      companyId,
+      metadata: JSON.stringify({
+        v: 1,
+        section: FIELD_SECTION[field],
+        field,
+        previous: serializeHistoryValue(previous[field as string]),
+        next: serializeHistoryValue(next[field]),
+        source: "company_profile",
+        effectiveAt,
+      }),
+    })),
+  });
+}
+
+async function recordToolHistory(
+  userId: string,
+  companyId: string,
+  action: "added" | "removed",
+  tool: string
+) {
+  await prisma.event.create({
+    data: {
+      type: "COMPANY_CONTEXT_REVISION",
+      userId,
+      companyId,
+      metadata: JSON.stringify({
+        v: 1,
+        section: "applications",
+        field: "tool",
+        previous: action === "removed" ? tool : null,
+        next: action === "added" ? tool : null,
+        source: "company_tools",
+        effectiveAt: new Date().toISOString(),
+      }),
+    },
+  });
 }
 
 async function trackContextChange(userId: string, companyId: string, sections: KnowledgeSectionKey[], fieldCount: number) {
@@ -117,8 +192,29 @@ export async function updateCompanyAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
-  const changes = changedSections(company as unknown as Record<string, unknown>, parsed.data);
-  await prisma.company.update({ where: { id: company.id }, data: parsed.data });
+  const previous = company as unknown as Record<string, unknown>;
+  const changes = changedSections(previous, parsed.data);
+  await prisma.$transaction([
+    prisma.company.update({ where: { id: company.id }, data: parsed.data }),
+    ...changes.changedFields.map((field) =>
+      prisma.event.create({
+        data: {
+          type: "COMPANY_CONTEXT_REVISION",
+          userId: session.user.id,
+          companyId: company.id,
+          metadata: JSON.stringify({
+            v: 1,
+            section: FIELD_SECTION[field],
+            field,
+            previous: serializeHistoryValue(previous[field as string]),
+            next: serializeHistoryValue(parsed.data[field]),
+            source: "company_profile",
+            effectiveAt: new Date().toISOString(),
+          }),
+        },
+      })
+    ),
+  ]);
   await trackContextChange(session.user.id, company.id, changes.sections, changes.changedFields.length);
   await refreshGraph(company.id);
   revalidatePath("/app/company");
@@ -134,11 +230,13 @@ export async function addToolAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
+  const existing = await prisma.companyTool.findUnique({ where: { companyId_name: { companyId: company.id, name } } });
   await prisma.companyTool.upsert({
     where: { companyId_name: { companyId: company.id, name } },
     update: {},
     create: { companyId: company.id, name, detected: false },
   });
+  if (!existing) await recordToolHistory(session.user.id, company.id, "added", name);
   await trackContextChange(session.user.id, company.id, ["applications"], 1);
   await refreshGraph(company.id);
   revalidatePath("/app/tools");
@@ -154,8 +252,12 @@ export async function removeToolAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
+  const tool = await prisma.companyTool.findFirst({ where: { id: toolId, companyId: company.id } });
   const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
-  if (deleted.count > 0) await trackContextChange(session.user.id, company.id, ["applications"], 1);
+  if (deleted.count > 0) {
+    if (tool) await recordToolHistory(session.user.id, company.id, "removed", tool.name);
+    await trackContextChange(session.user.id, company.id, ["applications"], 1);
+  }
   await refreshGraph(company.id);
   revalidatePath("/app/tools");
   revalidatePath("/app/company");
