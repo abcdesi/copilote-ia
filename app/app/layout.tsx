@@ -13,14 +13,15 @@ export const metadata: Metadata = {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [company, session] = await Promise.all([getCurrentCompany(), auth()]);
-  const [admin, knowledge] = await Promise.all([
-    Promise.resolve(isPilotziaAdmin(session?.user?.email)),
-    getCompanyKnowledgeCoverage(company.id),
-  ]);
+  const admin = isPilotziaAdmin(session?.user?.email);
+  const knowledge = await getCompanyKnowledgeCoverage(company.id).catch((error) => {
+    console.error("Knowledge coverage unavailable in dashboard layout", error);
+    return null;
+  });
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar companyName={company.name} knowledgeScore={knowledge.overall} isAdmin={admin} />
+      <Sidebar companyName={company.name} knowledgeScore={knowledge?.overall} isAdmin={admin} />
       <div className="flex min-h-screen flex-1 flex-col">
         <MobileNav isAdmin={admin} />
         <CopilotBar />
