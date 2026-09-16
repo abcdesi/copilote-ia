@@ -26,8 +26,11 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
     }),
   ]);
 
+  // Les faits `graph:*` sont des projections du dossier ou des outils déclarés par le client.
+  // Ils restent utiles au Business Graph, mais ne constituent pas une preuve indépendante et
+  // ne doivent donc pas augmenter deux fois la couverture de connaissance.
   const independentFacts = facts.filter(
-    (fact) => !(fact.sourceProvider === "pilotzia" && fact.sourceRef?.startsWith("graph:company:"))
+    (fact) => !(fact.sourceProvider === "pilotzia" && fact.sourceRef?.startsWith("graph:"))
   );
 
   return computeCompanyKnowledgeCoverage({
