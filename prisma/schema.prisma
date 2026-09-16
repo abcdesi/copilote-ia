@@ -59,6 +59,7 @@ model Company {
   pendingActions         PendingAction[]
   graphEntities          BusinessEntity[]
   graphFacts             BusinessFact[]
+  contextRevisions       CompanyContextRevision[]
 
   @@index([userId])
 }
@@ -162,6 +163,22 @@ model BusinessFact {
   @@index([subjectEntityId])
   @@index([objectEntityId])
   @@index([companyId, sourceProvider])
+}
+
+model CompanyContextRevision {
+  id                String   @id @default(cuid())
+  companyId         String
+  company           Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  section           String
+  field             String
+  previousValueJson String?
+  nextValueJson     String?
+  source            String
+  effectiveAt       DateTime
+  createdAt         DateTime @default(now())
+
+  @@index([companyId, effectiveAt])
+  @@index([companyId, section, effectiveAt])
 }
 
 model Diagnostic {
