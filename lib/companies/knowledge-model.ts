@@ -296,15 +296,14 @@ function getNextMilestone(overall: number): KnowledgeMilestone | null {
 
 export function computeCompanyKnowledgeCoverage(input: KnowledgeModelInput): CompanyKnowledgeCoverage {
   const { company, tools, connections, facts } = input;
-  const signalNames = [
-    ...tools,
-    ...connections.flatMap((connection) => [connection.provider, connection.accountLabel ?? ""]),
-  ].filter(Boolean);
+  const connectionSignalNames = connections
+    .flatMap((connection) => [connection.provider, connection.accountLabel ?? ""])
+    .filter(Boolean);
 
   const countDomainFacts = (domain: (typeof DOMAIN_KEYS)[number]) =>
     facts.filter((fact) => factMatches(fact, DOMAIN_KEYWORDS[domain])).length;
   const countDomainConnections = (domain: (typeof DOMAIN_KEYS)[number]) =>
-    signalNames.filter((name) => DOMAIN_KEYWORDS[domain].some((keyword) => knowledgeIntentMatches(name, keyword))).length;
+    connectionSignalNames.filter((name) => DOMAIN_KEYWORDS[domain].some((keyword) => knowledgeIntentMatches(name, keyword))).length;
 
   const activityScore = weighted([
     [company.industry ? 100 : 0, 30],
