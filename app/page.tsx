@@ -18,6 +18,7 @@ import {
 import { SiteHeader } from "@/components/marketing/SiteHeader";
 import { DiagnosticExperience } from "@/components/marketing/DiagnosticExperience";
 import { ProductPreview } from "@/components/marketing/ProductPreview";
+import { RadarChart } from "@/components/knowledge/RadarChart";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { APP_NAME, SITE_URL } from "@/lib/config";
 import { PLAN_DEFINITIONS } from "@/lib/billing/plans";
@@ -56,6 +57,25 @@ const MATURITY_LEVELS = [
   },
 ];
 
+const EXAMPLE_RADAR = [
+  { label: "Finance", score: 72 },
+  { label: "Compta", score: 58 },
+  { label: "Commercial", score: 84 },
+  { label: "Marketing", score: 51 },
+  { label: "RH", score: 34 },
+  { label: "Opérations", score: 76 },
+  { label: "Données", score: 68 },
+];
+
+const KNOWLEDGE_DOMAINS = [
+  ["Finance", "Marge, trésorerie, bilan, compte de résultat, créances et coûts."],
+  ["Commercial", "Pipeline, leads, relances, devis, cycle de vente et CRM."],
+  ["Marketing", "Acquisition, campagnes, budget, conversion, contenu et attribution."],
+  ["RH", "Organisation, recrutement, onboarding, charge et processus agrégés."],
+  ["Opérations", "Processus, production, support, réunions, délais et points de blocage."],
+  ["Comptabilité", "Facturation, clôture, rapprochements, reporting et outils comptables."],
+];
+
 const PAID_PLANS = [PLAN_DEFINITIONS.starter, PLAN_DEFINITIONS.pro, PLAN_DEFINITIONS.business];
 
 export default function HomePage() {
@@ -90,15 +110,15 @@ export default function HomePage() {
       <SiteHeader />
       <main className="flex-1">
         <section id="top" className="mx-auto max-w-6xl px-6 pb-16 pt-10 sm:pt-16">
-          <div className="mx-auto max-w-4xl text-center">
+          <div className="mx-auto max-w-5xl text-center">
             <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent">
               <Sparkles size={13} /> Le système opérationnel IA qui apprend votre entreprise
             </div>
-            <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-6xl">
-              Comprenez où votre entreprise perd du temps et de l&apos;argent. Puis agissez sur ce qui compte vraiment.
+            <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[3.45rem] lg:leading-[1.08]">
+              Pilotzia vous aide à repérer chaque jour les actions prioritaires pour diminuer vos coûts, identifier les points de blocage et développer votre CA.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
-              {APP_NAME} relie votre contexte, vos outils et vos données, structure les faits, pose les bonnes questions, priorise les opportunités et vous aide à exécuter les actions utiles avec contrôle.
+              Plus Pilotzia comprend votre entreprise, plus ses recommandations deviennent précises, utiles et adaptées à votre réalité.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium text-accent">
               {[
@@ -134,6 +154,47 @@ export default function HomePage() {
             {KNOWN_TOOLS.slice(0, 8).map((tool) => (
               <span key={tool} className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">{tool}</span>
             ))}
+          </div>
+        </section>
+
+        <section className="border-t border-border bg-card/60">
+          <div className="mx-auto grid max-w-6xl gap-10 px-6 py-16 sm:py-20 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Une vision par domaine</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">
+                Voyez ce que Pilotzia connaît — et ce qu&apos;il doit encore apprendre
+              </h2>
+              <p className="mt-3 max-w-2xl text-muted-foreground">
+                Connectez vos outils, complétez votre contexte et laissez Pilotzia transformer vos données en recommandations concrètes, automatisations utiles et plans d&apos;action mesurables.
+              </p>
+              <div className="mt-7 grid gap-3 sm:grid-cols-2">
+                {KNOWLEDGE_DOMAINS.map(([name, description]) => (
+                  <div key={name} className="rounded-xl border border-border bg-card p-4">
+                    <p className="text-sm font-semibold">{name}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-5 text-sm font-medium text-foreground">
+                Pilotzia ne cache pas son niveau de connaissance : il vous montre où ses conseils peuvent déjà être précis et quelles données amélioreraient le plus la suite.
+              </p>
+            </div>
+
+            <div className="rounded-2xl border border-accent/20 bg-accent-soft p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Cartographie des connaissances</p>
+                  <p className="mt-1 text-sm text-foreground/75">La couverture réelle évolue avec votre profil, vos connexions et vos faits structurés.</p>
+                </div>
+                <Gauge size={20} className="shrink-0 text-accent" />
+              </div>
+              <div className="mt-3 flex justify-center">
+                <RadarChart items={EXAMPLE_RADAR} size={350} showValues={false} ariaLabel="Exemple illustratif de couverture par domaine" />
+              </div>
+              <p className="mt-2 text-center text-xs leading-5 text-muted-foreground">
+                Exemple illustratif. Dans votre espace, chaque score est calculé à partir des informations et sources réellement disponibles.
+              </p>
+            </div>
           </div>
         </section>
 
