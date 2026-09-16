@@ -26,6 +26,9 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Knowledge tests
+        run: npm run test:knowledge
+
       - name: Lint
         run: npm run lint
 
