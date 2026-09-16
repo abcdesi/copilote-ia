@@ -160,6 +160,8 @@ export async function rebuildBusinessGraph(companyId: string) {
       country: company.country,
       sizeRange: company.sizeRange,
       employeeCount: company.employeeCount,
+      businessModel: company.businessModel,
+      customerProfile: company.customerProfile,
     },
   });
 
@@ -170,6 +172,15 @@ export async function rebuildBusinessGraph(companyId: string) {
     ["employee_count", company.employeeCount],
     ["has_goal", company.objectives],
     ["has_pain_point", company.painPoints],
+    ["business_model", company.businessModel],
+    ["customer_profile", company.customerProfile],
+    ["local_context", company.localContext],
+    ["finance_context", company.financeContext],
+    ["accounting_context", company.accountingContext],
+    ["sales_context", company.salesContext],
+    ["marketing_context", company.marketingContext],
+    ["hr_context", company.hrContext],
+    ["operations_context", company.operationsContext],
     ["automation_score", company.automationScore],
   ];
 
@@ -380,8 +391,22 @@ export async function getBusinessGraphSummary(companyId: string): Promise<Busine
   const freshThreshold = Date.now() - 24 * 60 * 60 * 1000;
   const connected = connections.filter((item) => item.status === "connected");
   const fresh = connected.filter((item) => item.lastSyncedAt && item.lastSyncedAt.getTime() >= freshThreshold);
-  const profileFields = [company.industry, company.country, company.sizeRange, company.objectives, company.painPoints];
-  const profileScore = profileFields.filter(Boolean).length * 6;
+  const profileFields = [
+    company.industry,
+    company.country,
+    company.sizeRange,
+    company.objectives,
+    company.painPoints,
+    company.businessModel,
+    company.customerProfile,
+    company.financeContext,
+    company.accountingContext,
+    company.salesContext,
+    company.marketingContext,
+    company.hrContext,
+    company.operationsContext,
+  ];
+  const profileScore = Math.round((profileFields.filter(Boolean).length / profileFields.length) * 30);
   const toolsOrGraphScore = entityCount > 1 ? 10 : 0;
   const connectedScore = connected.length > 0 ? 20 : 0;
   const graphCoverageScore = factCount >= 10 ? 15 : factCount >= 3 ? 8 : 0;

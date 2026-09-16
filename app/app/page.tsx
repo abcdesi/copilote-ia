@@ -1,10 +1,11 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
+import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { prisma } from "@/lib/db/client";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getTrialJourneyState } from "@/lib/billing/trial-journey";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
-import { ScoreGauge } from "@/components/ui/ScoreGauge";
+import { RadarChart } from "@/components/knowledge/RadarChart";
 import { Button } from "@/components/ui/Button";
 import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
@@ -15,7 +16,7 @@ import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 export default async function DashboardHomePage() {
   const company = await getCurrentCompany();
 
-  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
@@ -36,6 +37,7 @@ export default async function DashboardHomePage() {
       return null;
     }),
     getTrialJourneyState(company.id),
+    getCompanyKnowledgeCoverage(company.id),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -134,7 +136,7 @@ export default async function DashboardHomePage() {
   }
 
   return (
-    <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">
+    <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
       <MorningBrief firstName={firstName} items={briefItems} stats={briefStats} priority={briefPriority} />
 
       <TrialJourney
@@ -153,6 +155,32 @@ export default async function DashboardHomePage() {
         totalHoursPerMonth={identifiedHours}
       />
 
+      <Card className="border-accent/20 bg-accent-soft">
+        <CardContent className="grid gap-5 pt-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+          <div className="flex flex-col items-center text-center">
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Connaissance de votre entreprise</p>
+            <div className="mt-1 text-3xl font-semibold">{knowledge.overall}%</div>
+            <RadarChart items={knowledge.radar} size={265} />
+          </div>
+          <div>
+            <h2 className="text-lg font-semibold">Plus le contexte est riche, plus les conseils deviennent précis</h2>
+            <p className="mt-2 text-sm leading-6 text-foreground/75">{knowledge.message}</p>
+            {knowledge.nextSection && (
+              <div className="mt-4 rounded-xl border border-border bg-card/80 p-4">
+                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Prochaine information utile</p>
+                <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <p className="font-medium">{knowledge.nextSection.label} · {knowledge.nextSection.score}%</p>
+                    <p className="mt-1 text-xs text-muted-foreground">{knowledge.nextSection.description}</p>
+                  </div>
+                  <Button href={knowledge.nextSection.href} size="sm">Compléter</Button>
+                </div>
+              </div>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+
       {googleSnapshot && (
         <div className="grid gap-3 sm:grid-cols-3">
           <MiniOperationalStat label="Emails non lus · 7 jours" value={String(googleSnapshot.unreadInboxLast7Days)} />
@@ -163,15 +191,17 @@ export default async function DashboardHomePage() {
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
         <Card>
-          <CardContent className="pt-6 flex flex-col items-center text-center">
-            <ScoreGauge score={company.automationScore} size={140} />
-            <p className="mt-4 text-sm font-medium">Automation Score</p>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {company.automationScore >= 70
-                ? "Excellent niveau d'automatisation — continuez ainsi."
-                : company.automationScore >= 45
-                ? "Une bonne base. Encore des opportunités à saisir."
-                : "Beaucoup de temps peut encore être récupéré."}
+          <CardHeader>
+            <CardTitle>Automatisation actuelle</CardTitle>
+            <CardDescription>Un indicateur de maturité des automatisations, distinct de la qualité du contexte entreprise.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-end gap-2">
+              <span className="text-3xl font-semibold">{company.automationScore}</span>
+              <span className="pb-1 text-sm text-muted-foreground">/100</span>
+            </div>
+            <p className="mt-2 text-xs leading-5 text-muted-foreground">
+              Ce score ne mesure pas la qualité de vos données. La jauge ci-dessus indique ce que Pilotzia connaît réellement pour mieux vous conseiller.
             </p>
           </CardContent>
         </Card>
@@ -199,12 +229,11 @@ export default async function DashboardHomePage() {
             </CardContent>
           </Card>
         ) : (
-          <Card className="flex flex-col justify-center bg-accent-soft border-accent/20">
+          <Card className="flex flex-col justify-center border-accent/20 bg-accent-soft">
             <CardContent className="pt-6">
               <p className="text-sm font-semibold text-accent">Vous n&apos;avez pas encore d&apos;automatisation active</p>
               <p className="mt-1.5 text-sm text-foreground/80">
-                Installez votre première opportunité pour commencer à faire progresser votre score et gagner du temps
-                chaque mois.
+                Commencez par valider une opportunité pertinente ; Pilotzia pourra ensuite mesurer ce qui fonctionne réellement.
               </p>
               <div className="mt-4">
                 <Button href="/app/opportunities" size="sm">
@@ -218,10 +247,10 @@ export default async function DashboardHomePage() {
 
       {moreOpportunities.length > 0 && (
         <div>
-          <h2 className="text-sm font-semibold text-muted-foreground mb-3">Recommandations personnalisées</h2>
+          <h2 className="mb-3 text-sm font-semibold text-muted-foreground">Recommandations personnalisées</h2>
           <div className="grid gap-4 sm:grid-cols-2">
-            {moreOpportunities.map((o) => (
-              <OpportunityCard key={o.id} opportunity={o} />
+            {moreOpportunities.map((opportunity) => (
+              <OpportunityCard key={opportunity.id} opportunity={opportunity} />
             ))}
           </div>
         </div>
