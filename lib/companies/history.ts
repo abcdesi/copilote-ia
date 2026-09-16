@@ -11,34 +11,32 @@ export interface CompanyContextRevision {
   createdAt: string;
 }
 
-function parseRevision(id: string, metadata: string | null, createdAt: Date): CompanyContextRevision | null {
-  if (!metadata) return null;
+function parseValue(value: string | null) {
+  if (value == null) return null;
   try {
-    const parsed = JSON.parse(metadata) as Record<string, unknown>;
-    if (typeof parsed.section !== "string" || typeof parsed.field !== "string") return null;
-    return {
-      id,
-      section: parsed.section,
-      field: parsed.field,
-      previous: parsed.previous ?? null,
-      next: parsed.next ?? null,
-      source: typeof parsed.source === "string" ? parsed.source : "unknown",
-      effectiveAt: typeof parsed.effectiveAt === "string" ? parsed.effectiveAt : createdAt.toISOString(),
-      createdAt: createdAt.toISOString(),
-    };
+    return JSON.parse(value) as unknown;
   } catch {
-    return null;
+    return value;
   }
 }
 
 export async function getCompanyContextHistory(companyId: string, take = 120) {
-  const events = await prisma.event.findMany({
-    where: { companyId, type: "COMPANY_CONTEXT_REVISION" },
-    orderBy: { createdAt: "desc" },
+  const revisions = await prisma.companyContextRevision.findMany({
+    where: { companyId },
+    orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
     take,
-    select: { id: true, metadata: true, createdAt: true },
   });
-  return events.map((event) => parseRevision(event.id, event.metadata, event.createdAt)).filter((item): item is CompanyContextRevision => Boolean(item));
+
+  return revisions.map((revision) => ({
+    id: revision.id,
+    section: revision.section,
+    field: revision.field,
+    previous: parseValue(revision.previousValueJson),
+    next: parseValue(revision.nextValueJson),
+    source: revision.source,
+    effectiveAt: revision.effectiveAt.toISOString(),
+    createdAt: revision.createdAt.toISOString(),
+  } satisfies CompanyContextRevision));
 }
 
 function compactValue(value: unknown, max = 180) {
