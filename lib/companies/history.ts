@@ -20,14 +20,17 @@ function parseValue(value: string | null) {
   }
 }
 
-export async function getCompanyContextHistory(companyId: string, take = 120) {
-  const revisions = await prisma.companyContextRevision.findMany({
-    where: { companyId },
-    orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
-    take,
-  });
-
-  return revisions.map((revision) => ({
+function mapRevision(revision: {
+  id: string;
+  section: string;
+  field: string;
+  previousValueJson: string | null;
+  nextValueJson: string | null;
+  source: string;
+  effectiveAt: Date;
+  createdAt: Date;
+}): CompanyContextRevision {
+  return {
     id: revision.id,
     section: revision.section,
     field: revision.field,
@@ -36,7 +39,37 @@ export async function getCompanyContextHistory(companyId: string, take = 120) {
     source: revision.source,
     effectiveAt: revision.effectiveAt.toISOString(),
     createdAt: revision.createdAt.toISOString(),
-  } satisfies CompanyContextRevision));
+  };
+}
+
+export async function getCompanyContextHistory(companyId: string, take = 120) {
+  const revisions = await prisma.companyContextRevision.findMany({
+    where: { companyId },
+    orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
+    take,
+  });
+  return revisions.map(mapRevision);
+}
+
+export async function getCompanyContextHistoryPage(companyId: string, page = 1, pageSize = 40) {
+  const safePage = Math.max(1, page);
+  const safePageSize = Math.min(100, Math.max(10, pageSize));
+  const [revisions, total] = await Promise.all([
+    prisma.companyContextRevision.findMany({
+      where: { companyId },
+      orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
+      skip: (safePage - 1) * safePageSize,
+      take: safePageSize,
+    }),
+    prisma.companyContextRevision.count({ where: { companyId } }),
+  ]);
+  return {
+    items: revisions.map(mapRevision),
+    total,
+    page: safePage,
+    pageSize: safePageSize,
+    pageCount: Math.max(1, Math.ceil(total / safePageSize)),
+  };
 }
 
 function compactValue(value: unknown, max = 180) {
