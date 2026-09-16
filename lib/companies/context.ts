@@ -35,6 +35,10 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       where: {
         companyId,
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        NOT: {
+          sourceProvider: "pilotzia",
+          sourceRef: { startsWith: "graph:" },
+        },
       },
       orderBy: [{ confidence: "desc" }, { observedAt: "desc" }],
       take: 30,

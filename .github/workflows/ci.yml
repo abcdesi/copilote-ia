@@ -9,7 +9,21 @@ on:
 jobs:
   validate:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: pilotzia
+          POSTGRES_PASSWORD: pilotzia
+          POSTGRES_DB: pilotzia
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U pilotzia -d pilotzia"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
     env:
       DATABASE_URL: postgresql://pilotzia:pilotzia@localhost:5432/pilotzia
       AUTH_SECRET: ci-only-not-for-production
@@ -25,6 +39,15 @@ jobs:
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Apply database migrations
+        run: npm run db:migrate
+
+      - name: Knowledge tests
+        run: npm run test:knowledge
+
+      - name: Persistence tests
+        run: npm run test:persistence
 
       - name: Lint
         run: npm run lint

@@ -2,8 +2,10 @@ import Link from "next/link";
 import { ArrowRight, Brain, CheckCircle2, Database, Route, Sparkles, Target } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { getCompanyKnowledgeCoverage, type KnowledgeGuidanceStep } from "@/lib/companies/knowledge-coverage";
+import { buildCompanyProfileSummary } from "@/lib/companies/profile-summary";
 import { updateCompanyAction } from "@/lib/companies/actions";
 import { RadarChart } from "@/components/knowledge/RadarChart";
+import { CompanyProfileSummary } from "@/components/knowledge/CompanyProfileSummary";
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
@@ -13,6 +15,7 @@ const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 export default async function CompanyPage() {
   const company = await getCurrentCompany();
   const coverage = await getCompanyKnowledgeCoverage(company.id);
+  const profileSummary = buildCompanyProfileSummary(company);
 
   return (
     <div className="mx-auto max-w-6xl space-y-6 px-4 py-8 sm:px-6">
@@ -124,6 +127,8 @@ export default async function CompanyPage() {
           </div>
         )}
       </section>
+
+      <CompanyProfileSummary items={profileSummary} sections={coverage.sections} updatedAt={company.updatedAt} />
 
       <div className="rounded-2xl border border-border bg-card p-5">
         <div className="flex items-start gap-3">
