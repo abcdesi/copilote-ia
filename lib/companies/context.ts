@@ -3,6 +3,7 @@ import type { ChatContext } from "@/lib/ai/types";
 import { IMPACT_RANK } from "@/lib/format";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
+import { extractBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 
 function parseJsonValue(value: string | null) {
@@ -35,10 +36,16 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       where: {
         companyId,
         OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-        NOT: {
-          sourceProvider: "pilotzia",
-          sourceRef: { startsWith: "graph:" },
-        },
+        NOT: [
+          {
+            sourceProvider: "pilotzia",
+            sourceRef: { startsWith: "graph:" },
+          },
+          {
+            sourceProvider: "pilotzia-memory",
+            predicate: "business_rhythm",
+          },
+        ],
       },
       orderBy: [{ confidence: "desc" }, { observedAt: "desc" }],
       take: 30,
@@ -60,6 +67,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   );
 
   const active = automations.filter((a) => a.status === "active");
+  const businessRhythms = extractBusinessRhythms(company);
 
   return {
     companyId: company.id,
@@ -98,6 +106,17 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
         })),
       })),
     },
+    businessRhythms: businessRhythms.map((rhythm) => ({
+      key: rhythm.key,
+      domain: rhythm.domain,
+      title: rhythm.title,
+      cadence: rhythm.cadence,
+      months: rhythm.months,
+      nextExpectedAt: rhythm.nextExpectedAt,
+      leadDays: rhythm.leadDays,
+      confidence: rhythm.confidence,
+      summary: rhythm.summary,
+    })),
     tools: company.tools.map((t) => t.name),
     connections: connections.map((connection) => ({
       provider: connection.provider,
