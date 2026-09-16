@@ -49,7 +49,12 @@ export function compactExpertEvidence(context: ChatContext) {
       sizeRange: context.sizeRange ?? null,
       objectives: context.objectives ?? null,
       painPoints: context.painPoints ?? null,
+      businessModel: context.businessModel ?? null,
+      customerProfile: context.customerProfile ?? null,
+      localContext: context.localContext ?? null,
     },
+    domainContexts: context.domainContexts ?? null,
+    knowledgeCoverage: context.knowledgeCoverage ?? null,
     tools: context.tools,
     connectedSources: connected.map((item) => ({
       provider: item.provider,
@@ -69,6 +74,10 @@ export function compactExpertEvidence(context: ChatContext) {
 
 export function expertOperatingDoctrine(messages: ChatMessageInput[], context: ChatContext) {
   const intent = conversationIntent(messages, context);
+  const lowestCoverage = context.knowledgeCoverage?.sections
+    .filter((section) => section.score < 60)
+    .sort((a, b) => a.score - b.score)[0];
+
   return `MODE DIRECTEUR/CONSULTANT EXPERT — INTENTION ACTUELLE: ${intent}
 
 Tu réponds comme un excellent humain qui connaît le produit Pilotzia et qui conseille un dirigeant réel.
@@ -84,6 +93,8 @@ PRINCIPES NON NÉGOCIABLES
 8. Adapte la profondeur au niveau de preuve : données connectées > faits structurés > déclarations utilisateur > benchmark général > hypothèse. Ne mélange pas ces niveaux.
 9. Parle le langage d'un dirigeant : revenu, marge, trésorerie, délai, charge, risque, qualité, capacité, ROI. Évite le jargon IA inutile.
 10. Reste dans le contexte Pilotzia : comprendre l'entreprise, diagnostiquer, prioriser, proposer des actions, automatiser quand pertinent, puis mesurer le résultat.
+11. Utilise les contextes Finance, Comptabilité, Commercial, Marketing, RH et Opérations lorsqu'ils existent. N'invente jamais un domaine absent.
+12. Si le manque de contexte empêche une recommandation sérieuse, demande en priorité l'information du domaine le moins couvert${lowestCoverage ? ` — actuellement ${lowestCoverage.label} (${lowestCoverage.score}%)` : ""}, mais seulement si elle est pertinente pour la question posée.
 
 STYLE
 - Ton calme, expérimenté, direct, humain.
