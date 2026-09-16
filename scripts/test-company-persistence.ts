@@ -102,9 +102,36 @@ async function main() {
     assert.ok(summary.every((item) => item.filled));
     assert.match(summary.find((item) => item.key === "hr")?.summary ?? "", /rh1/);
 
+    // Simulation d'une modification depuis "Mon entreprise" : la valeur sauvegardée,
+    // son fait dérivé, le résumé affiché et le contexte du copilote doivent tous changer ensemble.
+    const updatedHr = detailed("rhmodifie");
+    await prisma.company.update({ where: { id: company.id }, data: { hrContext: updatedHr } });
+    await rebuildBusinessGraph(company.id);
+
+    const modified = await prisma.company.findUniqueOrThrow({
+      where: { id: company.id },
+      include: { tools: true },
+    });
+    assert.match(modified.hrContext ?? "", /rhmodifie1/);
+
+    const modifiedHrFact = await prisma.businessFact.findFirstOrThrow({
+      where: { companyId: company.id, sourceRef: "graph:company:hr_context" },
+      select: { valueJson: true, provenanceJson: true },
+    });
+    assert.match(modifiedHrFact.valueJson ?? "", /rhmodifie1/);
+    assert.match(modifiedHrFact.provenanceJson ?? "", /company_profile/);
+
+    const modifiedSummary = buildCompanyProfileSummary(modified);
+    assert.match(modifiedSummary.find((item) => item.key === "hr")?.summary ?? "", /rhmodifie1/);
+
+    const modifiedChatContext = await buildChatContext(company.id);
+    assert.match(modifiedChatContext.domainContexts.hr ?? "", /rhmodifie1/);
+    assert.equal(modifiedChatContext.evidence.some((fact) => fact.predicate === "hr_context"), false);
+
     console.log("✓ Persistance Company validée pour toutes les rubriques métier");
     console.log(`✓ ${profileFacts.length} faits déclaratifs reconstruits avec provenance dans le Business Graph`);
     console.log("✓ Le copilote distingue les déclarations du dirigeant des preuves indépendantes");
+    console.log("✓ Modification RH propagée au dossier, au résumé, au Business Graph et au copilote");
     console.log(`✓ Score après saisie complète sans connexion : ${coverage.overall}%`);
   } finally {
     if (userId) {
