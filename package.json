@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:knowledge": "tsx scripts/test-company-knowledge.ts",
+    "test:knowledge": "tsx scripts/test-company-knowledge.ts && tsx scripts/test-context-intelligence.ts",
     "test:persistence": "tsx scripts/test-company-persistence.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
