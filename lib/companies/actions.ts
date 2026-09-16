@@ -99,57 +99,43 @@ function changedSections(previous: Record<string, unknown>, next: CompanyUpdate)
 }
 
 function serializeHistoryValue(value: unknown) {
-  if (value === undefined) return null;
-  return value;
+  if (value === undefined || value === null) return null;
+  return JSON.stringify(value);
 }
 
 async function recordContextHistory(
-  userId: string,
   companyId: string,
   previous: Record<string, unknown>,
   next: CompanyUpdate,
   changedFields: Array<keyof CompanyUpdate>
 ) {
   if (!changedFields.length) return;
-  const effectiveAt = new Date().toISOString();
-  await prisma.event.createMany({
+  const effectiveAt = new Date();
+  await prisma.companyContextRevision.createMany({
     data: changedFields.map((field) => ({
-      type: "COMPANY_CONTEXT_REVISION",
-      userId,
       companyId,
-      metadata: JSON.stringify({
-        v: 1,
-        section: FIELD_SECTION[field],
-        field,
-        previous: serializeHistoryValue(previous[field as string]),
-        next: serializeHistoryValue(next[field]),
-        source: "company_profile",
-        effectiveAt,
-      }),
+      section: FIELD_SECTION[field],
+      field,
+      previousValueJson: serializeHistoryValue(previous[field as string]),
+      nextValueJson: serializeHistoryValue(next[field]),
+      source: "company_profile",
+      effectiveAt,
     })),
   });
 }
 
-async function recordToolHistory(
-  userId: string,
-  companyId: string,
-  action: "added" | "removed",
-  tool: string
-) {
-  await prisma.event.create({
+async function recordToolHistory(companyId: string, action: "added" | "removed", tool: string) {
+  const previousValueJson = action === "removed" ? JSON.stringify(tool) : null;
+  const nextValueJson = action === "added" ? JSON.stringify(tool) : null;
+  await prisma.companyContextRevision.create({
     data: {
-      type: "COMPANY_CONTEXT_REVISION",
-      userId,
       companyId,
-      metadata: JSON.stringify({
-        v: 1,
-        section: "applications",
-        field: "tool",
-        previous: action === "removed" ? tool : null,
-        next: action === "added" ? tool : null,
-        source: "company_tools",
-        effectiveAt: new Date().toISOString(),
-      }),
+      section: "applications",
+      field: "tool",
+      previousValueJson,
+      nextValueJson,
+      source: "company_tools",
+      effectiveAt: new Date(),
     },
   });
 }
@@ -195,7 +181,7 @@ export async function updateCompanyAction(formData: FormData) {
   const previous = company as unknown as Record<string, unknown>;
   const changes = changedSections(previous, parsed.data);
   await prisma.company.update({ where: { id: company.id }, data: parsed.data });
-  await recordContextHistory(session.user.id, company.id, previous, parsed.data, changes.changedFields);
+  await recordContextHistory(company.id, previous, parsed.data, changes.changedFields);
   await trackContextChange(session.user.id, company.id, changes.sections, changes.changedFields.length);
   await refreshGraph(company.id);
   revalidatePath("/app/company");
@@ -217,7 +203,7 @@ export async function addToolAction(formData: FormData) {
     update: {},
     create: { companyId: company.id, name, detected: false },
   });
-  if (!existing) await recordToolHistory(session.user.id, company.id, "added", name);
+  if (!existing) await recordToolHistory(company.id, "added", name);
   await trackContextChange(session.user.id, company.id, ["applications"], 1);
   await refreshGraph(company.id);
   revalidatePath("/app/tools");
@@ -236,7 +222,7 @@ export async function removeToolAction(formData: FormData) {
   const tool = await prisma.companyTool.findFirst({ where: { id: toolId, companyId: company.id } });
   const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
   if (deleted.count > 0) {
-    if (tool) await recordToolHistory(session.user.id, company.id, "removed", tool.name);
+    if (tool) await recordToolHistory(company.id, "removed", tool.name);
     await trackContextChange(session.user.id, company.id, ["applications"], 1);
   }
   await refreshGraph(company.id);
