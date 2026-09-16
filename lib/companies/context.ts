@@ -70,6 +70,14 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
 
   const active = automations.filter((a) => a.status === "active");
   const businessRhythms = extractBusinessRhythms(company);
+  const historicalEvidence = contextHistory.slice(0, 40).map((revision) => ({
+    subject: company.name,
+    predicate: `history:${revision.section}:${revision.field}`,
+    value: { previous: revision.previous, next: revision.next },
+    source: "pilotzia-history",
+    confidence: 0.82,
+    observedAt: revision.effectiveAt,
+  }));
 
   return {
     companyId: company.id,
@@ -142,14 +150,17 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       freshSourceCount: businessGraph.freshSourceCount,
       entityTypes: businessGraph.entityTypes,
     },
-    evidence: graphFacts.map((fact) => ({
-      subject: fact.subject.name,
-      predicate: fact.predicate,
-      value: fact.object?.name ?? parseJsonValue(fact.valueJson),
-      source: fact.sourceProvider,
-      confidence: fact.confidence,
-      observedAt: fact.observedAt.toISOString(),
-    })),
+    evidence: [
+      ...graphFacts.map((fact) => ({
+        subject: fact.subject.name,
+        predicate: fact.predicate,
+        value: fact.object?.name ?? parseJsonValue(fact.valueJson),
+        source: fact.sourceProvider,
+        confidence: fact.confidence,
+        observedAt: fact.observedAt.toISOString(),
+      })),
+      ...historicalEvidence,
+    ],
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,
