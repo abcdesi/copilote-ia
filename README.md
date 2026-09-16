@@ -38,9 +38,19 @@ Pour les connexions OAuth réelles :
 - `ENCRYPTION_KEY` — 32 octets en base64, utilisée pour chiffrer les tokens au repos
 - `OAUTH_STATE_SECRET` — recommandé pour signer les états OAuth
 
-Pour le copilote IA réel :
+### Anthropic / copilote IA
 
-- `ANTHROPIC_API_KEY`
+Pour activer le copilote IA réel, une seule clé Anthropic suffit. Elle donne accès au même compte API pour les Messages, les modèles et l'analyse de documents utilisée par Pilotzia.
+
+Variables recommandées en production :
+
+- `ANTHROPIC_API_KEY` — obligatoire
+- `ANTHROPIC_MODEL_FAST` — optionnel ; par défaut `claude-sonnet-5`
+- `ANTHROPIC_MODEL_SMART` — optionnel ; par défaut `claude-sonnet-5`
+
+Au lancement, utiliser Sonnet 5 pour les deux voies privilégie la qualité. Une voie moins coûteuse ne doit être activée qu'après comparaison sur un jeu de conversations Pilotzia réelles afin de vérifier que la qualité de conseil ne baisse pas.
+
+Après configuration, un administrateur Pilotzia peut ouvrir `/api/admin/ai-health`. Cette route vérifie la présence de la clé et la disponibilité des modèles configurés via l'API Models Anthropic, sans exposer la clé et sans consommer de génération de texte.
 
 Pour Gmail + Google Calendar :
 
