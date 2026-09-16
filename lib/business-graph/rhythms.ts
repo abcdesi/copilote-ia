@@ -153,9 +153,14 @@ function cadenceInText(value: string, fallback: BusinessRhythmCadence, hasMonths
   if (/chaque semaine|hebdo|hebdomadaire/.test(text)) return "weekly";
   if (/chaque mois|mensuel|mensuelle|tous les mois/.test(text)) return "monthly";
   if (/trimestr|chaque trimestre/.test(text)) return "quarterly";
-  if (/annuel|annuelle|chaque an|tous les ans|une fois par an/.test(text)) return "annual";
+  if (/annuel|annuelle|chaque an|tous les ans|une fois par an|par an\b/.test(text)) return "annual";
   if (/saison|periode|pic|haute saison/.test(text) || (fallback === "seasonal" && hasMonths)) return "seasonal";
   return fallback;
+}
+
+function disabledRhythmSentence(value: string) {
+  const text = normalize(value);
+  return /\b(gel|gele|geles|suspend|suspendu|suspendue|aucun|aucune|arrete|stoppe)\b/.test(text) || /\bpas de\b/.test(text);
 }
 
 function nextForCadence(cadence: BusinessRhythmCadence, months: number[], now: Date) {
@@ -210,13 +215,15 @@ export function extractBusinessRhythms(company: BusinessRhythmCompanyInput, now 
       if (typeof raw !== "string" || !raw.trim()) continue;
 
       const sentences = splitSentences(raw);
-      const matching = sentences.find((sentence) => rule.patterns.some((pattern) => pattern.test(normalize(sentence))));
+      const matching = sentences.find(
+        (sentence) => !disabledRhythmSentence(sentence) && rule.patterns.some((pattern) => pattern.test(normalize(sentence)))
+      );
       if (!matching) continue;
 
       const months = monthsInText(matching);
       const cadence = cadenceInText(matching, rule.defaultCadence, months.length > 0);
       const next = nextForCadence(cadence, months, now);
-      const explicitCadence = /(hebdo|mensuel|trimestr|annuel|chaque|tous les|saison|periode)/i.test(normalize(matching));
+      const explicitCadence = /(hebdo|mensuel|trimestr|annuel|chaque|tous les|par an|saison|periode)/i.test(normalize(matching));
       const confidence = Math.min(0.92, 0.66 + (explicitCadence ? 0.1 : 0) + (months.length ? 0.1 : 0));
       const period = compactMonths(months);
 
