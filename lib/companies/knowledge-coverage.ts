@@ -2,10 +2,6 @@ import { prisma } from "@/lib/db/client";
 import {
   computeCompanyKnowledgeCoverage,
   type CompanyKnowledgeCoverage,
-  type KnowledgeGuidanceStep,
-  type KnowledgeMilestone,
-  type KnowledgeSection,
-  type KnowledgeSectionKey,
 } from "@/lib/companies/knowledge-model";
 
 export type {
