@@ -1,7 +1,7 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { AlertTriangle, ArrowRight, CheckCircle2, FileText, Loader2, ShieldCheck, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, CheckCircle2, FileText, Loader2, ShieldCheck, Sparkles, Target } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
 interface Ratio {
@@ -37,8 +37,21 @@ interface AuditResponse {
     missingData: string[];
   };
   priorities: Priority[];
+  context?: { businessGraphEnriched: boolean; factsWritten: number };
   privacy: { rawPdfStored: boolean; note: string };
 }
+
+interface AuditErrorPayload {
+  error?: string;
+  code?: string;
+  retryable?: boolean;
+  creditsRefunded?: boolean;
+  adminHealthHref?: string;
+  href?: string;
+  usageLimited?: boolean;
+}
+
+const MAX_PDF_BYTES = 4 * 1024 * 1024;
 
 function ratioValue(ratio: Ratio) {
   if (ratio.unit === "percent") return `${ratio.value.toFixed(1)} %`;
@@ -46,17 +59,36 @@ function ratioValue(ratio: Ratio) {
   return ratio.value.toFixed(2);
 }
 
+function parseErrorPayload(raw: string): AuditErrorPayload {
+  if (!raw) return {};
+  try {
+    return JSON.parse(raw) as AuditErrorPayload;
+  } catch {
+    return {};
+  }
+}
+
 export function FinancialAuditUpload() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [error, setError] = useState("");
+  const [errorMeta, setErrorMeta] = useState<AuditErrorPayload | null>(null);
   const [result, setResult] = useState<AuditResponse | null>(null);
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!file || status === "loading") return;
+
+    if (file.size > MAX_PDF_BYTES) {
+      setError("Ce PDF dépasse 4 Mo. Réduisez sa taille avant de lancer l'audit.");
+      setErrorMeta({ code: "upload_too_large", retryable: false, creditsRefunded: true });
+      setStatus("error");
+      return;
+    }
+
     setStatus("loading");
     setError("");
+    setErrorMeta(null);
     setResult(null);
 
     const body = new FormData();
@@ -64,12 +96,25 @@ export function FinancialAuditUpload() {
 
     try {
       const response = await fetch("/api/finance/analyze", { method: "POST", body });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data?.error || "Analyse impossible.");
-      setResult(data as AuditResponse);
+      const raw = await response.text();
+      const data = parseErrorPayload(raw);
+
+      if (!response.ok) {
+        const fallback = response.status === 413
+          ? "Le fichier est trop volumineux pour être envoyé. Utilisez un PDF de 4 Mo maximum."
+          : "L'analyse n'a pas pu aboutir.";
+        setError(data.error || fallback);
+        setErrorMeta(data);
+        setStatus("error");
+        return;
+      }
+
+      const parsed = JSON.parse(raw) as AuditResponse;
+      setResult(parsed);
       setStatus("done");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Analyse impossible.");
+      setErrorMeta({ retryable: true, creditsRefunded: true });
       setStatus("error");
     }
   }
@@ -82,7 +127,7 @@ export function FinancialAuditUpload() {
           <div>
             <h2 className="font-semibold">Importer un bilan ou un compte de résultat</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              PDF uniquement, 8 Mo maximum. Pilotzia extrait les postes visibles, calcule des ratios, signale les données manquantes et transforme les signaux en questions et priorités opérationnelles.
+              PDF uniquement, 4 Mo maximum. Pilotzia extrait les postes visibles, calcule des ratios, signale les données manquantes et transforme les signaux en questions et priorités opérationnelles.
             </p>
           </div>
         </div>
@@ -93,10 +138,17 @@ export function FinancialAuditUpload() {
             accept="application/pdf,.pdf"
             className="sr-only"
             onChange={(event) => {
-              setFile(event.target.files?.[0] ?? null);
+              const selected = event.target.files?.[0] ?? null;
+              setFile(selected);
               setStatus("idle");
               setError("");
+              setErrorMeta(null);
               setResult(null);
+              if (selected && selected.size > MAX_PDF_BYTES) {
+                setError("Ce PDF dépasse 4 Mo. Réduisez sa taille avant de lancer l'audit.");
+                setErrorMeta({ code: "upload_too_large", retryable: false, creditsRefunded: true });
+                setStatus("error");
+              }
             }}
           />
           <p className="text-sm font-medium">{file ? file.name : "Choisir un document PDF"}</p>
@@ -104,13 +156,34 @@ export function FinancialAuditUpload() {
         </label>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
-          <p className="text-xs text-muted-foreground">Une analyse consomme 15 crédits d'usage intelligent.</p>
-          <Button type="submit" disabled={!file || status === "loading"}>
+          <p className="text-xs text-muted-foreground">Une analyse réussie consomme 15 crédits d'usage intelligent.</p>
+          <Button type="submit" disabled={!file || status === "loading" || Boolean(file && file.size > MAX_PDF_BYTES)}>
             {status === "loading" ? <Loader2 size={16} className="animate-spin" /> : <Sparkles size={16} />}
             {status === "loading" ? "Analyse en cours…" : "Lancer l'audit"}
           </Button>
         </div>
-        {status === "error" && <p className="mt-3 text-sm text-danger">{error}</p>}
+
+        {status === "error" && (
+          <div className="mt-4 rounded-xl border border-danger/20 bg-danger/5 p-4">
+            <div className="flex items-start gap-2">
+              <AlertTriangle size={17} className="mt-0.5 shrink-0 text-danger" />
+              <div>
+                <p className="text-sm font-medium text-danger">{error}</p>
+                {errorMeta?.creditsRefunded && (
+                  <p className="mt-1 text-xs text-muted-foreground">Aucun crédit n'est conservé pour cette analyse échouée.</p>
+                )}
+                {errorMeta?.retryable && (
+                  <p className="mt-1 text-xs text-muted-foreground">Vous pouvez relancer l'analyse sans modifier votre document.</p>
+                )}
+                {errorMeta?.adminHealthHref && (
+                  <div className="mt-3">
+                    <Button href={errorMeta.adminHealthHref} variant="outline" size="sm">Vérifier le moteur IA</Button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </form>
 
       {status === "done" && result && (
@@ -160,6 +233,11 @@ export function FinancialAuditUpload() {
                   )}
                 </div>
               ))}
+              {result.priorities.length === 0 && (
+                <div className="rounded-2xl border border-border bg-card p-5 text-sm text-muted-foreground">
+                  Aucune priorité fiable n'est déduite de ce document seul. Les questions ci-dessous indiquent les données à compléter avant de conclure.
+                </div>
+              )}
             </div>
           </section>
 
