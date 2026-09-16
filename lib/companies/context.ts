@@ -3,6 +3,7 @@ import type { ChatContext } from "@/lib/ai/types";
 import { IMPACT_RANK } from "@/lib/format";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
+import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 
 function parseJsonValue(value: string | null) {
   if (!value) return null;
@@ -17,7 +18,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
   if (!graphExists) await rebuildBusinessGraph(companyId);
 
-  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts] = await Promise.all([
+  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -47,6 +48,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
         object: { select: { name: true } },
       },
     }),
+    getCompanyKnowledgeCoverage(companyId),
   ]);
 
   opportunities.sort(
@@ -63,6 +65,26 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     sizeRange: company.sizeRange,
     objectives: company.objectives,
     painPoints: company.painPoints,
+    businessModel: company.businessModel,
+    customerProfile: company.customerProfile,
+    localContext: company.localContext,
+    domainContexts: {
+      finance: company.financeContext,
+      accounting: company.accountingContext,
+      sales: company.salesContext,
+      marketing: company.marketingContext,
+      hr: company.hrContext,
+      operations: company.operationsContext,
+    },
+    knowledgeCoverage: {
+      overall: knowledgeCoverage.overall,
+      level: knowledgeCoverage.level,
+      sections: knowledgeCoverage.sections.map((section) => ({
+        key: section.key,
+        label: section.label,
+        score: section.score,
+      })),
+    },
     tools: company.tools.map((t) => t.name),
     connections: connections.map((connection) => ({
       provider: connection.provider,
