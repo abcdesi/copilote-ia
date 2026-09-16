@@ -5,15 +5,22 @@ import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { track } from "@/lib/analytics/track";
+import { EVENTS } from "@/lib/analytics/events";
+import type { KnowledgeSectionKey } from "@/lib/companies/knowledge-model";
 
-const optionalText = (max = 4000) => z.string().max(max).optional();
+const optionalText = (max = 4000) => z.string().max(max).nullable().optional();
+const optionalEmployeeCount = z.preprocess(
+  (value) => (value === "" || value == null ? null : value),
+  z.coerce.number().int().positive().nullable().optional()
+);
 
 const schema = z.object({
   name: z.string().min(1).max(120),
   industry: optionalText(120),
   country: optionalText(80),
   sizeRange: optionalText(20),
-  employeeCount: z.coerce.number().int().positive().optional(),
+  employeeCount: optionalEmployeeCount,
   objectives: optionalText(),
   painPoints: optionalText(),
   businessModel: optionalText(),
@@ -27,6 +34,24 @@ const schema = z.object({
   operationsContext: optionalText(),
 });
 
+type CompanyUpdate = z.infer<typeof schema>;
+type ProfileField = Exclude<keyof CompanyUpdate, "name">;
+
+const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
+  activity: ["industry", "businessModel", "customerProfile"],
+  team: ["sizeRange", "employeeCount"],
+  objectives: ["objectives"],
+  painPoints: ["painPoints"],
+  applications: [],
+  local: ["country", "localContext"],
+  finance: ["financeContext"],
+  accounting: ["accountingContext"],
+  sales: ["salesContext"],
+  marketing: ["marketingContext"],
+  hr: ["hrContext"],
+  operations: ["operationsContext"],
+};
+
 async function refreshGraph(companyId: string) {
   await rebuildBusinessGraph(companyId);
   revalidatePath("/app/context");
@@ -34,7 +59,34 @@ async function refreshGraph(companyId: string) {
 
 function value(formData: FormData, name: string) {
   const raw = String(formData.get(name) ?? "").trim();
-  return raw || undefined;
+  return raw || null;
+}
+
+function normalizedComparable(value: unknown) {
+  if (value == null || value === "") return null;
+  return value;
+}
+
+function changedSections(previous: Record<string, unknown>, next: CompanyUpdate) {
+  const changedFields = (Object.keys(next) as Array<keyof CompanyUpdate>).filter(
+    (field) => normalizedComparable(previous[field as string]) !== normalizedComparable(next[field])
+  );
+  const sections = (Object.keys(SECTION_FIELDS) as KnowledgeSectionKey[]).filter((section) =>
+    SECTION_FIELDS[section].some((field) => changedFields.includes(field))
+  );
+  return { changedFields, sections };
+}
+
+async function trackContextChange(userId: string, companyId: string, sections: KnowledgeSectionKey[], fieldCount: number) {
+  if (!sections.length) return;
+  await track(EVENTS.COMPANY_CONTEXT_UPDATED, {
+    userId,
+    companyId,
+    metadata: {
+      sections: sections.join(","),
+      fieldCount,
+    },
+  });
 }
 
 export async function updateCompanyAction(formData: FormData) {
@@ -45,7 +97,7 @@ export async function updateCompanyAction(formData: FormData) {
     industry: value(formData, "industry"),
     country: value(formData, "country"),
     sizeRange: value(formData, "sizeRange"),
-    employeeCount: value(formData, "employeeCount"),
+    employeeCount: String(formData.get("employeeCount") ?? "").trim(),
     objectives: value(formData, "objectives"),
     painPoints: value(formData, "painPoints"),
     businessModel: value(formData, "businessModel"),
@@ -63,7 +115,9 @@ export async function updateCompanyAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
+  const changes = changedSections(company as unknown as Record<string, unknown>, parsed.data);
   await prisma.company.update({ where: { id: company.id }, data: parsed.data });
+  await trackContextChange(session.user.id, company.id, changes.sections, changes.changedFields.length);
   await refreshGraph(company.id);
   revalidatePath("/app/company");
   revalidatePath("/app");
@@ -83,6 +137,7 @@ export async function addToolAction(formData: FormData) {
     update: {},
     create: { companyId: company.id, name, detected: false },
   });
+  await trackContextChange(session.user.id, company.id, ["applications"], 1);
   await refreshGraph(company.id);
   revalidatePath("/app/tools");
   revalidatePath("/app/company");
@@ -97,7 +152,8 @@ export async function removeToolAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
-  await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
+  const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
+  if (deleted.count > 0) await trackContextChange(session.user.id, company.id, ["applications"], 1);
   await refreshGraph(company.id);
   revalidatePath("/app/tools");
   revalidatePath("/app/company");
