@@ -115,7 +115,7 @@ export default function HomePage() {
               <Sparkles size={13} /> Le système opérationnel IA qui apprend votre entreprise
             </div>
             <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[3.45rem] lg:leading-[1.08]">
-              Pilotzia vous aide à repérer chaque jour les actions prioritaires pour diminuer vos coûts, identifier les points de blocage et développer votre CA.
+              Pilotzia repère où agir pour réduire vos coûts et développer votre CA.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
               Plus Pilotzia comprend votre entreprise, plus ses recommandations deviennent précises, utiles et adaptées à votre réalité.
