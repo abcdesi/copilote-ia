@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { getCurrentCompany } from "@/lib/companies/current";
+import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { auth } from "@/lib/auth";
 import { isPilotziaAdmin } from "@/lib/admin/access";
 import { Sidebar } from "@/components/dashboard/Sidebar";
@@ -12,11 +13,14 @@ export const metadata: Metadata = {
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const [company, session] = await Promise.all([getCurrentCompany(), auth()]);
-  const admin = isPilotziaAdmin(session?.user?.email);
+  const [admin, knowledge] = await Promise.all([
+    Promise.resolve(isPilotziaAdmin(session?.user?.email)),
+    getCompanyKnowledgeCoverage(company.id),
+  ]);
 
   return (
     <div className="flex min-h-screen">
-      <Sidebar companyName={company.name} isAdmin={admin} />
+      <Sidebar companyName={company.name} knowledgeScore={knowledge.overall} isAdmin={admin} />
       <div className="flex min-h-screen flex-1 flex-col">
         <MobileNav isAdmin={admin} />
         <CopilotBar />
