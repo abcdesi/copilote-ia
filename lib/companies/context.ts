@@ -5,6 +5,7 @@ import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
 import { extractBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
+import { getCompanyContextHistory } from "@/lib/companies/history";
 
 function parseJsonValue(value: string | null) {
   if (!value) return null;
@@ -19,7 +20,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
   if (!graphExists) await rebuildBusinessGraph(companyId);
 
-  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage] = await Promise.all([
+  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage, contextHistory] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -60,6 +61,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       },
     }),
     getCompanyKnowledgeCoverage(companyId),
+    getCompanyContextHistory(companyId, 160),
   ]);
 
   opportunities.sort(
@@ -68,6 +70,14 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
 
   const active = automations.filter((a) => a.status === "active");
   const businessRhythms = extractBusinessRhythms(company);
+  const historicalEvidence = contextHistory.slice(0, 40).map((revision) => ({
+    subject: company.name,
+    predicate: `history:${revision.section}:${revision.field}`,
+    value: { previous: revision.previous, next: revision.next },
+    source: "pilotzia-history",
+    confidence: 0.82,
+    observedAt: revision.effectiveAt,
+  }));
 
   return {
     companyId: company.id,
@@ -117,6 +127,13 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       confidence: rhythm.confidence,
       summary: rhythm.summary,
     })),
+    contextHistory: contextHistory.map((revision) => ({
+      section: revision.section,
+      field: revision.field,
+      previous: revision.previous,
+      next: revision.next,
+      effectiveAt: revision.effectiveAt,
+    })),
     tools: company.tools.map((t) => t.name),
     connections: connections.map((connection) => ({
       provider: connection.provider,
@@ -133,14 +150,17 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       freshSourceCount: businessGraph.freshSourceCount,
       entityTypes: businessGraph.entityTypes,
     },
-    evidence: graphFacts.map((fact) => ({
-      subject: fact.subject.name,
-      predicate: fact.predicate,
-      value: fact.object?.name ?? parseJsonValue(fact.valueJson),
-      source: fact.sourceProvider,
-      confidence: fact.confidence,
-      observedAt: fact.observedAt.toISOString(),
-    })),
+    evidence: [
+      ...graphFacts.map((fact) => ({
+        subject: fact.subject.name,
+        predicate: fact.predicate,
+        value: fact.object?.name ?? parseJsonValue(fact.valueJson),
+        source: fact.sourceProvider,
+        confidence: fact.confidence,
+        observedAt: fact.observedAt.toISOString(),
+      })),
+      ...historicalEvidence,
+    ],
     automations: automations.map((a) => ({
       name: a.name,
       status: a.status,

@@ -63,6 +63,13 @@ export interface ChatContext {
     confidence: number;
     summary: string;
   }>;
+  contextHistory?: Array<{
+    section: string;
+    field: string;
+    previous: unknown;
+    next: unknown;
+    effectiveAt: string;
+  }>;
   tools: string[];
   connections: {
     provider: string;
