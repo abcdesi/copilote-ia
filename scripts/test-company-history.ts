@@ -7,6 +7,7 @@ import { buildChatContext } from "../lib/companies/context";
 async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let userId: string | null = null;
+  let companyId: string | null = null;
 
   try {
     const user = await prisma.user.create({
@@ -30,6 +31,7 @@ async function main() {
         hrContext: "18 salariés, recrutements surtout en septembre et octobre.",
       },
     });
+    companyId = company.id;
 
     const revisions = [
       {
@@ -55,17 +57,17 @@ async function main() {
       },
     ];
 
-    for (const revision of revisions) {
-      await prisma.event.create({
-        data: {
-          type: "COMPANY_CONTEXT_REVISION",
-          userId: user.id,
-          companyId: company.id,
-          metadata: JSON.stringify({ v: 1, ...revision, source: "company_profile" }),
-          createdAt: new Date(revision.effectiveAt),
-        },
-      });
-    }
+    await prisma.companyContextRevision.createMany({
+      data: revisions.map((revision) => ({
+        companyId: company.id,
+        section: revision.section,
+        field: revision.field,
+        previousValueJson: JSON.stringify(revision.previous),
+        nextValueJson: JSON.stringify(revision.next),
+        source: "company_profile",
+        effectiveAt: new Date(revision.effectiveAt),
+      })),
+    });
 
     await rebuildBusinessGraph(company.id);
 
@@ -86,10 +88,16 @@ async function main() {
     assert.equal(historyEvidence.length, 3);
     assert.ok(historyEvidence.some((item) => item.predicate.includes("finance")));
 
+    await prisma.company.delete({ where: { id: company.id } });
+    companyId = null;
+    assert.equal(await prisma.companyContextRevision.count({ where: { companyId: company.id } }), 0);
+
     console.log("✓ historique complet : anciennes et nouvelles valeurs conservées");
     console.log("✓ mobilisation compacte : seuls les changements pertinents sont sélectionnables");
     console.log("✓ copilote : historique temporel exposé comme preuve distincte sans remplacer l'état courant");
+    console.log("✓ confidentialité : l'historique est supprimé en cascade avec l'entreprise");
   } finally {
+    if (companyId) await prisma.company.delete({ where: { id: companyId } }).catch(() => undefined);
     if (userId) await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
     await prisma.$disconnect();
   }
