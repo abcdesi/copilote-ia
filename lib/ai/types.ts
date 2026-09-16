@@ -28,6 +28,22 @@ export interface ChatContext {
   sizeRange?: string | null;
   objectives?: string | null;
   painPoints?: string | null;
+  businessModel?: string | null;
+  customerProfile?: string | null;
+  localContext?: string | null;
+  domainContexts?: {
+    finance?: string | null;
+    accounting?: string | null;
+    sales?: string | null;
+    marketing?: string | null;
+    hr?: string | null;
+    operations?: string | null;
+  };
+  knowledgeCoverage?: {
+    overall: number;
+    level: string;
+    sections: Array<{ key: string; label: string; score: number }>;
+  } | null;
   tools: string[];
   connections: {
     provider: string;
