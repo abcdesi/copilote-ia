@@ -26,6 +26,10 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
     }),
   ]);
 
+  const independentFacts = facts.filter(
+    (fact) => !(fact.sourceProvider === "pilotzia" && fact.sourceRef?.startsWith("graph:company:"))
+  );
+
   return computeCompanyKnowledgeCoverage({
     company: {
       industry: company.industry,
@@ -46,6 +50,6 @@ export async function getCompanyKnowledgeCoverage(companyId: string): Promise<Co
     },
     tools: company.tools.map((tool) => tool.name),
     connections,
-    facts,
+    facts: independentFacts,
   });
 }
