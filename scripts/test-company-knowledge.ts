@@ -119,7 +119,7 @@ for (const key of ["finance", "accounting", "sales", "marketing", "hr", "operati
 assert.ok(declaredOnly.overall >= 70, `profil complet déclaré attendu >=70, obtenu ${declaredOnly.overall}`);
 
 const repeatedFacts: KnowledgeModelInput["facts"] = Array.from({ length: 8 }, (_, index) => ({
-  predicate: "hr_onboarding",
+  predicate: "rh_onboarding",
   sourceProvider: "lucca",
   sourceRef: `test:onboarding:${index}`,
   valueJson: "10 jours",
@@ -137,7 +137,7 @@ for (const domain of ["finance", "accounting", "sales", "marketing", "hr", "oper
   for (const dimension of KNOWLEDGE_DIMENSIONS[domain]) {
     observedFacts.push({
       predicate: `${domain}_${dimension.key}_${dimension.keywords[0]}`,
-      sourceProvider: `${domain}-connector`,
+      sourceProvider: domain === "hr" ? "lucca" : `${domain}-connector`,
       sourceRef: `test:${domain}:${dimension.key}`,
       valueJson: dimension.keywords[0],
       observedAt: NOW,
