@@ -25,6 +25,29 @@ const extractedFinancialSchema = z.object({
   warnings: z.array(z.string().max(300)).max(12),
 });
 
+export type FinancialDocumentErrorCode =
+  | "provider_not_configured"
+  | "provider_auth"
+  | "provider_rate_limited"
+  | "provider_unavailable"
+  | "model_unavailable"
+  | "document_rejected"
+  | "extraction_empty"
+  | "extraction_truncated"
+  | "extraction_invalid";
+
+export class FinancialDocumentError extends Error {
+  code: FinancialDocumentErrorCode;
+  providerStatus?: number;
+
+  constructor(code: FinancialDocumentErrorCode, message: string, providerStatus?: number) {
+    super(message);
+    this.name = "FinancialDocumentError";
+    this.code = code;
+    this.providerStatus = providerStatus;
+  }
+}
+
 export interface FinancialDocumentExtraction {
   statement: FinancialStatementInput;
   documentType: z.infer<typeof extractedFinancialSchema>["documentType"];
@@ -39,12 +62,49 @@ function parseJsonObject(text: string) {
   const cleaned = text.trim().replace(/^```(?:json)?/i, "").replace(/```$/, "").trim();
   const start = cleaned.indexOf("{");
   const end = cleaned.lastIndexOf("}");
-  if (start < 0 || end <= start) throw new Error("Réponse d'extraction JSON invalide.");
-  return JSON.parse(cleaned.slice(start, end + 1));
+  if (start < 0 || end <= start) {
+    throw new FinancialDocumentError("extraction_invalid", "Réponse d'extraction JSON invalide.");
+  }
+  try {
+    return JSON.parse(cleaned.slice(start, end + 1));
+  } catch {
+    throw new FinancialDocumentError("extraction_invalid", "Réponse d'extraction JSON illisible.");
+  }
 }
 
 function scale(value: number | null, multiplier: number) {
   return value == null ? null : value * multiplier;
+}
+
+function supportsDisabledThinking(model: string) {
+  return /^claude-(?:sonnet|opus)-5(?:$|-)/.test(model);
+}
+
+function providerError(status: number, detail: string) {
+  if (status === 401 || status === 403) {
+    return new FinancialDocumentError("provider_auth", "Authentification Anthropic refusée.", status);
+  }
+  if (status === 404) {
+    return new FinancialDocumentError("model_unavailable", "Le modèle Anthropic configuré est indisponible.", status);
+  }
+  if (status === 429) {
+    return new FinancialDocumentError("provider_rate_limited", "Anthropic limite temporairement les requêtes.", status);
+  }
+  if (status === 400 || status === 413 || status === 422) {
+    return new FinancialDocumentError("document_rejected", detail || "Le document a été refusé par le moteur d'analyse.", status);
+  }
+  return new FinancialDocumentError("provider_unavailable", detail || "Le moteur Anthropic est temporairement indisponible.", status);
+}
+
+async function providerFailureDetail(response: Response) {
+  const raw = await response.text().catch(() => "");
+  if (!raw) return "";
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: string }; message?: string };
+    return parsed.error?.message || parsed.message || raw.slice(0, 260);
+  } catch {
+    return raw.slice(0, 260);
+  }
 }
 
 export async function extractFinancialStatementFromPdf(input: {
@@ -52,7 +112,9 @@ export async function extractFinancialStatementFromPdf(input: {
   filename?: string;
 }): Promise<FinancialDocumentExtraction> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) throw new Error("ANTHROPIC_API_KEY manquante pour l'analyse financière.");
+  if (!apiKey) {
+    throw new FinancialDocumentError("provider_not_configured", "ANTHROPIC_API_KEY manquante pour l'analyse financière.");
+  }
 
   const model = process.env.ANTHROPIC_MODEL_SMART || process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
   const pdfBase64 = Buffer.from(input.pdfBytes).toString("base64");
@@ -68,6 +130,7 @@ RÈGLES ABSOLUES
 - operatingExpenses et payrollExpense doivent rester null si le document ne permet pas de les isoler proprement.
 - extractionConfidence entre 0 et 1 reflète la fiabilité de l'extraction, pas la santé financière.
 - warnings doit signaler unités ambiguës, pages manquantes, comparatifs confondables, OCR difficile ou classifications incertaines.
+- Vérifie que le JSON est complet avant de terminer la réponse.
 
 FORMAT EXACT
 {
@@ -96,45 +159,80 @@ FORMAT EXACT
 
 Nom du fichier fourni : ${input.filename || "document.pdf"}.`;
 
-  const response = await fetch("https://api.anthropic.com/v1/messages", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "anthropic-version": "2023-06-01",
-    },
-    body: JSON.stringify({
-      model,
-      max_tokens: 1800,
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "document",
-              source: {
-                type: "base64",
-                media_type: "application/pdf",
-                data: pdfBase64,
-              },
+  const body: Record<string, unknown> = {
+    model,
+    max_tokens: 3200,
+    messages: [
+      {
+        role: "user",
+        content: [
+          {
+            type: "document",
+            source: {
+              type: "base64",
+              media_type: "application/pdf",
+              data: pdfBase64,
             },
-            { type: "text", text: instruction },
-          ],
-        },
-      ],
-    }),
-  });
+          },
+          { type: "text", text: instruction },
+        ],
+      },
+    ],
+  };
+
+  // Sonnet 5 active le reasoning par défaut. Pour une extraction JSON déterministe,
+  // on le désactive afin qu'il ne consomme pas le budget de sortie avant le JSON utile.
+  if (supportsDisabledThinking(model)) body.thinking = { type: "disabled" };
+
+  let response: Response;
+  try {
+    response = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        "x-api-key": apiKey,
+        "anthropic-version": "2023-06-01",
+      },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(80_000),
+    });
+  } catch (error) {
+    throw new FinancialDocumentError(
+      "provider_unavailable",
+      error instanceof Error ? error.message : "Connexion au moteur Anthropic impossible."
+    );
+  }
 
   if (!response.ok) {
-    const message = await response.text().catch(() => "");
-    throw new Error(`Analyse PDF impossible (${response.status}) : ${message.slice(0, 300)}`);
+    const detail = await providerFailureDetail(response);
+    throw providerError(response.status, detail);
   }
 
   const data = await response.json();
-  const text = data?.content?.find?.((part: { type?: string }) => part.type === "text")?.text ?? data?.content?.[0]?.text;
-  if (!text) throw new Error("Le moteur d'extraction n'a renvoyé aucun résultat.");
+  if (data?.stop_reason === "max_tokens") {
+    throw new FinancialDocumentError("extraction_truncated", "La réponse d'extraction a été interrompue avant la fin.");
+  }
+  if (data?.stop_reason === "refusal") {
+    throw new FinancialDocumentError("document_rejected", "Le moteur n'a pas pu traiter ce document.");
+  }
 
-  const extracted = extractedFinancialSchema.parse(parseJsonObject(text));
+  const textParts = Array.isArray(data?.content)
+    ? data.content.filter((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string")
+    : [];
+  const text = textParts.map((part: { text: string }) => part.text).join("\n").trim();
+  if (!text) throw new FinancialDocumentError("extraction_empty", "Le moteur d'extraction n'a renvoyé aucun résultat exploitable.");
+
+  let extracted: z.infer<typeof extractedFinancialSchema>;
+  try {
+    extracted = extractedFinancialSchema.parse(parseJsonObject(text));
+  } catch (error) {
+    if (error instanceof FinancialDocumentError) throw error;
+    if (error instanceof z.ZodError) {
+      throw new FinancialDocumentError("extraction_invalid", "Le document a été lu, mais les données extraites ne respectent pas le format attendu.");
+    }
+    throw error;
+  }
+
   const m = extracted.unitMultiplier;
   const statement: FinancialStatementInput = {
     periodLabel: extracted.periodLabel,
