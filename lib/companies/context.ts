@@ -5,6 +5,7 @@ import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-graph";
 import { extractBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
+import { getCompanyContextHistory } from "@/lib/companies/history";
 
 function parseJsonValue(value: string | null) {
   if (!value) return null;
@@ -19,7 +20,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
   if (!graphExists) await rebuildBusinessGraph(companyId);
 
-  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage] = await Promise.all([
+  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage, contextHistory] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -60,6 +61,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       },
     }),
     getCompanyKnowledgeCoverage(companyId),
+    getCompanyContextHistory(companyId, 160),
   ]);
 
   opportunities.sort(
@@ -116,6 +118,13 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
       leadDays: rhythm.leadDays,
       confidence: rhythm.confidence,
       summary: rhythm.summary,
+    })),
+    contextHistory: contextHistory.map((revision) => ({
+      section: revision.section,
+      field: revision.field,
+      previous: revision.previous,
+      next: revision.next,
+      effectiveAt: revision.effectiveAt,
     })),
     tools: company.tools.map((t) => t.name),
     connections: connections.map((connection) => ({
