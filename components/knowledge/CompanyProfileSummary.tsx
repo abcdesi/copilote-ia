@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Clock3, FileText, PencilLine } from "lucide-react";
+import { Clock3, Database, FileText, PencilLine } from "lucide-react";
 import type { CompanyProfileSummaryItem } from "@/lib/companies/profile-summary";
 import type { KnowledgeSection } from "@/lib/companies/knowledge-model";
 
@@ -84,6 +84,16 @@ export function CompanyProfileSummary({
             </Link>
           );
         })}
+      </div>
+
+      <div className="mt-5 flex items-start gap-3 rounded-xl border border-border/70 bg-muted/35 p-4">
+        <Database size={17} className="mt-0.5 shrink-0 text-accent" />
+        <div>
+          <p className="text-sm font-semibold">Où Pilotzia conserve ces informations</p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            Le dossier « Mon entreprise » est enregistré dans la base PostgreSQL de votre espace Pilotzia. Le Business Graph en crée une représentation structurée avec provenance pour le raisonnement. Le journal d'évolution mémorise uniquement quelles rubriques ont changé et quand, sans recopier le texte brut dans l'analytics. Les connexions externes restent séparées et leurs jetons d'accès sont stockés chiffrés.
+          </p>
+        </div>
       </div>
     </section>
   );
