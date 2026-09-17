@@ -10,14 +10,36 @@ export interface FinancialPriority {
   nextEvidence: string;
 }
 
+interface FinancialPriorityContext {
+  extractionConfidence?: number;
+  warnings?: string[];
+}
+
 function ratio(audit: FinancialAuditResult, key: string) {
   return audit.ratios.find((item) => item.key === key)?.value ?? null;
 }
 
+function priorityRank(priority: FinancialPriority["priority"]) {
+  return priority === "high" ? 0 : priority === "medium" ? 1 : 2;
+}
+
 export function deriveFinancialPriorities(
   statement: FinancialStatementInput,
-  audit: FinancialAuditResult
+  audit: FinancialAuditResult,
+  context: FinancialPriorityContext = {}
 ): FinancialPriority[] {
+  const confidence = context.extractionConfidence ?? 1;
+  if (confidence < 0.65) {
+    return [{
+      key: "verify_financial_document",
+      title: "Vérifier les chiffres extraits avant toute décision",
+      rationale: `La confiance d'extraction est de ${Math.round(confidence * 100)} %. Pilotzia ne transforme pas un document insuffisamment fiable en recommandation opérationnelle affirmative.`,
+      businessImpact: "risk",
+      priority: "high",
+      nextEvidence: "Contrôler la lisibilité, les unités, la période et l'identité de l'entreprise, puis réimporter une version plus fiable du document.",
+    }];
+  }
+
   const priorities: FinancialPriority[] = [];
   const receivableDays = ratio(audit, "receivable_days");
   const currentRatio = ratio(audit, "current_ratio");
@@ -92,5 +114,17 @@ export function deriveFinancialPriorities(
     });
   }
 
-  return priorities.slice(0, 5);
+  const adjusted = confidence < 0.8
+    ? priorities.map((item) => ({
+        ...item,
+        priority: (item.priority === "high" ? "medium" : "low") as FinancialPriority["priority"],
+        automationTemplateId: undefined,
+        rationale: `Extraction à confirmer (${Math.round(confidence * 100)} % de confiance). ${item.rationale}`,
+        nextEvidence: `Valider d'abord les valeurs extraites et les avertissements du document. ${item.nextEvidence}`,
+      }))
+    : priorities;
+
+  return adjusted
+    .sort((a, b) => priorityRank(a.priority) - priorityRank(b.priority) || a.title.localeCompare(b.title, "fr"))
+    .slice(0, 5);
 }
