@@ -6,15 +6,41 @@ const GOOGLE_AUTH_URL = "https://accounts.google.com/o/oauth2/v2/auth";
 const GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://openidconnect.googleapis.com/v1/userinfo";
 
+// Connexion initiale en lecture seule : Pilotzia ne demande les droits d'action
+// qu'au moment où une fonctionnalité d'écriture est réellement activée.
 export const GOOGLE_SCOPES = [
   "openid",
   "email",
   "profile",
   "https://www.googleapis.com/auth/gmail.readonly",
-  "https://www.googleapis.com/auth/gmail.compose",
   "https://www.googleapis.com/auth/calendar.readonly",
-  "https://www.googleapis.com/auth/calendar.events",
 ];
+
+export type GoogleConfigurationStatus = {
+  configured: boolean;
+  missing: string[];
+};
+
+export function getGoogleConfigurationStatus(): GoogleConfigurationStatus {
+  const missing: string[] = [];
+  if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
+  if (!process.env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!process.env.APP_URL) missing.push("APP_URL");
+  if (!process.env.OAUTH_STATE_SECRET && !process.env.AUTH_SECRET) missing.push("OAUTH_STATE_SECRET/AUTH_SECRET");
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) {
+    missing.push("ENCRYPTION_KEY");
+  } else {
+    try {
+      if (Buffer.from(encryptionKey, "base64").length !== 32) missing.push("ENCRYPTION_KEY(32_bytes)");
+    } catch {
+      missing.push("ENCRYPTION_KEY(base64)");
+    }
+  }
+
+  return { configured: missing.length === 0, missing };
+}
 
 function env(name: "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "APP_URL") {
   const value = process.env[name];
@@ -54,6 +80,9 @@ export function googleRedirectUri() {
 }
 
 export function buildGoogleAuthorizationUrl(companyId: string) {
+  const configuration = getGoogleConfigurationStatus();
+  if (!configuration.configured) throw new Error(`Configuration Google incomplète: ${configuration.missing.join(", ")}`);
+
   const url = new URL(GOOGLE_AUTH_URL);
   url.searchParams.set("client_id", env("GOOGLE_CLIENT_ID"));
   url.searchParams.set("redirect_uri", googleRedirectUri());
@@ -78,7 +107,10 @@ export async function exchangeGoogleCode(code: string) {
       grant_type: "authorization_code",
     }),
   });
-  if (!res.ok) throw new Error(`Échange OAuth Google impossible (${res.status}).`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Échange OAuth Google impossible (${res.status}): ${detail.slice(0, 180)}`);
+  }
   return res.json() as Promise<{
     access_token: string;
     expires_in: number;
@@ -107,23 +139,23 @@ export async function upsertGoogleConnection(companyId: string, tokens: Awaited<
       accountLabel: user.email ?? user.name ?? "Compte Google",
       externalAccountId: user.sub,
       status: "connected",
-      permissionMode: "read_action_confirm",
+      permissionMode: "read_only",
       scopes: JSON.stringify((tokens.scope ?? GOOGLE_SCOPES.join(" ")).split(" ")),
       accessTokenEncrypted: encrypt(tokens.access_token),
       refreshTokenEncrypted: tokens.refresh_token ? encrypt(tokens.refresh_token) : null,
       expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-      lastSyncedAt: new Date(),
+      lastSyncedAt: null,
       lastError: null,
     },
     update: {
       accountLabel: user.email ?? user.name ?? existing?.accountLabel ?? "Compte Google",
       externalAccountId: user.sub,
       status: "connected",
+      permissionMode: "read_only",
       scopes: JSON.stringify((tokens.scope ?? GOOGLE_SCOPES.join(" ")).split(" ")),
       accessTokenEncrypted: encrypt(tokens.access_token),
       refreshTokenEncrypted: tokens.refresh_token ? encrypt(tokens.refresh_token) : existing?.refreshTokenEncrypted,
       expiresAt: new Date(Date.now() + tokens.expires_in * 1000),
-      lastSyncedAt: new Date(),
       lastError: null,
     },
   });
@@ -140,7 +172,10 @@ async function refreshGoogleToken(refreshToken: string) {
       grant_type: "refresh_token",
     }),
   });
-  if (!res.ok) throw new Error(`Rafraîchissement Google impossible (${res.status}).`);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`Rafraîchissement Google impossible (${res.status}): ${detail.slice(0, 180)}`);
+  }
   return res.json() as Promise<{ access_token: string; expires_in: number; scope?: string }>;
 }
 
@@ -153,21 +188,35 @@ export async function getValidGoogleAccessToken(companyId: string) {
   const stillValid = connection.expiresAt && connection.expiresAt.getTime() > Date.now() + 60_000;
   if (stillValid) return decrypt(connection.accessTokenEncrypted);
   if (!connection.refreshTokenEncrypted) {
-    await prisma.integrationConnection.update({ where: { id: connection.id }, data: { status: "needs_reauth" } });
+    await prisma.integrationConnection.update({
+      where: { id: connection.id },
+      data: { status: "needs_reauth", lastError: "Jeton de renouvellement Google absent." },
+    });
     throw new Error("Google doit être reconnecté.");
   }
 
-  const refreshed = await refreshGoogleToken(decrypt(connection.refreshTokenEncrypted));
-  await prisma.integrationConnection.update({
-    where: { id: connection.id },
-    data: {
-      accessTokenEncrypted: encrypt(refreshed.access_token),
-      expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
-      status: "connected",
-      lastError: null,
-    },
-  });
-  return refreshed.access_token;
+  try {
+    const refreshed = await refreshGoogleToken(decrypt(connection.refreshTokenEncrypted));
+    await prisma.integrationConnection.update({
+      where: { id: connection.id },
+      data: {
+        accessTokenEncrypted: encrypt(refreshed.access_token),
+        expiresAt: new Date(Date.now() + refreshed.expires_in * 1000),
+        status: "connected",
+        lastError: null,
+      },
+    });
+    return refreshed.access_token;
+  } catch (error) {
+    await prisma.integrationConnection.update({
+      where: { id: connection.id },
+      data: {
+        status: "needs_reauth",
+        lastError: error instanceof Error ? error.message.slice(0, 500) : "Rafraîchissement Google impossible.",
+      },
+    });
+    throw error;
+  }
 }
 
 export async function googleApi<T>(companyId: string, url: string, init: RequestInit = {}): Promise<T> {
@@ -178,7 +227,15 @@ export async function googleApi<T>(companyId: string, url: string, init: Request
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`Google API ${res.status}: ${text.slice(0, 240)}`);
+    const detail = `Google API ${res.status}: ${text.slice(0, 240)}`;
+    await prisma.integrationConnection.updateMany({
+      where: { companyId, provider: "google" },
+      data: {
+        status: res.status === 401 ? "needs_reauth" : "connected",
+        lastError: detail.slice(0, 500),
+      },
+    });
+    throw new Error(detail);
   }
   return res.json() as Promise<T>;
 }
