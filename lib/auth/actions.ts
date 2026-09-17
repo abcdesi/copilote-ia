@@ -19,6 +19,13 @@ const signupSchema = z.object({
   acceptTerms: z.literal("yes"),
 });
 
+function safeInternalPath(value: FormDataEntryValue | null, fallback: string) {
+  if (typeof value !== "string") return fallback;
+  const path = value.trim();
+  if (!path.startsWith("/") || path.startsWith("//") || path.includes("\n") || path.includes("\r")) return fallback;
+  return path;
+}
+
 export async function signupAction(formData: FormData) {
   const parsed = signupSchema.safeParse({
     name: formData.get("name"),
@@ -32,12 +39,14 @@ export async function signupAction(formData: FormData) {
   }
 
   const { name, email, password } = parsed.data;
+  const next = safeInternalPath(formData.get("next"), "/onboarding");
 
   const existing = await prisma.user.findFirst({
     where: { email: { equals: email, mode: "insensitive" } },
   });
   if (existing) {
-    redirect("/signup?error=exists");
+    const suffix = next !== "/onboarding" ? `&next=${encodeURIComponent(next)}` : "";
+    redirect(`/signup?error=exists${suffix}`);
   }
 
   const passwordHash = await bcrypt.hash(password, 10);
@@ -49,21 +58,22 @@ export async function signupAction(formData: FormData) {
   });
 
   await signIn("credentials", { email, password, redirect: false });
-
-  redirect("/onboarding");
+  redirect(next);
 }
 
 export async function loginAction(formData: FormData) {
   const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
+  const next = safeInternalPath(formData.get("next"), "/app");
 
   try {
     await signIn("credentials", { email, password, redirect: false });
   } catch {
-    redirect("/login?error=invalid");
+    const suffix = next !== "/app" ? `&next=${encodeURIComponent(next)}` : "";
+    redirect(`/login?error=invalid${suffix}`);
   }
 
-  redirect("/app");
+  redirect(next);
 }
 
 export async function logoutAction() {
