@@ -1,6 +1,9 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
+
+export const ACTIVE_COMPANY_COOKIE = "pilotzia_active_company";
 
 export type CompanyRole = "owner" | "admin" | "operator" | "viewer";
 export type CompanyPermission =
@@ -20,41 +23,14 @@ export type CompanyPermission =
 
 const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {
   owner: new Set([
-    "view",
-    "edit_company",
-    "manage_contacts",
-    "manage_documents",
-    "operate_automations",
-    "configure_automations",
-    "approve_low_risk",
-    "approve_medium_risk",
-    "approve_high_risk",
-    "manage_integrations",
-    "sync_integrations",
-    "manage_team",
-    "manage_billing",
+    "view", "edit_company", "manage_contacts", "manage_documents", "operate_automations", "configure_automations",
+    "approve_low_risk", "approve_medium_risk", "approve_high_risk", "manage_integrations", "sync_integrations", "manage_team", "manage_billing",
   ]),
   admin: new Set([
-    "view",
-    "edit_company",
-    "manage_contacts",
-    "manage_documents",
-    "operate_automations",
-    "configure_automations",
-    "approve_low_risk",
-    "approve_medium_risk",
-    "manage_integrations",
-    "sync_integrations",
-    "manage_team",
+    "view", "edit_company", "manage_contacts", "manage_documents", "operate_automations", "configure_automations",
+    "approve_low_risk", "approve_medium_risk", "manage_integrations", "sync_integrations", "manage_team",
   ]),
-  operator: new Set([
-    "view",
-    "manage_contacts",
-    "manage_documents",
-    "operate_automations",
-    "approve_low_risk",
-    "sync_integrations",
-  ]),
+  operator: new Set(["view", "manage_contacts", "manage_documents", "operate_automations", "approve_low_risk", "sync_integrations"]),
   viewer: new Set(["view"]),
 };
 
@@ -88,24 +64,45 @@ async function requireAuthenticatedSession() {
   return session;
 }
 
+export async function getCompanyChoices(userId: string) {
+  const memberships = await prisma.companyMembership.findMany({
+    where: { userId, status: "active" },
+    include: { company: { select: { id: true, name: true } } },
+    orderBy: { joinedAt: "desc" },
+  });
+  return memberships.map((membership) => ({
+    companyId: membership.companyId,
+    companyName: membership.company.name,
+    role: normalizeCompanyRole(membership.role),
+  }));
+}
+
 export async function getCurrentCompanyAccess() {
   const session = await requireAuthenticatedSession();
-  const membership = await prisma.companyMembership.findFirst({
+  const cookieStore = await cookies();
+  const preferredCompanyId = cookieStore.get(ACTIVE_COMPANY_COOKIE)?.value ?? null;
+
+  const memberships = await prisma.companyMembership.findMany({
     where: { userId: session.user.id, status: "active" },
     include: {
-      company: {
-        include: { tools: true, subscriptions: true },
-      },
+      company: { include: { tools: true, subscriptions: true } },
     },
     orderBy: { joinedAt: "desc" },
   });
 
+  const membership =
+    (preferredCompanyId ? memberships.find((item) => item.companyId === preferredCompanyId) : null) ?? memberships[0] ?? null;
   if (membership) {
     return {
       session,
       company: membership.company,
       membershipId: membership.id,
       role: normalizeCompanyRole(membership.role),
+      companyChoices: memberships.map((item) => ({
+        companyId: item.companyId,
+        companyName: item.company.name,
+        role: normalizeCompanyRole(item.role),
+      })),
     };
   }
 
@@ -127,6 +124,7 @@ export async function getCurrentCompanyAccess() {
     company: legacyCompany,
     membershipId: legacyMembership.id,
     role: "owner" as const,
+    companyChoices: [{ companyId: legacyCompany.id, companyName: legacyCompany.name, role: "owner" as const }],
   };
 }
 
