@@ -7,6 +7,7 @@ export type CompanyPermission =
   | "view"
   | "edit_company"
   | "manage_contacts"
+  | "manage_documents"
   | "operate_automations"
   | "configure_automations"
   | "approve_low_risk"
@@ -22,6 +23,7 @@ const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {
     "view",
     "edit_company",
     "manage_contacts",
+    "manage_documents",
     "operate_automations",
     "configure_automations",
     "approve_low_risk",
@@ -36,6 +38,7 @@ const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {
     "view",
     "edit_company",
     "manage_contacts",
+    "manage_documents",
     "operate_automations",
     "configure_automations",
     "approve_low_risk",
@@ -47,6 +50,7 @@ const ROLE_PERMISSIONS: Record<CompanyRole, ReadonlySet<CompanyPermission>> = {
   operator: new Set([
     "view",
     "manage_contacts",
+    "manage_documents",
     "operate_automations",
     "approve_low_risk",
     "sync_integrations",
