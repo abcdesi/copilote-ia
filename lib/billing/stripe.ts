@@ -1,8 +1,16 @@
 import { createHmac, timingSafeEqual } from "crypto";
-import type { BillingCycle, PaidPlanKey } from "@/lib/billing/plans";
+import { getPlanDefinition, type BillingCycle, type PaidPlanKey } from "@/lib/billing/plans";
 import { getCreditPack, type CreditPackKey } from "@/lib/billing/credit-packs";
 
 export type PaidPlan = PaidPlanKey;
+
+type StripePrice = {
+  id: string;
+  active?: boolean;
+  currency?: string;
+  unit_amount?: number | null;
+  recurring?: { interval?: string } | null;
+};
 
 function secretKey() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -30,6 +38,18 @@ function creditPackPriceId(packKey: CreditPackKey) {
   return value;
 }
 
+async function stripeGet<T>(path: string): Promise<T> {
+  const res = await fetch(`https://api.stripe.com/v1${path}`, {
+    headers: { authorization: `Bearer ${secretKey()}` },
+    cache: "no-store",
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Stripe ${res.status}: ${text.slice(0, 400)}`);
+  }
+  return res.json() as Promise<T>;
+}
+
 async function stripePost<T>(path: string, body: URLSearchParams): Promise<T> {
   const res = await fetch(`https://api.stripe.com/v1${path}`, {
     method: "POST",
@@ -46,6 +66,23 @@ async function stripePost<T>(path: string, body: URLSearchParams): Promise<T> {
   return res.json() as Promise<T>;
 }
 
+async function assertStripePrice(input: { priceId: string; expectedEur: number; recurringInterval: "month" | "year" | null }) {
+  const price = await stripeGet<StripePrice>(`/prices/${encodeURIComponent(input.priceId)}`);
+  const expectedCents = Math.round(input.expectedEur * 100);
+  const actualInterval = price.recurring?.interval ?? null;
+  const valid =
+    price.active !== false &&
+    price.currency?.toLowerCase() === "eur" &&
+    price.unit_amount === expectedCents &&
+    actualInterval === input.recurringInterval;
+
+  if (!valid) {
+    throw new Error(
+      `Configuration Stripe incohérente pour ${input.priceId}: attendu ${expectedCents} centimes EUR, périodicité ${input.recurringInterval ?? "ponctuelle"}.`
+    );
+  }
+}
+
 export async function createCheckoutSession(input: {
   companyId: string;
   email: string;
@@ -53,11 +90,19 @@ export async function createCheckoutSession(input: {
   billingCycle: BillingCycle;
   stripeCustomerId?: string | null;
 }) {
+  const plan = getPlanDefinition(input.plan);
+  const selectedPriceId = priceId(input.plan, input.billingCycle);
+  await assertStripePrice({
+    priceId: selectedPriceId,
+    expectedEur: input.billingCycle === "annual" ? plan.annualPriceEur : plan.priceEur,
+    recurringInterval: input.billingCycle === "annual" ? "year" : "month",
+  });
+
   const body = new URLSearchParams();
   body.set("mode", "subscription");
   body.set("success_url", `${appUrl()}/app/settings?billing=success`);
   body.set("cancel_url", `${appUrl()}/app/settings?billing=cancelled`);
-  body.set("line_items[0][price]", priceId(input.plan, input.billingCycle));
+  body.set("line_items[0][price]", selectedPriceId);
   body.set("line_items[0][quantity]", "1");
   body.set("metadata[companyId]", input.companyId);
   body.set("metadata[plan]", input.plan);
@@ -80,12 +125,14 @@ export async function createCreditPackCheckoutSession(input: {
 }) {
   const pack = getCreditPack(input.packKey);
   if (!pack) throw new Error("Pack de crédits inconnu.");
+  const selectedPriceId = creditPackPriceId(input.packKey);
+  await assertStripePrice({ priceId: selectedPriceId, expectedEur: pack.priceEur, recurringInterval: null });
 
   const body = new URLSearchParams();
   body.set("mode", "payment");
   body.set("success_url", `${appUrl()}/app/settings?credits=success`);
   body.set("cancel_url", `${appUrl()}/app/settings?credits=cancelled`);
-  body.set("line_items[0][price]", creditPackPriceId(input.packKey));
+  body.set("line_items[0][price]", selectedPriceId);
   body.set("line_items[0][quantity]", "1");
   body.set("metadata[kind]", "credit_pack");
   body.set("metadata[companyId]", input.companyId);
