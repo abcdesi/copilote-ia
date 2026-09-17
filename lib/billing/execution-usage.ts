@@ -1,4 +1,4 @@
-import { reserveUsage } from "@/lib/billing/usage-policy";
+import { refundUsage, reserveUsage, type UsageKind } from "@/lib/billing/usage-policy";
 
 function envNumber(name: string, fallback: number) {
   const parsed = Number(process.env[name]);
@@ -20,5 +20,26 @@ export function reserveAutomationExecution(companyId: string) {
     kind: "automation",
     credits: envNumber("PILOTZIA_AUTOMATION_RUN_CREDITS", 1),
     reservedCostEur: envNumber("PILOTZIA_AUTOMATION_RUN_RESERVE_EUR", 0.02),
+  });
+}
+
+type ExecutionReservation = {
+  reservationId?: string | null;
+  creditsReserved?: number;
+  reservedCostEur?: number;
+};
+
+export async function refundExecutionReservation(
+  companyId: string,
+  kind: Extract<UsageKind, "action" | "automation">,
+  reservation: ExecutionReservation
+) {
+  if (!reservation.reservationId) return;
+  await refundUsage({
+    companyId,
+    reservationId: reservation.reservationId,
+    kind,
+    credits: reservation.creditsReserved ?? 0,
+    reservedCostEur: reservation.reservedCostEur ?? 0,
   });
 }
