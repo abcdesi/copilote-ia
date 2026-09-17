@@ -3,6 +3,8 @@ import type { OperatingBrief, OperationalMetric } from "./types";
 
 const EVENT_METRICS: Record<string, { key: string; label: string }> = {
   DEMAND_RECEIVED: { key: "demand_received", label: "Demandes reçues" },
+  EMAIL_RECEIVED: { key: "email_received", label: "Emails entrants" },
+  MEETING_SCHEDULED: { key: "meeting_scheduled", label: "Rendez-vous planifiés" },
   QUOTE_SENT: { key: "quote_sent", label: "Devis envoyés" },
   QUOTE_ACCEPTED: { key: "quote_accepted", label: "Devis acceptés" },
   INVOICE_PAID: { key: "invoice_paid", label: "Factures payées" },
