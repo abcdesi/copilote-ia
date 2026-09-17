@@ -71,9 +71,11 @@ export function hasCompanyPermission(role: CompanyRole, permission: CompanyPermi
 }
 
 export function canApproveRisk(role: CompanyRole, riskLevel: string) {
+  if (riskLevel === "critical") return role === "owner";
   if (riskLevel === "high") return hasCompanyPermission(role, "approve_high_risk");
   if (riskLevel === "medium") return hasCompanyPermission(role, "approve_medium_risk");
-  return hasCompanyPermission(role, "approve_low_risk");
+  if (riskLevel === "low") return hasCompanyPermission(role, "approve_low_risk");
+  return false;
 }
 
 async function requireAuthenticatedSession() {
@@ -103,7 +105,6 @@ export async function getCurrentCompanyAccess() {
     };
   }
 
-  // Compatibilité avec les comptes créés avant l'introduction des memberships.
   const legacyCompany = await prisma.company.findFirst({
     where: { userId: session.user.id },
     include: { tools: true, subscriptions: true },
@@ -127,8 +128,6 @@ export async function getCurrentCompanyAccess() {
 
 export async function requireCompanyPermission(permission: CompanyPermission) {
   const access = await getCurrentCompanyAccess();
-  if (!hasCompanyPermission(access.role, permission)) {
-    throw new Error("COMPANY_PERMISSION_DENIED");
-  }
+  if (!hasCompanyPermission(access.role, permission)) throw new Error("COMPANY_PERMISSION_DENIED");
   return access;
 }
