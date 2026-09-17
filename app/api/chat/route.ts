@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { requireSession } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { buildChatContext } from "@/lib/companies/context";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
@@ -10,9 +10,9 @@ import { getTemplateById } from "@/lib/automations/catalog";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
-import { AI_USAGE_RESERVE_EUR, reserveUsage } from "@/lib/billing/usage-policy";
+import { AI_USAGE_RESERVE_EUR, refundUsage, reserveUsage } from "@/lib/billing/usage-policy";
 
-const bodySchema = z.object({ message: z.string().min(1).max(1000) });
+const bodySchema = z.object({ message: z.string().trim().min(1).max(1000) });
 
 export interface CopilotAction {
   kind: "navigate";
@@ -33,22 +33,72 @@ function isSmartRequest(message: string) {
   );
 }
 
+async function recordMessageTrace(input: {
+  companyId: string;
+  messageId: string;
+  conversationId: string;
+  role: "user" | "assistant";
+  userId?: string | null;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRole: string;
+}) {
+  await prisma.event.create({
+    data: {
+      companyId: input.companyId,
+      userId: input.userId ?? null,
+      type: "COPILOT_MESSAGE_CREATED",
+      metadata: JSON.stringify({
+        messageId: input.messageId,
+        conversationId: input.conversationId,
+        role: input.role,
+        actorName: input.actorName ?? null,
+        actorEmail: input.actorEmail ?? null,
+        actorRole: input.actorRole,
+      }),
+    },
+  });
+}
+
+async function createAssistantMessage(companyId: string, conversationId: string, content: string) {
+  const message = await prisma.chatMessage.create({
+    data: { companyId, conversationId, role: "assistant", content },
+  });
+  await recordMessageTrace({
+    companyId,
+    messageId: message.id,
+    conversationId,
+    role: "assistant",
+    actorName: "Pilotzia",
+    actorRole: "system",
+  }).catch(() => undefined);
+  return message;
+}
+
 export async function POST(req: NextRequest) {
-  const session = await requireSession();
+  const access = await getCurrentCompanyAccess();
+  const { company, session, role } = access;
 
   const parsed = bodySchema.safeParse(await req.json().catch(() => null));
   if (!parsed.success) {
     return NextResponse.json({ error: "Message invalide." }, { status: 400 });
   }
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return NextResponse.json({ error: "Aucune entreprise associée." }, { status: 404 });
+  const conversation = await getOrCreateTodayConversation(company.id, session.user.id);
 
-  const conversation = await getOrCreateTodayConversation(company.id);
-
-  await prisma.chatMessage.create({
+  const userMessage = await prisma.chatMessage.create({
     data: { companyId: company.id, conversationId: conversation.id, role: "user", content: parsed.data.message },
   });
+  await recordMessageTrace({
+    companyId: company.id,
+    messageId: userMessage.id,
+    conversationId: conversation.id,
+    role: "user",
+    userId: session.user.id,
+    actorName: session.user.name,
+    actorEmail: session.user.email,
+    actorRole: role,
+  }).catch(() => undefined);
 
   const history = await prisma.chatMessage.findMany({
     where: { conversationId: conversation.id },
@@ -58,24 +108,21 @@ export async function POST(req: NextRequest) {
 
   const context = await buildChatContext(company.id);
   const smart = isSmartRequest(parsed.data.message);
-  const usage = process.env.ANTHROPIC_API_KEY
-    ? await reserveUsage({
-        companyId: company.id,
-        kind: smart ? "ai_smart" : "ai_fast",
-        credits: smart ? 3 : 1,
-        reservedCostEur: smart ? AI_USAGE_RESERVE_EUR.smart : AI_USAGE_RESERVE_EUR.fast,
-      })
+  const credits = smart ? 3 : 1;
+  const reservedCostEur = smart ? AI_USAGE_RESERVE_EUR.smart : AI_USAGE_RESERVE_EUR.fast;
+  const kind = smart ? ("ai_smart" as const) : ("ai_fast" as const);
+  const providerConfigured = Boolean(process.env.ANTHROPIC_API_KEY);
+  const usage = providerConfigured
+    ? await reserveUsage({ companyId: company.id, kind, credits, reservedCostEur })
     : { allowed: true as const, paid: false as const, reservationId: null };
 
   if (!usage.allowed) {
     const isPaidLimit = usage.reason === "plan_credits_exhausted" || usage.reason === "plan_cost_cap_reached";
     const reply = isPaidLimit
-      ? "Votre enveloppe mensuelle d'usage intelligent est arrivée à sa limite. Pilotzia conserve tout votre contexte et votre historique. Vous pouvez passer à l'offre supérieure pour continuer immédiatement avec davantage de capacité."
+      ? "Votre enveloppe mensuelle d'usage intelligent est arrivée à sa limite. Pilotzia conserve tout votre contexte et votre historique. Vous pouvez acheter des crédits supplémentaires ou passer à l'offre supérieure."
       : "Votre essai Pilotzia est arrivé à sa limite. Votre contexte, vos connexions et votre historique restent conservés. Activez un abonnement pour reprendre les analyses IA sans repartir de zéro.";
 
-    await prisma.chatMessage.create({
-      data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
-    });
+    await createAssistantMessage(company.id, conversation.id, reply);
     await track(EVENTS.RECOMMENDATION_SHOWN, {
       companyId: company.id,
       metadata: { source: "usage_limit", reason: usage.reason },
@@ -84,10 +131,10 @@ export async function POST(req: NextRequest) {
       reply,
       action: {
         kind: "navigate",
-        label: isPaidLimit ? "Augmenter ma capacité" : "Voir les offres Pilotzia",
+        label: isPaidLimit ? "Gérer mes crédits" : "Voir les offres Pilotzia",
         href: "/app/settings",
         description: isPaidLimit
-          ? "Comparez les capacités mensuelles et les fonctions débloquées par chaque offre."
+          ? "Achetez un pack de crédits ou comparez l'offre supérieure."
           : "Votre contexte reste intact. L'abonnement réactive le copilote et l'usage continu.",
       } satisfies CopilotAction,
       usageLimited: true,
@@ -95,17 +142,33 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const { reply, matchedTemplateId } = await runChat(
-    history
-      .slice()
-      .reverse()
-      .map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
-    context
-  );
+  let chatResult: Awaited<ReturnType<typeof runChat>>;
+  try {
+    chatResult = await runChat(
+      history
+        .slice()
+        .reverse()
+        .map((message) => ({ role: message.role as "user" | "assistant", content: message.content })),
+      context
+    );
+  } catch (error) {
+    if (providerConfigured) {
+      await refundUsage({
+        companyId: company.id,
+        reservationId: usage.reservationId,
+        kind,
+        credits,
+        reservedCostEur,
+      }).catch(() => undefined);
+    }
+    console.error("Copilot AI call failed", error);
+    const reply = "Le copilote est temporairement indisponible. Aucun crédit n'a été consommé pour cette tentative. Réessayez dans quelques instants.";
+    await createAssistantMessage(company.id, conversation.id, reply);
+    return NextResponse.json({ reply, retryable: true, creditsRefunded: true }, { status: 503 });
+  }
 
-  await prisma.chatMessage.create({
-    data: { companyId: company.id, conversationId: conversation.id, role: "assistant", content: reply },
-  });
+  const { reply, matchedTemplateId } = chatResult;
+  await createAssistantMessage(company.id, conversation.id, reply);
 
   const opportunity = matchedTemplateId
     ? await createOpportunityFromChatMatch(company.id, matchedTemplateId)
@@ -116,11 +179,13 @@ export async function POST(req: NextRequest) {
   if (action) {
     await track(EVENTS.RECOMMENDATION_SHOWN, {
       companyId: company.id,
+      userId: session.user.id,
       metadata: {
         source: "copilot",
         actionKind: action.kind,
         destination: action.href,
         requiresConfirmation: Boolean(action.requiresConfirmation),
+        actorRole: role,
       },
     });
   }
