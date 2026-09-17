@@ -58,14 +58,14 @@ export async function GET(req: NextRequest) {
           userId: access.session.user.id,
           companyId: access.company.id,
           type: "INTEGRATION_CONNECTED",
-          metadata: JSON.stringify({ provider: "google", mode: "read_only" }),
+          metadata: JSON.stringify({ provider: "google", authorizationMode: verified.mode }),
         },
       }),
     ]);
 
     try {
       await syncGoogleOperationalSnapshot(access.company.id, access.session.user.id, "oauth_callback");
-      return NextResponse.redirect(`${appUrl()}/app/tools?google=connected`);
+      return NextResponse.redirect(`${appUrl()}/app/tools?google=${verified.mode === "action" ? "actions-authorized" : "connected"}`);
     } catch (syncError) {
       console.error("Google first sync failed after OAuth", syncError);
       return NextResponse.redirect(`${appUrl()}/app/tools?google=connected-sync-error`);
