@@ -26,6 +26,9 @@ model Company {
   userId            String
   user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   name              String
+  siret             String?
+  address           String?
+  phone             String?
   industry          String?
   country           String?
   sizeRange         String?
@@ -249,11 +252,24 @@ model Automation {
   n8nWorkflowId          String?
   messageSubject         String?
   messageBody            String?
+  messageVersion         Int          @default(1)
+  approvalMode           String       @default("first_then_auto")
+  riskLevel              String       @default("low")
+  cadenceDays            Int?
+  maxSendsPerContact     Int?
+  replyToEmail           String?
+  approvedConfigHash     String?
+  lastApprovedAt         DateTime?
+  lastApprovedBy         String?
+  configuredAt           DateTime?
 
-  feedback AutomationFeedback[]
-  runs     AutomationRun[]
+  feedback      AutomationFeedback[]
+  runs          AutomationRun[]
+  auditEvents   AutomationAuditEvent[]
+  contactEvents AutomationContactEvent[]
 
   @@index([companyId])
+  @@index([companyId, status])
 }
 
 model AutomationRun {
@@ -269,8 +285,23 @@ model AutomationRun {
   startedAt      DateTime   @default(now())
   finishedAt     DateTime?
 
+  contactEvents AutomationContactEvent[]
+
   @@index([automationId, startedAt])
   @@index([status])
+}
+
+model AutomationAuditEvent {
+  id           String     @id @default(cuid())
+  automationId String
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  actorUserId  String?
+  eventType    String
+  detailsJson  String?
+  createdAt    DateTime   @default(now())
+
+  @@index([automationId, createdAt])
+  @@index([eventType, createdAt])
 }
 
 model Prospect {
@@ -281,11 +312,43 @@ model Prospect {
   name            String
   email           String
   lastContactedAt DateTime?
+  contactCount    Int      @default(0)
+  lastOutcome     String?
   status          String   @default("active")
+  archivedAt      DateTime?
   createdAt       DateTime @default(now())
+
+  contactEvents AutomationContactEvent[]
 
   @@index([companyId])
   @@index([companyId, templateId])
+  @@index([companyId, templateId, status])
+}
+
+model AutomationContactEvent {
+  id                String         @id @default(cuid())
+  automationId      String
+  automation        Automation     @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  automationRunId   String?
+  automationRun     AutomationRun? @relation(fields: [automationRunId], references: [id], onDelete: SetNull)
+  prospectId        String
+  prospect          Prospect       @relation(fields: [prospectId], references: [id], onDelete: Cascade)
+  kind              String
+  status            String
+  recipientName     String
+  recipientEmail    String
+  renderedSubject   String?
+  renderedBody      String?
+  provider          String?
+  providerMessageId String?
+  messageVersion    Int
+  error             String?
+  evidenceJson      String?
+  createdAt         DateTime       @default(now())
+
+  @@index([automationId, createdAt])
+  @@index([prospectId, createdAt])
+  @@index([automationRunId])
 }
 
 model AutomationFeedback {
