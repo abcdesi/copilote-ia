@@ -3,6 +3,7 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/db/client";
+import { latestPasswordResetAt } from "@/lib/auth/password-reset";
 
 const LOGIN_WINDOW_MS = 15 * 60 * 1000;
 const MAX_PAIR_FAILURES = 8;
@@ -66,8 +67,6 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           where: { email: { equals: email, mode: "insensitive" } },
         });
         if (!user) {
-          // Conserve un coût de calcul proche d'un mot de passe invalide afin de réduire
-          // la différence temporelle entre "email inconnu" et "mauvais mot de passe".
           await bcrypt.hash(password, 10);
           await recordLoginFailure(email, request);
           return null;
@@ -84,13 +83,29 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     }),
   ],
   callbacks: {
-    jwt({ token, user }) {
-      if (user) token.id = user.id;
-      return token;
+    async jwt({ token, user }) {
+      const typed = token as typeof token & { id?: string; authenticatedAt?: number; authInvalidated?: boolean };
+      if (user) {
+        typed.id = user.id;
+        typed.authenticatedAt = Date.now();
+        typed.authInvalidated = false;
+        return typed;
+      }
+
+      if (typed.id && !typed.authInvalidated) {
+        const resetAt = await latestPasswordResetAt(typed.id).catch(() => null);
+        const authenticatedAt = typed.authenticatedAt ?? (typeof token.iat === "number" ? token.iat * 1000 : 0);
+        if (resetAt && resetAt.getTime() > authenticatedAt) {
+          typed.id = undefined;
+          typed.authInvalidated = true;
+        }
+      }
+      return typed;
     },
     session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
+        const typed = token as typeof token & { id?: string; authInvalidated?: boolean };
+        session.user.id = typed.authInvalidated ? "" : typed.id ?? "";
       }
       return session;
     },
