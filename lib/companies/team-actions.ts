@@ -1,10 +1,11 @@
 "use server";
 
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { getCurrentCompanyAccess, hasCompanyPermission, normalizeCompanyRole } from "@/lib/companies/access";
+import { ACTIVE_COMPANY_COOKIE, getCurrentCompanyAccess, hasCompanyPermission, normalizeCompanyRole } from "@/lib/companies/access";
 import { requireSession } from "@/lib/companies/current";
 import { acceptInvitationForUser, createCompanyInvitation, INVITABLE_ROLES } from "@/lib/companies/team";
 
@@ -29,16 +30,11 @@ export async function inviteTeamMemberAction(formData: FormData) {
     const result = await createCompanyInvitation({
       companyId: access.company.id,
       companyName: access.company.name,
-      inviter: {
-        id: access.session.user.id,
-        name: access.session.user.name,
-        email: access.session.user.email,
-      },
+      inviter: { id: access.session.user.id, name: access.session.user.name, email: access.session.user.email },
       inviterRole: access.role,
       email: parsed.data.email,
       role: parsed.data.role,
     });
-
     if (!result.delivery.sent) {
       await prisma.companyInvitation.update({ where: { id: result.invitation.id }, data: { status: "delivery_failed" } });
       await prisma.event.create({
@@ -58,7 +54,6 @@ export async function inviteTeamMemberAction(formData: FormData) {
     console.error("Team invitation failed", error);
     teamError("invitation_failed");
   }
-
   revalidatePath("/app/team");
   redirect("/app/team?invited=1");
 }
@@ -69,9 +64,7 @@ export async function revokeTeamInvitationAction(formData: FormData) {
   const invitationId = String(formData.get("invitationId") ?? "");
   if (!invitationId) teamError("invalid_invitation");
 
-  const invitation = await prisma.companyInvitation.findFirst({
-    where: { id: invitationId, companyId: access.company.id, status: "pending" },
-  });
+  const invitation = await prisma.companyInvitation.findFirst({ where: { id: invitationId, companyId: access.company.id, status: "pending" } });
   if (!invitation) teamError("invitation_not_found");
   if (access.role !== "owner" && invitation.role === "admin") teamError("forbidden");
 
@@ -89,10 +82,7 @@ export async function revokeTeamInvitationAction(formData: FormData) {
   revalidatePath("/app/team");
 }
 
-const memberRoleSchema = z.object({
-  membershipId: z.string().min(1),
-  role: z.enum(INVITABLE_ROLES),
-});
+const memberRoleSchema = z.object({ membershipId: z.string().min(1), role: z.enum(INVITABLE_ROLES) });
 
 export async function updateTeamMemberRoleAction(formData: FormData) {
   const access = await getCurrentCompanyAccess();
@@ -116,13 +106,7 @@ export async function updateTeamMemberRoleAction(formData: FormData) {
         companyId: access.company.id,
         userId: access.session.user.id,
         type: "TEAM_MEMBER_ROLE_CHANGED",
-        metadata: JSON.stringify({
-          targetUserId: target.userId,
-          targetEmail: target.user.email,
-          previousRole: targetRole,
-          nextRole: parsed.data.role,
-          actorRole: access.role,
-        }),
+        metadata: JSON.stringify({ targetUserId: target.userId, targetEmail: target.user.email, previousRole: targetRole, nextRole: parsed.data.role, actorRole: access.role }),
       },
     }),
   ]);
@@ -163,13 +147,22 @@ export async function acceptTeamInvitationAction(formData: FormData) {
   const token = String(formData.get("token") ?? "");
   if (!/^[0-9a-f]{64}$/i.test(token) || !session.user.email) redirect(`/invite/${encodeURIComponent(token)}?error=invalid`);
 
+  let accepted: Awaited<ReturnType<typeof acceptInvitationForUser>>;
   try {
-    await acceptInvitationForUser({ token, userId: session.user.id, userEmail: session.user.email });
+    accepted = await acceptInvitationForUser({ token, userId: session.user.id, userEmail: session.user.email });
   } catch (error) {
     const code = error instanceof Error ? error.message : "INVITATION_INVALID";
-    const publicCode =
-      code === "INVITATION_EMAIL_MISMATCH" ? "email_mismatch" : code === "SEAT_LIMIT_REACHED" ? "seat_limit" : "invalid";
+    const publicCode = code === "INVITATION_EMAIL_MISMATCH" ? "email_mismatch" : code === "SEAT_LIMIT_REACHED" ? "seat_limit" : "invalid";
     redirect(`/invite/${token}?error=${publicCode}`);
   }
+
+  const store = await cookies();
+  store.set(ACTIVE_COMPANY_COOKIE, accepted.companyId, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    path: "/",
+    maxAge: 60 * 60 * 24 * 365,
+  });
   redirect("/app?joined=1");
 }
