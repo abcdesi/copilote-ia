@@ -12,18 +12,25 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+function safeNext(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/app";
+  return value;
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const params = await searchParams;
+  const next = safeNext(params.next);
   const session = await auth().catch((error) => {
     console.error("Unable to read auth session on login page", error);
     return null;
   });
-  if (session) redirect("/app");
+  if (session) redirect(next);
 
-  const { error } = await searchParams;
+  const signupHref = next === "/app" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`;
 
   return (
     <AuthCard
@@ -32,12 +39,13 @@ export default async function LoginPage({
       footer={
         <>
           Pas encore de compte ?{" "}
-          <Link href="/signup" className="font-medium text-accent">Créer un espace gratuit</Link>
+          <Link href={signupHref} className="font-medium text-accent">Créer un espace gratuit</Link>
         </>
       }
     >
       <form action={loginAction} className="space-y-4">
-        {error && <p className="text-sm text-danger">Email ou mot de passe incorrect.</p>}
+        {params.error && <p className="text-sm text-danger">Email ou mot de passe incorrect.</p>}
+        {next !== "/app" && <input type="hidden" name="next" value={next} />}
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" required autoComplete="email" placeholder="vous@entreprise.com" />
