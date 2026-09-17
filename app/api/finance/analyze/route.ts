@@ -22,7 +22,9 @@ export const maxDuration = 90;
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
 const AUDIT_CREDITS = 15;
-const AUDIT_COST_RESERVE_EUR = Number(process.env.PILOTZIA_FINANCIAL_AUDIT_RESERVE_EUR || "0.50");
+const configuredAuditReserve = Number(process.env.PILOTZIA_FINANCIAL_AUDIT_RESERVE_EUR);
+const AUDIT_COST_RESERVE_EUR = Number.isFinite(configuredAuditReserve) ? Math.max(0.5, configuredAuditReserve) : 0.5;
+const MIN_GRAPH_EXTRACTION_CONFIDENCE = 0.65;
 
 type PublicFailure = { status: number; error: string; retryable: boolean };
 
@@ -143,7 +145,7 @@ export async function POST(req: NextRequest) {
     companyId: company.id,
     kind: "ai_smart",
     credits: AUDIT_CREDITS,
-    reservedCostEur: Number.isFinite(AUDIT_COST_RESERVE_EUR) ? AUDIT_COST_RESERVE_EUR : 0.5,
+    reservedCostEur: AUDIT_COST_RESERVE_EUR,
   });
   if (!reservation.allowed) {
     return NextResponse.json({ error: "Votre capacité d'analyse intelligente est arrivée à sa limite pour cette période.", usageLimited: true, reason: reservation.reason, href: "/app/settings" }, { status: 429 });
@@ -173,7 +175,7 @@ export async function POST(req: NextRequest) {
             reservationId: reservation.reservationId,
             kind: "ai_smart",
             credits: AUDIT_CREDITS,
-            reservedCostEur: Number.isFinite(AUDIT_COST_RESERVE_EUR) ? AUDIT_COST_RESERVE_EUR : 0.5,
+            reservedCostEur: AUDIT_COST_RESERVE_EUR,
           }),
           logDocumentAttempt({
             companyId: company.id,
@@ -233,22 +235,28 @@ export async function POST(req: NextRequest) {
     }
 
     const audit = auditFinancialStatement(extraction.statement);
-    const priorities = deriveFinancialPriorities(extraction.statement, audit);
-    const graphWrite = await persistFinancialAuditToBusinessGraph({
-      companyId: company.id,
-      documentKey,
-      documentType: extraction.documentType,
+    const priorities = deriveFinancialPriorities(extraction.statement, audit, {
       extractionConfidence: extraction.extractionConfidence,
-      statement: extraction.statement,
-      audit,
-      model: extraction.model,
-      warningsCount: extraction.warnings.length,
-    }).catch((error) => {
-      console.error("Financial audit Business Graph persistence failed", error);
-      return null;
+      warnings: extraction.warnings,
     });
+    const graphEligible = extraction.extractionConfidence >= MIN_GRAPH_EXTRACTION_CONFIDENCE;
+    const graphWrite = graphEligible
+      ? await persistFinancialAuditToBusinessGraph({
+          companyId: company.id,
+          documentKey,
+          documentType: extraction.documentType,
+          extractionConfidence: extraction.extractionConfidence,
+          statement: extraction.statement,
+          audit,
+          model: extraction.model,
+          warningsCount: extraction.warnings.length,
+        }).catch((error) => {
+          console.error("Financial audit Business Graph persistence failed", error);
+          return null;
+        })
+      : null;
 
-    if (!identityConflict) {
+    if (!identityConflict || !graphEligible) {
       await logDocumentAttempt({
         companyId: company.id,
         userId: session.user.id,
@@ -260,8 +268,11 @@ export async function POST(req: NextRequest) {
         extractedCompanySiret: extraction.documentIdentity.siret,
         identityStatus: identity.status,
         identityConfidence: extraction.documentIdentity.confidence,
-        decision: graphWrite ? "integrated" : "analyzed_graph_write_failed",
-        reason: identity.reason,
+        decision: !graphEligible ? "analyzed_low_confidence_not_integrated" : graphWrite ? "integrated" : "analyzed_graph_write_failed",
+        reason: !graphEligible
+          ? `Confiance d'extraction ${Math.round(extraction.extractionConfidence * 100)} %, sous le seuil d'intégration de ${Math.round(MIN_GRAPH_EXTRACTION_CONFIDENCE * 100)} %.`
+          : identity.reason,
+        overrideReason: identityConflict ? identityOverrideReason : null,
       }).catch(() => undefined);
     }
 
@@ -274,6 +285,7 @@ export async function POST(req: NextRequest) {
         extractionConfidence: extraction.extractionConfidence,
         identityStatus: identity.status,
         identityOverride: identityConflict,
+        graphEligible,
         ratiosCount: audit.ratios.length,
         alertsCount: audit.alerts.length,
         questionsCount: audit.questions.length,
@@ -302,7 +314,12 @@ export async function POST(req: NextRequest) {
       },
       audit,
       priorities,
-      context: { businessGraphEnriched: Boolean(graphWrite), factsWritten: graphWrite?.factsWritten ?? 0 },
+      context: {
+        businessGraphEnriched: Boolean(graphWrite),
+        factsWritten: graphWrite?.factsWritten ?? 0,
+        graphSkippedReason: !graphEligible ? "low_extraction_confidence" : graphWrite ? null : "graph_write_failed",
+        minimumGraphConfidence: MIN_GRAPH_EXTRACTION_CONFIDENCE,
+      },
       privacy: {
         rawPdfStored: false,
         documentFingerprintStored: true,
@@ -315,7 +332,7 @@ export async function POST(req: NextRequest) {
       reservationId: reservation.reservationId,
       kind: "ai_smart",
       credits: AUDIT_CREDITS,
-      reservedCostEur: Number.isFinite(AUDIT_COST_RESERVE_EUR) ? AUDIT_COST_RESERVE_EUR : 0.5,
+      reservedCostEur: AUDIT_COST_RESERVE_EUR,
     }).catch(() => undefined);
 
     const typed = error instanceof FinancialDocumentError ? error : null;
