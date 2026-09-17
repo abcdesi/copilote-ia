@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, Network, ShieldCheck, Landmark } from "lucide-react";
+import { Menu, Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, Network, ShieldCheck, Landmark, LifeBuoy } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
@@ -18,6 +18,7 @@ const NAV = [
   { href: "/app/context", label: "Contexte IA", icon: Network },
   { href: "/app/tools", label: "Outils", icon: Wrench },
   { href: "/app/company", label: "Mon entreprise", icon: Building2 },
+  { href: "/app/support", label: "Assistance", icon: LifeBuoy },
   { href: "/app/settings", label: "Paramètres", icon: Settings },
 ];
 
@@ -25,7 +26,11 @@ export function MobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const items = isAdmin
-    ? [...NAV, { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck }]
+    ? [
+        ...NAV,
+        { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck },
+        { href: "/app/admin/support", label: "Support admin", icon: LifeBuoy },
+      ]
     : NAV;
 
   return (
@@ -35,7 +40,7 @@ export function MobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
         <DialogPrimitive.Trigger className="rounded-lg p-2 text-muted-foreground hover:bg-muted"><Menu size={20} /></DialogPrimitive.Trigger>
         <DialogPrimitive.Portal>
           <DialogPrimitive.Overlay className="fixed inset-0 z-50 bg-black/40" />
-          <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-64 bg-card p-4 shadow-xl outline-none">
+          <DialogPrimitive.Content className="fixed right-0 top-0 z-50 h-full w-64 overflow-y-auto bg-card p-4 shadow-xl outline-none">
             <DialogPrimitive.Title className="sr-only">Menu</DialogPrimitive.Title>
             <nav className="mt-8 space-y-0.5">
               {items.map((item) => {
