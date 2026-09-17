@@ -18,15 +18,22 @@ const ERROR_MESSAGES: Record<string, string> = {
   exists: "Un compte existe déjà avec cet email. Connectez-vous plutôt.",
 };
 
+function safeNext(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/onboarding";
+  return value;
+}
+
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const params = await searchParams;
+  const next = safeNext(params.next);
   const session = await auth();
-  if (session) redirect("/app");
+  if (session) redirect(next === "/onboarding" ? "/app" : next);
 
-  const { error } = await searchParams;
+  const loginHref = next === "/onboarding" ? "/login" : `/login?next=${encodeURIComponent(next)}`;
 
   return (
     <AuthCard
@@ -35,7 +42,7 @@ export default async function SignupPage({
       footer={
         <>
           Déjà un compte ?{" "}
-          <Link href="/login" className="font-medium text-accent">Se connecter</Link>
+          <Link href={loginHref} className="font-medium text-accent">Se connecter</Link>
         </>
       }
     >
@@ -45,7 +52,8 @@ export default async function SignupPage({
         <p className="flex gap-2"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> Votre contexte et votre historique restent disponibles après l'essai.</p>
       </div>
       <form action={signupAction} className="space-y-4">
-        {error && <p className="text-sm text-danger">{ERROR_MESSAGES[error] ?? "Une erreur est survenue."}</p>}
+        {params.error && <p className="text-sm text-danger">{ERROR_MESSAGES[params.error] ?? "Une erreur est survenue."}</p>}
+        {next !== "/onboarding" && <input type="hidden" name="next" value={next} />}
         <div className="space-y-1.5">
           <Label htmlFor="name">Votre nom</Label>
           <Input id="name" name="name" type="text" required autoComplete="name" placeholder="Camille Martin" />
