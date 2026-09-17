@@ -49,6 +49,9 @@ jobs:
       - name: Persistence tests
         run: npm run test:persistence
 
+      - name: Billing economics tests
+        run: npm run test:billing
+
       - name: Lint
         run: npm run lint
 
