@@ -7,6 +7,10 @@ const extractedFinancialSchema = z.object({
   periodMonths: z.number().int().min(1).max(24).nullable(),
   currency: z.string().min(1).max(12).nullable(),
   unitMultiplier: z.number().positive().max(1_000_000_000),
+  documentCompanyName: z.string().min(1).max(240).nullable(),
+  documentCompanySiret: z.string().min(1).max(40).nullable(),
+  identityConfidence: z.number().min(0).max(1),
+  identityEvidence: z.array(z.string().max(240)).max(8),
   revenue: z.number().nullable(),
   grossProfit: z.number().nullable(),
   operatingProfit: z.number().nullable(),
@@ -53,6 +57,12 @@ export interface FinancialDocumentExtraction {
   documentType: z.infer<typeof extractedFinancialSchema>["documentType"];
   extractionConfidence: number;
   warnings: string[];
+  documentIdentity: {
+    companyName: string | null;
+    siret: string | null;
+    confidence: number;
+    evidence: string[];
+  };
   model: string;
   inputTokens: number;
   outputTokens: number;
@@ -81,15 +91,9 @@ function supportsDisabledThinking(model: string) {
 }
 
 function providerError(status: number, detail: string) {
-  if (status === 401 || status === 403) {
-    return new FinancialDocumentError("provider_auth", "Authentification Anthropic refusée.", status);
-  }
-  if (status === 404) {
-    return new FinancialDocumentError("model_unavailable", "Le modèle Anthropic configuré est indisponible.", status);
-  }
-  if (status === 429) {
-    return new FinancialDocumentError("provider_rate_limited", "Anthropic limite temporairement les requêtes.", status);
-  }
+  if (status === 401 || status === 403) return new FinancialDocumentError("provider_auth", "Authentification Anthropic refusée.", status);
+  if (status === 404) return new FinancialDocumentError("model_unavailable", "Le modèle Anthropic configuré est indisponible.", status);
+  if (status === 429) return new FinancialDocumentError("provider_rate_limited", "Anthropic limite temporairement les requêtes.", status);
   if (status === 400 || status === 413 || status === 422) {
     return new FinancialDocumentError("document_rejected", detail || "Le document a été refusé par le moteur d'analyse.", status);
   }
@@ -112,9 +116,7 @@ export async function extractFinancialStatementFromPdf(input: {
   filename?: string;
 }): Promise<FinancialDocumentExtraction> {
   const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    throw new FinancialDocumentError("provider_not_configured", "ANTHROPIC_API_KEY manquante pour l'analyse financière.");
-  }
+  if (!apiKey) throw new FinancialDocumentError("provider_not_configured", "ANTHROPIC_API_KEY manquante pour l'analyse financière.");
 
   const model = process.env.ANTHROPIC_MODEL_SMART || process.env.ANTHROPIC_MODEL || "claude-sonnet-5";
   const pdfBase64 = Buffer.from(input.pdfBytes).toString("base64");
@@ -122,6 +124,8 @@ export async function extractFinancialStatementFromPdf(input: {
 
 RÈGLES ABSOLUES
 - N'invente aucune valeur. Si un poste n'est pas clairement présent ou calculable sans ambiguïté, mets null.
+- Identifie séparément l'entité juridique à laquelle appartient le document. documentCompanyName doit reprendre le nom visible dans le document, sans le deviner. documentCompanySiret doit contenir le SIRET visible (14 chiffres, espaces tolérés dans la source) ou null. Ne déduis jamais un SIRET depuis un nom.
+- identityConfidence reflète uniquement la certitude que l'identité extraite est bien celle de l'entité couverte par le document. identityEvidence contient de courts indices factuels visibles (en-tête, pied de page, mention SIRET...), sans recopier de longs passages.
 - Respecte le signe comptable affiché dans le document. Ne transforme pas une perte en valeur positive.
 - Identifie l'unité affichée (euros, milliers d'euros, millions, etc.) dans unitMultiplier. Exemples: unités = 1, k€ = 1000, M€ = 1000000.
 - Les montants JSON doivent être les nombres tels qu'ils apparaissent AVANT application de unitMultiplier.
@@ -139,6 +143,10 @@ FORMAT EXACT
   "periodMonths":12,
   "currency":"EUR",
   "unitMultiplier":1,
+  "documentCompanyName":null,
+  "documentCompanySiret":null,
+  "identityConfidence":0.0,
+  "identityEvidence":[],
   "revenue":null,
   "grossProfit":null,
   "operatingProfit":null,
@@ -161,60 +169,34 @@ Nom du fichier fourni : ${input.filename || "document.pdf"}.`;
 
   const body: Record<string, unknown> = {
     model,
-    max_tokens: 3200,
-    messages: [
-      {
-        role: "user",
-        content: [
-          {
-            type: "document",
-            source: {
-              type: "base64",
-              media_type: "application/pdf",
-              data: pdfBase64,
-            },
-          },
-          { type: "text", text: instruction },
-        ],
-      },
-    ],
+    max_tokens: 3400,
+    messages: [{
+      role: "user",
+      content: [
+        { type: "document", source: { type: "base64", media_type: "application/pdf", data: pdfBase64 } },
+        { type: "text", text: instruction },
+      ],
+    }],
   };
-
-  // Sonnet 5 active le reasoning par défaut. Pour une extraction JSON déterministe,
-  // on le désactive afin qu'il ne consomme pas le budget de sortie avant le JSON utile.
   if (supportsDisabledThinking(model)) body.thinking = { type: "disabled" };
 
   let response: Response;
   try {
     response = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(80_000),
     });
   } catch (error) {
-    throw new FinancialDocumentError(
-      "provider_unavailable",
-      error instanceof Error ? error.message : "Connexion au moteur Anthropic impossible."
-    );
+    throw new FinancialDocumentError("provider_unavailable", error instanceof Error ? error.message : "Connexion au moteur Anthropic impossible.");
   }
 
-  if (!response.ok) {
-    const detail = await providerFailureDetail(response);
-    throw providerError(response.status, detail);
-  }
+  if (!response.ok) throw providerError(response.status, await providerFailureDetail(response));
 
   const data = await response.json();
-  if (data?.stop_reason === "max_tokens") {
-    throw new FinancialDocumentError("extraction_truncated", "La réponse d'extraction a été interrompue avant la fin.");
-  }
-  if (data?.stop_reason === "refusal") {
-    throw new FinancialDocumentError("document_rejected", "Le moteur n'a pas pu traiter ce document.");
-  }
+  if (data?.stop_reason === "max_tokens") throw new FinancialDocumentError("extraction_truncated", "La réponse d'extraction a été interrompue avant la fin.");
+  if (data?.stop_reason === "refusal") throw new FinancialDocumentError("document_rejected", "Le moteur n'a pas pu traiter ce document.");
 
   const textParts = Array.isArray(data?.content)
     ? data.content.filter((part: { type?: string; text?: string }) => part.type === "text" && typeof part.text === "string")
@@ -259,6 +241,12 @@ Nom du fichier fourni : ${input.filename || "document.pdf"}.`;
     documentType: extracted.documentType,
     extractionConfidence: extracted.extractionConfidence,
     warnings: extracted.warnings,
+    documentIdentity: {
+      companyName: extracted.documentCompanyName,
+      siret: extracted.documentCompanySiret,
+      confidence: extracted.identityConfidence,
+      evidence: extracted.identityEvidence,
+    },
     model,
     inputTokens: Number(data?.usage?.input_tokens ?? 0),
     outputTokens: Number(data?.usage?.output_tokens ?? 0),
