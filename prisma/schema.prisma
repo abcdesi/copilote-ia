@@ -17,8 +17,9 @@ model User {
   name         String?
   createdAt    DateTime @default(now())
 
-  companies Company[]
-  events    Event[]
+  companies   Company[]
+  memberships CompanyMembership[]
+  events      Event[]
 }
 
 model Company {
@@ -48,6 +49,8 @@ model Company {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
+  memberships            CompanyMembership[]
+  invitations            CompanyInvitation[]
   tools                  CompanyTool[]
   diagnostics            Diagnostic[]
   opportunities          Opportunity[]
@@ -67,6 +70,43 @@ model Company {
   contextRevisions       CompanyContextRevision[]
 
   @@index([userId])
+}
+
+model CompanyMembership {
+  id        String   @id @default(cuid())
+  companyId String
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      String   @default("viewer")
+  status    String   @default("active")
+  joinedAt  DateTime @default(now())
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([companyId, userId])
+  @@index([userId, status])
+  @@index([companyId, status])
+}
+
+model CompanyInvitation {
+  id              String   @id @default(cuid())
+  companyId       String
+  company         Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  email           String
+  role            String   @default("viewer")
+  tokenHash       String   @unique
+  status          String   @default("pending")
+  invitedByUserId String
+  invitedByName   String?
+  invitedByEmail  String
+  expiresAt       DateTime
+  acceptedAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@index([companyId, status])
+  @@index([email, status])
 }
 
 model CompanyTool {
@@ -282,6 +322,10 @@ model AutomationRun {
   durationMs     Int?
   errorCode      String?
   metadata       String?
+  actorUserId    String?
+  actorName      String?
+  actorEmail     String?
+  actorRole      String?
   startedAt      DateTime   @default(now())
   finishedAt     DateTime?
 
@@ -296,6 +340,9 @@ model AutomationAuditEvent {
   automationId String
   automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
   actorUserId  String?
+  actorName    String?
+  actorEmail   String?
+  actorRole    String?
   eventType    String
   detailsJson  String?
   createdAt    DateTime   @default(now())
