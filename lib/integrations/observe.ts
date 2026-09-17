@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { recordOperationalEvent } from "@/lib/operating-company/events";
 
 interface GmailListResponse {
   resultSizeEstimate?: number;
@@ -21,10 +22,14 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
   const now = new Date();
   const inSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
-  const [gmail, calendar] = await Promise.all([
+  const [gmail, recentInbox, calendar] = await Promise.all([
     googleApi<GmailListResponse>(
       companyId,
       "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=label%3Ainbox%20is%3Aunread%20newer_than%3A7d&maxResults=50"
+    ),
+    googleApi<GmailListResponse>(
+      companyId,
+      "https://gmail.googleapis.com/gmail/v1/users/me/messages?q=label%3Ainbox%20newer_than%3A1d&maxResults=100"
     ),
     googleApi<CalendarEventsResponse>(
       companyId,
@@ -39,6 +44,21 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
     upcomingEventsNext7Days: (calendar.items ?? []).filter((event) => event.status !== "cancelled").length,
     observedAt: now.toISOString(),
   };
+
+  // Chaque message est enregistré avec son ID Gmail : les synchronisations peuvent
+  // être répétées sans gonfler le brief dirigeant. On conserve uniquement le signal,
+  // jamais le contenu brut du mail dans ce journal opérationnel.
+  await Promise.all(
+    (recentInbox.messages ?? []).map((message) =>
+      recordOperationalEvent({
+        companyId,
+        kind: "email_received",
+        source: "google:gmail",
+        externalRef: message.id,
+        metadata: { contentStored: false },
+      })
+    )
+  );
 
   await Promise.all([
     prisma.integrationConnection.updateMany({
