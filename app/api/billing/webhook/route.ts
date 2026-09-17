@@ -11,6 +11,8 @@ interface StripeEvent {
   data: { object: Record<string, unknown> };
 }
 
+const ENTITLED_STATUSES = new Set(["active", "trialing"]);
+
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : null;
 }
@@ -39,6 +41,20 @@ function recurringInterval(object: Record<string, unknown>) {
   return stringValue((recurring as Record<string, unknown>).interval);
 }
 
+function subscriptionStatus(object: Record<string, unknown>) {
+  const objectType = stringValue(object.object);
+  if (objectType === "subscription") {
+    const raw = stringValue(object.status) ?? "incomplete";
+    return raw === "canceled" ? "cancelled" : raw;
+  }
+
+  // checkout.session.completed n'est pas un objet Subscription. On ne lui attribue
+  // des droits que si Stripe confirme que le paiement est effectué ou non requis
+  // (ex. essai). L'événement customer.subscription.* affinera ensuite le statut.
+  const paymentStatus = stringValue(object.payment_status);
+  return paymentStatus === "paid" || paymentStatus === "no_payment_required" ? "active" : "incomplete";
+}
+
 async function upsertSubscriptionFromObject(
   object: Record<string, unknown>,
   fallback?: { companyId?: string; plan?: string; customerId?: string; billingCycle?: string }
@@ -49,16 +65,17 @@ async function upsertSubscriptionFromObject(
   const billingCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
   const customerId = stringValue(object.customer) ?? fallback?.customerId ?? null;
   const stripeSubId = stringValue(object.subscription) ?? stringValue(object.id);
-  const status = stringValue(object.status) ?? "active";
+  const status = subscriptionStatus(object);
   const periodStart = numberValue(object.current_period_start);
   const periodEnd = numberValue(object.current_period_end);
   const interval = recurringInterval(object) ?? (billingCycle === "annual" ? "year" : billingCycle === "monthly" ? "month" : null);
   if (!companyId || !plan) return;
 
   const existing = await prisma.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } });
+  const previousStatus = existing?.status ?? null;
   const data = {
     plan,
-    status: status === "canceled" || status === "unpaid" ? "cancelled" : "active",
+    status,
     stripeCustomerId: customerId,
     stripeSubId,
     currentPeriodStart: periodStart ? new Date(periodStart * 1000) : existing?.currentPeriodStart ?? null,
@@ -69,10 +86,19 @@ async function upsertSubscriptionFromObject(
   if (existing) await prisma.subscription.update({ where: { id: existing.id }, data });
   else await prisma.subscription.create({ data: { companyId, ...data } });
 
-  await track(data.status === "cancelled" ? EVENTS.SUBSCRIPTION_CANCELLED : EVENTS.SUBSCRIPTION_STARTED, {
-    companyId,
-    metadata: { plan, provider: "stripe", billingInterval: data.billingInterval },
-  });
+  const wasEntitled = previousStatus ? ENTITLED_STATUSES.has(previousStatus) : false;
+  const isEntitled = ENTITLED_STATUSES.has(status);
+  if (!wasEntitled && isEntitled) {
+    await track(EVENTS.SUBSCRIPTION_STARTED, {
+      companyId,
+      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status },
+    });
+  } else if (wasEntitled && !isEntitled) {
+    await track(EVENTS.SUBSCRIPTION_CANCELLED, {
+      companyId,
+      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status },
+    });
+  }
 }
 
 async function grantCreditPack(object: Record<string, unknown>) {
@@ -127,7 +153,12 @@ export async function POST(req: NextRequest) {
   const signature = req.headers.get("stripe-signature") ?? "";
   if (!verifyStripeWebhook(rawBody, signature)) return NextResponse.json({ error: "Signature invalide." }, { status: 400 });
 
-  const event = JSON.parse(rawBody) as StripeEvent;
+  let event: StripeEvent;
+  try {
+    event = JSON.parse(rawBody) as StripeEvent;
+  } catch {
+    return NextResponse.json({ error: "Payload Stripe invalide." }, { status: 400 });
+  }
   const object = event.data.object;
 
   if (event.type === "checkout.session.completed") {
@@ -142,7 +173,11 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  if (event.type === "customer.subscription.created" || event.type === "customer.subscription.updated" || event.type === "customer.subscription.deleted") {
+  if (
+    event.type === "customer.subscription.created" ||
+    event.type === "customer.subscription.updated" ||
+    event.type === "customer.subscription.deleted"
+  ) {
     await upsertSubscriptionFromObject(object);
   }
 
