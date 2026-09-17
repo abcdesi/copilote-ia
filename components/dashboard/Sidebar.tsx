@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network, ShieldCheck, Landmark } from "lucide-react";
+import { Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, LogOut, Network, ShieldCheck, Landmark, LifeBuoy } from "lucide-react";
 import { APP_NAME } from "@/lib/config";
 import { logoutAction } from "@/lib/auth/actions";
 import { cn } from "@/lib/utils/cn";
@@ -17,6 +17,7 @@ const NAV = [
   { href: "/app/context", label: "Contexte IA", icon: Network },
   { href: "/app/tools", label: "Outils", icon: Wrench },
   { href: "/app/company", label: "Mon entreprise", icon: Building2 },
+  { href: "/app/support", label: "Assistance", icon: LifeBuoy },
   { href: "/app/settings", label: "Paramètres", icon: Settings },
 ];
 
@@ -31,7 +32,11 @@ export function Sidebar({
 }) {
   const pathname = usePathname();
   const items = isAdmin
-    ? [...NAV, { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck }]
+    ? [
+        ...NAV,
+        { href: "/app/admin/intelligence", label: "Intelligence admin", icon: ShieldCheck },
+        { href: "/app/admin/support", label: "Support admin", icon: LifeBuoy },
+      ]
     : NAV;
 
   return (

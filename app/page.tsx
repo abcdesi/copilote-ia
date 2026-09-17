@@ -97,8 +97,8 @@ export default function HomePage() {
         "Système opérationnel IA pour comprendre l'entreprise, détecter les priorités, recommander des actions, automatiser avec contrôle et mesurer les résultats.",
       offers: {
         "@type": "AggregateOffer",
-        lowPrice: "49",
-        highPrice: "249",
+        lowPrice: "79",
+        highPrice: "399",
         priceCurrency: "EUR",
         offerCount: "3",
       },
@@ -115,7 +115,7 @@ export default function HomePage() {
               <Sparkles size={13} /> Le système opérationnel IA qui apprend votre entreprise
             </div>
             <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[3.45rem] lg:leading-[1.08]">
-              Pilotzia vous aide à repérer chaque jour les actions prioritaires pour diminuer vos coûts, identifier les points de blocage et développer votre CA.
+              Pilotzia fait avancer votre entreprise.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
               Plus Pilotzia comprend votre entreprise, plus ses recommandations deviennent précises, utiles et adaptées à votre réalité.
@@ -345,6 +345,7 @@ export default function HomePage() {
                       {featured && <span className="rounded-full bg-accent px-2.5 py-1 text-[11px] font-semibold text-accent-foreground">Meilleur équilibre</span>}
                     </div>
                     <p className="mt-3 text-3xl font-semibold">{plan.priceEur} €<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
+                    <p className="mt-1 text-xs text-muted-foreground">ou {plan.annualPriceEur.toLocaleString("fr-FR")} €/an · 1 mois offert</p>
                     <p className="mt-2 min-h-12 text-sm leading-6 text-muted-foreground">{plan.positioning}</p>
                     <ul className="mt-5 space-y-2 text-sm">
                       {plan.features.map((feature) => (
