@@ -18,6 +18,9 @@ const optionalEmployeeCount = z.preprocess(
 
 const schema = z.object({
   name: z.string().min(1).max(120),
+  siret: optionalText(20),
+  address: optionalText(300),
+  phone: optionalText(40),
   industry: optionalText(120),
   country: optionalText(80),
   sizeRange: optionalText(20),
@@ -39,12 +42,12 @@ type CompanyUpdate = z.infer<typeof schema>;
 type ProfileField = Exclude<keyof CompanyUpdate, "name">;
 
 const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
-  activity: ["industry", "businessModel", "customerProfile"],
+  activity: ["siret", "industry", "businessModel", "customerProfile"],
   team: ["sizeRange", "employeeCount"],
   objectives: ["objectives"],
   painPoints: ["painPoints"],
   applications: [],
-  local: ["country", "localContext"],
+  local: ["address", "phone", "country", "localContext"],
   finance: ["financeContext"],
   accounting: ["accountingContext"],
   sales: ["salesContext"],
@@ -55,6 +58,9 @@ const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
 
 const FIELD_SECTION: Record<keyof CompanyUpdate, KnowledgeSectionKey> = {
   name: "activity",
+  siret: "activity",
+  address: "local",
+  phone: "local",
   industry: "activity",
   country: "local",
   sizeRange: "team",
@@ -157,6 +163,9 @@ export async function updateCompanyAction(formData: FormData) {
 
   const parsed = schema.safeParse({
     name: formData.get("name"),
+    siret: value(formData, "siret"),
+    address: value(formData, "address"),
+    phone: value(formData, "phone"),
     industry: value(formData, "industry"),
     country: value(formData, "country"),
     sizeRange: value(formData, "sizeRange"),
@@ -187,6 +196,7 @@ export async function updateCompanyAction(formData: FormData) {
   revalidatePath("/app/company");
   revalidatePath("/app");
   revalidatePath("/app/copilot");
+  revalidatePath("/app/automations");
 }
 
 export async function addToolAction(formData: FormData) {
