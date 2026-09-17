@@ -9,9 +9,13 @@ import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 
 const signupSchema = z.object({
-  name: z.string().min(1, "Nom requis").max(100),
-  email: z.string().email("Email invalide"),
-  password: z.string().min(8, "8 caractères minimum").max(100),
+  name: z.string().trim().min(1, "Nom requis").max(100),
+  email: z.string().trim().email("Email invalide").transform((value) => value.toLowerCase()),
+  password: z
+    .string()
+    .min(12, "12 caractères minimum")
+    .max(128)
+    .refine((value) => Buffer.byteLength(value, "utf8") <= 72, "Mot de passe trop long"),
   acceptTerms: z.literal("yes"),
 });
 
@@ -29,7 +33,9 @@ export async function signupAction(formData: FormData) {
 
   const { name, email, password } = parsed.data;
 
-  const existing = await prisma.user.findUnique({ where: { email } });
+  const existing = await prisma.user.findFirst({
+    where: { email: { equals: email, mode: "insensitive" } },
+  });
   if (existing) {
     redirect("/signup?error=exists");
   }
@@ -48,7 +54,7 @@ export async function signupAction(formData: FormData) {
 }
 
 export async function loginAction(formData: FormData) {
-  const email = String(formData.get("email") ?? "");
+  const email = String(formData.get("email") ?? "").trim().toLowerCase();
   const password = String(formData.get("password") ?? "");
 
   try {
