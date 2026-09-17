@@ -5,10 +5,26 @@
 import { randomUUID } from "crypto";
 
 const PILOTZIA_URL = "https://pilotzia.com";
+const TRIGGER_AUTH_MARKER = "PILOTZIA_AUTHENTICATED_TRIGGER_V1";
+
+function sharedSecret() {
+  const secret = process.env.N8N_CALLBACK_SECRET?.trim();
+  if (!secret) throw new Error("N8N_CALLBACK_SECRET manquant pour sécuriser le workflow n8n.");
+  return secret;
+}
 
 function contactListWorkflowCode() {
+  const secret = sharedSecret();
   return `
-const input = $input.first().json.body || $input.first().json;
+// ${TRIGGER_AUTH_MARKER}
+const request = $input.first().json;
+const expectedAuthorization = ${JSON.stringify(`Bearer ${secret}`)};
+const authorization = String(request.headers?.authorization || request.headers?.Authorization || "");
+if (!authorization || authorization !== expectedAuthorization) {
+  throw new Error("Déclenchement Pilotzia non autorisé.");
+}
+
+const input = request.body || request;
 const companyId = input.companyId;
 const automationId = input.automationId;
 const runId = input.runId || null;
@@ -18,7 +34,7 @@ if (!companyId || !automationId) {
 }
 
 const PILOTZIA_URL = "${PILOTZIA_URL}";
-const CALLBACK_SECRET = "${process.env.N8N_CALLBACK_SECRET}";
+const CALLBACK_SECRET = ${JSON.stringify(secret)};
 
 const { prospects } = await this.helpers.httpRequest({
   method: "GET",
@@ -62,6 +78,10 @@ return [{ json: { companyId, automationId, templateId, runId, relancedCount, err
 
 export function webhookPathForCompany(companyId: string, templateId: string = "relance-prospects") {
   return `${templateId}-${companyId}`;
+}
+
+export function workflowAuthMarker() {
+  return TRIGGER_AUTH_MARKER;
 }
 
 export function buildContactListWorkflow(companyId: string, templateId: string) {
