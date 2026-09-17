@@ -22,12 +22,21 @@ interface Priority {
   nextEvidence: string;
 }
 
+interface DocumentIdentity {
+  status: string;
+  detectedCompanyName?: string | null;
+  detectedCompanySiret?: string | null;
+  confidence?: number | null;
+  evidence?: string[];
+}
+
 interface AuditResponse {
   extraction: {
     statement: Record<string, number | string | null | undefined>;
     documentType: string;
     extractionConfidence: number;
     warnings: string[];
+    identity?: DocumentIdentity;
   };
   audit: {
     periodLabel: string;
@@ -37,8 +46,17 @@ interface AuditResponse {
     missingData: string[];
   };
   priorities: Priority[];
-  context?: { businessGraphEnriched: boolean; factsWritten: number };
-  privacy: { rawPdfStored: boolean; note: string };
+  context?: {
+    businessGraphEnriched: boolean;
+    factsWritten: number;
+    graphSkippedReason?: string | null;
+    minimumGraphConfidence?: number;
+  };
+  privacy: {
+    rawPdfStored: boolean;
+    documentFingerprintStored?: boolean;
+    note: string;
+  };
 }
 
 interface AuditErrorPayload {
@@ -49,6 +67,10 @@ interface AuditErrorPayload {
   adminHealthHref?: string;
   href?: string;
   usageLimited?: boolean;
+  reviewRequired?: boolean;
+  canOverride?: boolean;
+  identity?: DocumentIdentity;
+  overrideRequirements?: { confirmIdentityMismatch?: boolean; identityOverrideReasonMinLength?: number } | null;
 }
 
 const MAX_PDF_BYTES = 4 * 1024 * 1024;
@@ -74,9 +96,9 @@ export function FinancialAuditUpload() {
   const [error, setError] = useState("");
   const [errorMeta, setErrorMeta] = useState<AuditErrorPayload | null>(null);
   const [result, setResult] = useState<AuditResponse | null>(null);
+  const [overrideReason, setOverrideReason] = useState("");
 
-  async function submit(event: FormEvent) {
-    event.preventDefault();
+  async function runAnalysis(options: { overrideIdentity?: boolean } = {}) {
     if (!file || status === "loading") return;
 
     if (file.size > MAX_PDF_BYTES) {
@@ -88,11 +110,14 @@ export function FinancialAuditUpload() {
 
     setStatus("loading");
     setError("");
-    setErrorMeta(null);
     setResult(null);
 
     const body = new FormData();
     body.set("file", file);
+    if (options.overrideIdentity) {
+      body.set("confirmIdentityMismatch", "true");
+      body.set("identityOverrideReason", overrideReason.trim());
+    }
 
     try {
       const response = await fetch("/api/finance/analyze", { method: "POST", body });
@@ -110,6 +135,7 @@ export function FinancialAuditUpload() {
       }
 
       const parsed = JSON.parse(raw) as AuditResponse;
+      setErrorMeta(null);
       setResult(parsed);
       setStatus("done");
     } catch (cause) {
@@ -119,6 +145,14 @@ export function FinancialAuditUpload() {
     }
   }
 
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    await runAnalysis();
+  }
+
+  const identityReview = errorMeta?.code === "document_company_mismatch" && errorMeta.reviewRequired;
+  const overrideMinLength = errorMeta?.overrideRequirements?.identityOverrideReasonMinLength ?? 8;
+
   return (
     <div className="space-y-6">
       <form onSubmit={submit} className="rounded-2xl border border-border bg-card p-5 sm:p-6">
@@ -127,7 +161,7 @@ export function FinancialAuditUpload() {
           <div>
             <h2 className="font-semibold">Importer un bilan ou un compte de résultat</h2>
             <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              PDF uniquement, 4 Mo maximum. Pilotzia extrait les postes visibles, calcule des ratios, signale les données manquantes et transforme les signaux en questions et priorités opérationnelles.
+              PDF uniquement, 4 Mo maximum. Pilotzia vérifie aussi l'identité de l'entreprise avant d'intégrer les données à sa mémoire.
             </p>
           </div>
         </div>
@@ -144,6 +178,7 @@ export function FinancialAuditUpload() {
               setError("");
               setErrorMeta(null);
               setResult(null);
+              setOverrideReason("");
               if (selected && selected.size > MAX_PDF_BYTES) {
                 setError("Ce PDF dépasse 4 Mo. Réduisez sa taille avant de lancer l'audit.");
                 setErrorMeta({ code: "upload_too_large", retryable: false, creditsRefunded: true });
@@ -152,7 +187,7 @@ export function FinancialAuditUpload() {
             }}
           />
           <p className="text-sm font-medium">{file ? file.name : "Choisir un document PDF"}</p>
-          <p className="mt-1 text-xs text-muted-foreground">Le document brut n'est pas enregistré par cette fonctionnalité.</p>
+          <p className="mt-1 text-xs text-muted-foreground">Le PDF brut n'est pas enregistré. Une empreinte cryptographique peut être conservée pour la traçabilité.</p>
         </label>
 
         <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
@@ -167,14 +202,57 @@ export function FinancialAuditUpload() {
           <div className="mt-4 rounded-xl border border-danger/20 bg-danger/5 p-4">
             <div className="flex items-start gap-2">
               <AlertTriangle size={17} className="mt-0.5 shrink-0 text-danger" />
-              <div>
+              <div className="min-w-0 flex-1">
                 <p className="text-sm font-medium text-danger">{error}</p>
                 {errorMeta?.creditsRefunded && (
-                  <p className="mt-1 text-xs text-muted-foreground">Aucun crédit n'est conservé pour cette analyse échouée.</p>
+                  <p className="mt-1 text-xs text-muted-foreground">Aucun crédit n'est conservé pour cette tentative bloquée ou échouée.</p>
                 )}
                 {errorMeta?.retryable && (
                   <p className="mt-1 text-xs text-muted-foreground">Vous pouvez relancer l'analyse sans modifier votre document.</p>
                 )}
+
+                {identityReview && errorMeta?.identity && (
+                  <div className="mt-4 rounded-xl border border-danger/20 bg-card p-4 text-sm">
+                    <p className="font-semibold">Identité détectée dans le document</p>
+                    <dl className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <div><dt>Société</dt><dd className="mt-0.5 font-medium text-foreground">{errorMeta.identity.detectedCompanyName || "Non déterminée"}</dd></div>
+                      <div><dt>SIRET</dt><dd className="mt-0.5 font-medium text-foreground">{errorMeta.identity.detectedCompanySiret || "Non déterminé"}</dd></div>
+                      <div><dt>Confiance identité</dt><dd className="mt-0.5 font-medium text-foreground">{typeof errorMeta.identity.confidence === "number" ? `${Math.round(errorMeta.identity.confidence * 100)} %` : "Non déterminée"}</dd></div>
+                      <div><dt>Décision Pilotzia</dt><dd className="mt-0.5 font-medium text-foreground">Aucune intégration au Business Graph</dd></div>
+                    </dl>
+                    {errorMeta.identity.evidence?.length ? (
+                      <p className="mt-3 text-xs leading-5 text-muted-foreground"><strong className="text-foreground">Éléments détectés :</strong> {errorMeta.identity.evidence.join(" · ")}</p>
+                    ) : null}
+
+                    {errorMeta.canOverride ? (
+                      <div className="mt-4 border-t border-border pt-4">
+                        <label className="text-xs font-semibold" htmlFor="identity-override-reason">Justification obligatoire pour forcer l'intégration</label>
+                        <textarea
+                          id="identity-override-reason"
+                          value={overrideReason}
+                          onChange={(event) => setOverrideReason(event.target.value)}
+                          minLength={overrideMinLength}
+                          maxLength={500}
+                          rows={3}
+                          placeholder="Ex. document d'une filiale consolidée validé par la direction…"
+                          className="mt-2 w-full rounded-xl border border-border bg-background p-3 text-sm outline-none focus:border-accent"
+                        />
+                        <p className="mt-2 text-xs text-muted-foreground">Cette décision, votre identité, votre rôle, la date et la justification seront conservés dans le journal d'audit.</p>
+                        <button
+                          type="button"
+                          disabled={status === "loading" || overrideReason.trim().length < overrideMinLength}
+                          onClick={() => void runAnalysis({ overrideIdentity: true })}
+                          className="mt-3 rounded-xl border border-danger/30 px-4 py-2 text-xs font-semibold text-danger disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          Confirmer exceptionnellement ce document
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-4 rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground">Seul un Propriétaire ou Administrateur peut autoriser exceptionnellement un document dont l'identité est en conflit.</p>
+                    )}
+                  </div>
+                )}
+
                 {errorMeta?.adminHealthHref && (
                   <div className="mt-3">
                     <Button href={errorMeta.adminHealthHref} variant="outline" size="sm">Vérifier le moteur IA</Button>
@@ -201,6 +279,17 @@ export function FinancialAuditUpload() {
                 <ShieldCheck size={13} /> PDF non conservé
               </div>
             </div>
+
+            {result.context?.graphSkippedReason === "low_extraction_confidence" && (
+              <div className="mt-4 rounded-xl border border-amber-300/40 bg-card p-4 text-xs leading-5 text-muted-foreground">
+                <strong className="text-foreground">Mémoire protégée :</strong> la confiance est insuffisante pour enrichir le Business Graph. L'analyse reste visible ici, mais Pilotzia ne la traitera pas comme un fait durable tant qu'un document plus fiable n'est pas fourni.
+              </div>
+            )}
+            {result.context?.businessGraphEnriched && (
+              <div className="mt-4 rounded-xl bg-card p-3 text-xs text-muted-foreground">
+                <strong className="text-foreground">Business Graph enrichi :</strong> {result.context.factsWritten} fait{result.context.factsWritten > 1 ? "s" : ""} structuré{result.context.factsWritten > 1 ? "s" : ""} ajouté{result.context.factsWritten > 1 ? "s" : ""} avec provenance.
+              </div>
+            )}
             {(result.extraction.warnings.length > 0 || result.audit.missingData.length > 0) && (
               <div className="mt-4 rounded-xl bg-card p-4 text-xs leading-5 text-muted-foreground">
                 {result.extraction.warnings.length > 0 && <p><strong className="text-foreground">Avertissements d'extraction :</strong> {result.extraction.warnings.join(" · ")}</p>}
@@ -211,7 +300,7 @@ export function FinancialAuditUpload() {
 
           <section>
             <div className="flex items-center gap-2"><Target size={18} className="text-accent" /><h2 className="font-semibold">Priorités de direction</h2></div>
-            <p className="mt-1 text-sm text-muted-foreground">Pilotzia ne classe pas les chiffres pour faire joli : il cherche quelle décision mérite votre attention en premier.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Classées par niveau de priorité. Une extraction incertaine est volontairement transformée en demande de vérification plutôt qu'en action affirmative.</p>
             <div className="mt-4 grid gap-4">
               {result.priorities.map((priority, index) => (
                 <div key={priority.key} className="rounded-2xl border border-border bg-card p-5">
