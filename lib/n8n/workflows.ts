@@ -1,11 +1,6 @@
-// Construit le workflow n8n réel pour les automatisations "liste de contacts + email"
-// (relance de prospects, onboarding clients, suivi de satisfaction...), pour une
-// entreprise donnée. Un seul nœud Code orchestre tout (récupérer les contacts et le
-// message à envoyer, envoyer via Resend, marquer comme contacté) — plus simple et plus
-// fiable à générer par API qu'une longue chaîne de nœuds HTTP Request séparés. Le
-// message envoyé (sujet/corps) est récupéré à chaque exécution depuis l'API plutôt que
-// figé dans le code du workflow, pour qu'une personnalisation faite par le client soit
-// prise en compte sans avoir à recréer le workflow.
+// Construit le workflow n8n réel pour les automatisations "liste de contacts + email".
+// n8n orchestre uniquement le déclenchement. Pilotzia reste la source de vérité pour
+// l'éligibilité, le rendu du message, l'envoi fournisseur, l'idempotence et la preuve.
 
 import { randomUUID } from "crypto";
 
@@ -15,19 +10,20 @@ function contactListWorkflowCode() {
   return `
 const input = $input.first().json.body || $input.first().json;
 const companyId = input.companyId;
+const automationId = input.automationId;
+const runId = input.runId || null;
 const templateId = input.templateId || "relance-prospects";
-if (!companyId) {
-  throw new Error("companyId manquant dans la requête.");
+if (!companyId || !automationId) {
+  throw new Error("companyId ou automationId manquant dans la requête.");
 }
 
 const PILOTZIA_URL = "${PILOTZIA_URL}";
 const CALLBACK_SECRET = "${process.env.N8N_CALLBACK_SECRET}";
-const RESEND_KEY = "${process.env.RESEND_API_KEY}";
 
-const { prospects, message } = await this.helpers.httpRequest({
+const { prospects } = await this.helpers.httpRequest({
   method: "GET",
   url: \`\${PILOTZIA_URL}/api/automation-engine/prospects\`,
-  qs: { companyId, templateId },
+  qs: { companyId, automationId, templateId },
   headers: { Authorization: \`Bearer \${CALLBACK_SECRET}\` },
   json: true,
 });
@@ -35,51 +31,35 @@ const { prospects, message } = await this.helpers.httpRequest({
 const results = [];
 for (const p of prospects || []) {
   try {
-    const subject = String(message?.subject || "").split("{{name}}").join(p.name);
-    const bodyText = String(message?.body || "").split("{{name}}").join(p.name);
-    const html = bodyText
-      .split("\\n")
-      .filter((line) => line.length > 0)
-      .map((line) => \`<p>\${line}</p>\`)
-      .join("");
-
-    await this.helpers.httpRequest({
+    const sent = await this.helpers.httpRequest({
       method: "POST",
-      url: "https://api.resend.com/emails",
-      headers: { Authorization: \`Bearer \${RESEND_KEY}\`, "Content-Type": "application/json" },
-      body: {
-        from: "Pilotzia <relances@pilotzia.com>",
-        to: [p.email],
-        subject,
-        html,
+      url: \`\${PILOTZIA_URL}/api/automation-engine/prospects/\${p.id}/send\`,
+      headers: {
+        Authorization: \`Bearer \${CALLBACK_SECRET}\`,
+        "Content-Type": "application/json",
       },
+      body: { automationId, runId },
       json: true,
     });
 
-    await this.helpers.httpRequest({
-      method: "POST",
-      url: \`\${PILOTZIA_URL}/api/automation-engine/prospects/\${p.id}/mark-contacted\`,
-      headers: { Authorization: \`Bearer \${CALLBACK_SECRET}\` },
-      json: true,
+    results.push({
+      prospectId: p.id,
+      email: p.email,
+      sent: Boolean(sent?.ok),
+      providerMessageId: sent?.providerMessageId || null,
+      messageVersion: sent?.messageVersion || p.messageVersion || null,
     });
-
-    results.push({ prospectId: p.id, email: p.email, sent: true });
   } catch (err) {
-    // Un échec sur un contact (email invalide, erreur Resend ponctuelle...) ne doit
-    // pas empêcher les autres contacts de la liste d'être traités.
     results.push({ prospectId: p.id, email: p.email, sent: false, error: err.message || String(err) });
   }
 }
 
 const relancedCount = results.filter((r) => r.sent).length;
 const errorCount = results.filter((r) => !r.sent).length;
-
-return [{ json: { companyId, templateId, relancedCount, errorCount, results } }];
+return [{ json: { companyId, automationId, templateId, runId, relancedCount, errorCount, results } }];
 `.trim();
 }
 
-// Le paramètre templateId a une valeur par défaut pour rester compatible avec le tout
-// premier workflow créé (relance-prospects), dont l'URL webhook ne l'incluait pas.
 export function webhookPathForCompany(companyId: string, templateId: string = "relance-prospects") {
   return `${templateId}-${companyId}`;
 }
@@ -94,9 +74,6 @@ export function buildContactListWorkflow(companyId: string, templateId: string) 
         type: "n8n-nodes-base.webhook",
         typeVersion: 2,
         position: [0, 0],
-        // n8n n'enregistre pas la route de production si ce champ est absent à la
-        // création par API (contrairement à une création depuis l'éditeur, qui le
-        // génère automatiquement) — sans lui, le webhook répond 404 silencieusement.
         webhookId: randomUUID(),
         parameters: {
           httpMethod: "POST",
