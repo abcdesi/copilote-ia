@@ -13,7 +13,7 @@ const inviteSchema = z.object({
   role: z.enum(INVITABLE_ROLES),
 });
 
-function teamError(code: string) {
+function teamError(code: string): never {
   redirect(`/app/team?error=${encodeURIComponent(code)}`);
 }
 
@@ -49,10 +49,11 @@ export async function inviteTeamMemberAction(formData: FormData) {
           metadata: JSON.stringify({ invitationId: result.invitation.id, email: parsed.data.email }),
         },
       }).catch(() => undefined);
-      teamError("delivery_failed");
+      throw new Error("DELIVERY_FAILED");
     }
   } catch (error) {
     const code = error instanceof Error ? error.message : "invitation_failed";
+    if (code === "DELIVERY_FAILED") teamError("delivery_failed");
     if (["ROLE_NOT_ALLOWED", "ALREADY_MEMBER", "SEAT_LIMIT_REACHED"].includes(code)) teamError(code.toLowerCase());
     console.error("Team invitation failed", error);
     teamError("invitation_failed");
