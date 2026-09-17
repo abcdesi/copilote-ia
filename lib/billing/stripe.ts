@@ -1,6 +1,8 @@
 import { createHmac, timingSafeEqual } from "crypto";
+import type { BillingCycle, PaidPlanKey } from "@/lib/billing/plans";
+import { getCreditPack, type CreditPackKey } from "@/lib/billing/credit-packs";
 
-export type PaidPlan = "starter" | "pro" | "business";
+export type PaidPlan = PaidPlanKey;
 
 function secretKey() {
   const key = process.env.STRIPE_SECRET_KEY;
@@ -12,10 +14,19 @@ function appUrl() {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
 }
 
-function priceId(plan: PaidPlan) {
-  const key = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
+function priceId(plan: PaidPlan, billingCycle: BillingCycle) {
+  const baseKey = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
+  const key = billingCycle === "annual" ? `${baseKey}_ANNUAL` : baseKey;
   const value = process.env[key];
   if (!value) throw new Error(`${key} manquante.`);
+  return value;
+}
+
+function creditPackPriceId(packKey: CreditPackKey) {
+  const pack = getCreditPack(packKey);
+  if (!pack) throw new Error("Pack de crédits inconnu.");
+  const value = process.env[pack.stripePriceEnv];
+  if (!value) throw new Error(`${pack.stripePriceEnv} manquante.`);
   return value;
 }
 
@@ -39,19 +50,49 @@ export async function createCheckoutSession(input: {
   companyId: string;
   email: string;
   plan: PaidPlan;
+  billingCycle: BillingCycle;
   stripeCustomerId?: string | null;
 }) {
   const body = new URLSearchParams();
   body.set("mode", "subscription");
   body.set("success_url", `${appUrl()}/app/settings?billing=success`);
   body.set("cancel_url", `${appUrl()}/app/settings?billing=cancelled`);
-  body.set("line_items[0][price]", priceId(input.plan));
+  body.set("line_items[0][price]", priceId(input.plan, input.billingCycle));
   body.set("line_items[0][quantity]", "1");
   body.set("metadata[companyId]", input.companyId);
   body.set("metadata[plan]", input.plan);
+  body.set("metadata[billingCycle]", input.billingCycle);
   body.set("subscription_data[metadata][companyId]", input.companyId);
   body.set("subscription_data[metadata][plan]", input.plan);
+  body.set("subscription_data[metadata][billingCycle]", input.billingCycle);
   body.set("allow_promotion_codes", "true");
+  if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
+  else body.set("customer_email", input.email);
+
+  return stripePost<{ id: string; url: string }>("/checkout/sessions", body);
+}
+
+export async function createCreditPackCheckoutSession(input: {
+  companyId: string;
+  email: string;
+  packKey: CreditPackKey;
+  stripeCustomerId?: string | null;
+}) {
+  const pack = getCreditPack(input.packKey);
+  if (!pack) throw new Error("Pack de crédits inconnu.");
+
+  const body = new URLSearchParams();
+  body.set("mode", "payment");
+  body.set("success_url", `${appUrl()}/app/settings?credits=success`);
+  body.set("cancel_url", `${appUrl()}/app/settings?credits=cancelled`);
+  body.set("line_items[0][price]", creditPackPriceId(input.packKey));
+  body.set("line_items[0][quantity]", "1");
+  body.set("metadata[kind]", "credit_pack");
+  body.set("metadata[companyId]", input.companyId);
+  body.set("metadata[packKey]", pack.key);
+  body.set("metadata[credits]", String(pack.credits));
+  body.set("metadata[costBudgetEur]", String(pack.costBudgetEur));
+  body.set("metadata[amountEur]", String(pack.priceEur));
   if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
   else body.set("customer_email", input.email);
 
