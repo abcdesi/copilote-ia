@@ -19,7 +19,10 @@ function secretKey() {
 }
 
 function appUrl() {
-  return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") throw new Error("APP_URL manquante en production.");
+  return "http://localhost:3000";
 }
 
 function priceId(plan: PaidPlan, billingCycle: BillingCycle) {
@@ -110,7 +113,9 @@ export async function createCheckoutSession(input: {
   body.set("subscription_data[metadata][companyId]", input.companyId);
   body.set("subscription_data[metadata][plan]", input.plan);
   body.set("subscription_data[metadata][billingCycle]", input.billingCycle);
-  body.set("allow_promotion_codes", "true");
+  // Les promotions génériques restent désactivées : un coupon Stripe non borné
+  // pourrait passer sous le plancher de marge validé. Les offres commerciales doivent
+  // être modélisées explicitement et testées dans le moteur économique Pilotzia.
   if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
   else body.set("customer_email", input.email);
 
@@ -153,7 +158,7 @@ export async function createBillingPortalSession(stripeCustomerId: string) {
 
 export function verifyStripeWebhook(rawBody: string, signatureHeader: string) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET manquante.");
+  if (!secret) return false;
 
   const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);
