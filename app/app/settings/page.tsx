@@ -5,10 +5,12 @@ import { Badge } from "@/components/ui/Badge";
 import { formatEur } from "@/lib/format";
 import { cn } from "@/lib/utils/cn";
 import { getUsageStatus } from "@/lib/billing/usage-policy";
-import { PAID_PLAN_KEYS, PLAN_DEFINITIONS } from "@/lib/billing/plans";
+import { PAID_PLAN_KEYS, PLAN_DEFINITIONS, type BillingCycle } from "@/lib/billing/plans";
+import { CREDIT_PACKS, creditPackStripeReady } from "@/lib/billing/credit-packs";
 
-function stripeReady(plan: "starter" | "pro" | "business") {
-  const priceKey = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
+function stripeReady(plan: "starter" | "pro" | "business", billingCycle: BillingCycle) {
+  const baseKey = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
+  const priceKey = billingCycle === "annual" ? `${baseKey}_ANNUAL` : baseKey;
   return Boolean(process.env.STRIPE_SECRET_KEY && process.env[priceKey]);
 }
 
@@ -30,7 +32,7 @@ export default async function SettingsPage() {
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Compte & abonnement</h1>
-        <p className="mt-1 text-sm text-muted-foreground">Votre compte, la capacité d'usage incluse et ce que chaque offre débloque réellement.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Votre compte, votre capacité d'usage et les options pour continuer sans interruption.</p>
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
@@ -80,20 +82,22 @@ export default async function SettingsPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Capacité mensuelle</p>
               <h2 className="mt-1 text-lg font-semibold">{usage.planLabel} · usage intelligent inclus</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Votre abonnement inclut une enveloppe mensuelle d'analyses IA. Elle protège la prévisibilité des coûts tout en laissant le contexte et les connexions s'enrichir sans facturation au volume de données.
+                Votre abonnement inclut une enveloppe mensuelle. Pilotzia vous alerte avant la limite et vous laisse choisir entre crédits supplémentaires et offre supérieure.
               </p>
             </div>
-            <Badge tone="accent">Plan actif</Badge>
+            <Badge tone={usage.alertLevel === "critical" ? "warning" : "accent"}>{usage.alertLevel === "critical" ? "Capacité presque épuisée" : "Plan actif"}</Badge>
           </div>
           <div className="mt-5 grid gap-3 sm:grid-cols-3">
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Crédits utilisés ce mois</p>
-              <p className="mt-1 text-xl font-semibold">{usage.creditsUsed} / {usage.creditsLimit}</p>
+              <p className="text-xs text-muted-foreground">Crédits utilisés</p>
+              <p className="mt-1 text-xl font-semibold">{usage.creditsUsed.toLocaleString("fr-FR")} / {usage.creditsLimit.toLocaleString("fr-FR")}</p>
               <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-muted"><div className="h-full bg-accent" style={{ width: `${creditPct}%` }} /></div>
+              {usage.addonCredits > 0 && <p className="mt-2 text-[11px] text-muted-foreground">dont {usage.addonCredits.toLocaleString("fr-FR")} crédits supplémentaires achetés</p>}
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
-              <p className="text-xs text-muted-foreground">Période</p>
+              <p className="text-xs text-muted-foreground">Période d'usage</p>
               <p className="mt-1 text-sm font-semibold">{formatDate(usage.periodStartsAt)} → {formatDate(usage.periodEndsAt)}</p>
+              {usage.daysRemaining !== null && <p className="mt-2 text-[11px] text-muted-foreground">Renouvellement dans {usage.daysRemaining} jour{usage.daysRemaining > 1 ? "s" : ""}</p>}
             </div>
             <div className="rounded-xl border border-border bg-card p-4">
               <p className="text-xs text-muted-foreground">Capacité restante</p>
@@ -103,7 +107,7 @@ export default async function SettingsPage() {
         </div>
       )}
 
-      <section>
+      <section id="plans" className="scroll-mt-24">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Choisissez jusqu'où Pilotzia doit aller pour vous</h2>
@@ -120,7 +124,8 @@ export default async function SettingsPage() {
           {PAID_PLAN_KEYS.map((planKey) => {
             const plan = PLAN_DEFINITIONS[planKey];
             const active = planKey === currentPlan;
-            const ready = stripeReady(planKey);
+            const monthlyReady = stripeReady(planKey, "monthly");
+            const annualReady = stripeReady(planKey, "annual");
             const recommended = planKey === "pro";
             return (
               <div
@@ -132,41 +137,78 @@ export default async function SettingsPage() {
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">{plan.label}</p>
-                  {active ? <Badge tone="accent">Plan actuel</Badge> : recommended ? <Badge tone="success">Recommandé</Badge> : !ready ? <Badge tone="neutral">Configuration requise</Badge> : null}
+                  {active ? <Badge tone="accent">Plan actuel</Badge> : recommended ? <Badge tone="success">Recommandé</Badge> : !monthlyReady ? <Badge tone="neutral">Configuration requise</Badge> : null}
                 </div>
                 <p className="mt-2 text-2xl font-semibold">{formatEur(plan.priceEur)}<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
+                <p className="mt-1 text-xs text-muted-foreground">ou {formatEur(plan.annualPriceEur)}/an · 1 mois offert</p>
                 <p className="mt-2 min-h-16 text-sm leading-6 text-muted-foreground">{plan.positioning}</p>
                 <ul className="mt-4 space-y-2 text-sm text-muted-foreground">
                   {plan.features.map((feature) => <li key={feature}>✓ {feature}</li>)}
                   <li>✓ {plan.monthlyCredits.toLocaleString("fr-FR")} crédits d'usage intelligent / mois</li>
                 </ul>
 
-                {!active && ready && !usage.paid && (
-                  <form method="post" action="/api/billing/checkout" className="mt-5">
-                    <input type="hidden" name="plan" value={planKey} />
-                    <Button type="submit" size="sm" variant={recommended ? "primary" : "outline"} className="w-full">
-                      Activer {plan.label}
-                    </Button>
-                  </form>
+                {!active && !usage.paid && (
+                  <div className="mt-5 grid gap-2">
+                    {monthlyReady ? (
+                      <form method="post" action="/api/billing/checkout">
+                        <input type="hidden" name="plan" value={planKey} />
+                        <input type="hidden" name="billingCycle" value="monthly" />
+                        <Button type="submit" size="sm" variant={recommended ? "primary" : "outline"} className="w-full">Activer {plan.label} mensuel</Button>
+                      </form>
+                    ) : <p className="text-xs leading-5 text-muted-foreground">Le prix mensuel Stripe doit être configuré.</p>}
+                    {annualReady ? (
+                      <form method="post" action="/api/billing/checkout">
+                        <input type="hidden" name="plan" value={planKey} />
+                        <input type="hidden" name="billingCycle" value="annual" />
+                        <Button type="submit" size="sm" variant="outline" className="w-full">Choisir l'annuel · {formatEur(plan.annualPriceEur)}</Button>
+                      </form>
+                    ) : <p className="text-[11px] text-muted-foreground">L'annuel sera activable dès que son prix Stripe sera configuré.</p>}
+                  </div>
                 )}
 
-                {!active && ready && usage.paid && (
+                {!active && usage.paid && (
                   <form method="post" action="/api/billing/portal" className="mt-5">
                     <Button type="submit" size="sm" variant="outline" className="w-full">Changer d'offre</Button>
                   </form>
-                )}
-
-                {!active && !ready && (
-                  <p className="mt-5 text-xs leading-5 text-muted-foreground">Cette offre sera activable dès que son prix Stripe sera configuré côté serveur.</p>
                 )}
               </div>
             );
           })}
         </div>
-        <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          Si vous avez déjà un abonnement, les changements de formule passent par le portail de facturation afin d'éviter toute création accidentelle d'un second abonnement.
-        </p>
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel.</p>
       </section>
+
+      {usage.paid && (
+        <section id="credits" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <h2 className="font-semibold">Crédits supplémentaires</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">Pour absorber un pic ponctuel sans changer immédiatement d'offre. Les crédits achetés s'ajoutent à la période d'usage en cours ; pour un besoin récurrent, l'offre supérieure est généralement plus adaptée.</p>
+            </div>
+            {usage.nextPlan && <a href="#plans" className="text-sm font-semibold text-accent hover:underline">Comparer avec {PLAN_DEFINITIONS[usage.nextPlan].label}</a>}
+          </div>
+          <div className="mt-5 grid gap-3 md:grid-cols-3">
+            {CREDIT_PACKS.map((pack) => {
+              const ready = creditPackStripeReady(pack.key);
+              return (
+                <div key={pack.key} className="rounded-xl border border-border p-4">
+                  <p className="text-lg font-semibold">{pack.label}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{formatEur(pack.priceEur)} · paiement unique</p>
+                  {ready ? (
+                    <form method="post" action="/api/billing/credits/checkout" className="mt-4">
+                      <input type="hidden" name="pack" value={pack.key} />
+                      <Button type="submit" size="sm" variant="outline" className="w-full">Ajouter {pack.label}</Button>
+                    </form>
+                  ) : (
+                    <p className="mt-4 text-xs leading-5 text-muted-foreground">Disponible dès que ce pack est configuré dans Stripe.</p>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+          <p className="mt-4 text-xs leading-5 text-muted-foreground">Pilotzia bloque les opérations payantes avant tout dépassement de l'enveloppe autorisée : pas de consommation externe non budgétée ni de facture surprise.</p>
+        </section>
+      )}
     </div>
   );
 }
