@@ -10,7 +10,9 @@ export async function GET(req: NextRequest) {
       console.error("Google integration configuration incomplete", configuration.missing);
       return NextResponse.redirect(new URL("/app/tools?google=config-error", req.nextUrl.origin));
     }
-    return NextResponse.redirect(buildGoogleAuthorizationUrl(access.company.id));
+
+    const mode = req.nextUrl.searchParams.get("mode") === "action" ? "action" : "observe";
+    return NextResponse.redirect(buildGoogleAuthorizationUrl(access.company.id, mode));
   } catch (error) {
     if (error instanceof Error && error.message === "COMPANY_PERMISSION_DENIED") {
       return NextResponse.redirect(new URL("/app/tools?google=permission-denied", req.nextUrl.origin));
