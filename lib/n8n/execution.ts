@@ -15,7 +15,7 @@ import {
   getWorkflow,
   updateWorkflow,
 } from "./client";
-import { buildContactListWorkflow, webhookPathForCompany } from "./workflows";
+import { buildContactListWorkflow, webhookPathForCompany, workflowAuthMarker } from "./workflows";
 
 interface TriggerableAutomation {
   id: string;
@@ -49,8 +49,10 @@ function actorForRun(actor?: ExecutionActor | null) {
 }
 
 function isCurrentWorkflow(workflow: { nodes?: unknown[] }) {
-  return JSON.stringify(workflow.nodes ?? []).includes("/api/automation-engine/prospects/") &&
-    JSON.stringify(workflow.nodes ?? []).includes("/send");
+  const serialized = JSON.stringify(workflow.nodes ?? []);
+  return serialized.includes("/api/automation-engine/prospects/") &&
+    serialized.includes("/send") &&
+    serialized.includes(workflowAuthMarker());
 }
 
 async function ensureCurrentWorkflow(automation: TriggerableAutomation, templateId: string) {
@@ -76,8 +78,6 @@ async function ensureCurrentWorkflow(automation: TriggerableAutomation, template
     console.error("n8n workflow in-place upgrade failed; recreating", error);
   }
 
-  // Si l'API a accepté l'update sans publier le nouveau contenu, on préfère recréer
-  // le workflow plutôt que d'exécuter silencieusement une ancienne logique d'envoi.
   try {
     await deactivateWorkflow(workflowId).catch(() => undefined);
     await deleteWorkflow(workflowId).catch(() => undefined);
@@ -147,7 +147,9 @@ export async function triggerAutomation(
   }
 
   const baseUrl = process.env.N8N_API_URL;
+  const triggerSecret = process.env.N8N_CALLBACK_SECRET?.trim();
   if (!baseUrl) return { ok: false as const, error: "N8N_API_URL manquante." };
+  if (!triggerSecret) return { ok: false as const, error: "N8N_CALLBACK_SECRET manquant." };
 
   const entitlements = await getCompanyEntitlements(fresh.companyId);
   if (!entitlements.canExecute) {
@@ -194,7 +196,10 @@ export async function triggerAutomation(
     const webhookUrl = `${baseUrl.replace(/\/$/, "")}/webhook/${webhookPathForCompany(fresh.companyId, templateId)}`;
     const res = await fetch(webhookUrl, {
       method: "POST",
-      headers: { "content-type": "application/json" },
+      headers: {
+        "content-type": "application/json",
+        authorization: `Bearer ${triggerSecret}`,
+      },
       body: JSON.stringify({
         companyId: fresh.companyId,
         automationId: fresh.id,
@@ -212,8 +217,6 @@ export async function triggerAutomation(
     const finishedAt = new Date();
     const status = runErrors > 0 ? (sentCount > 0 ? "partial" : "failed") : "success";
 
-    // Une exécution sans aucun envoi et uniquement des erreurs techniques ne doit pas
-    // consommer le forfait Pilotzia. Une exécution partielle a réellement produit des actions.
     if (sentCount === 0 && runErrors > 0) {
       await refundExecutionReservation(fresh.companyId, "automation", usage);
     }
