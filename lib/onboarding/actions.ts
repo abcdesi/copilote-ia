@@ -43,12 +43,14 @@ export async function completeOnboardingAction(formData: FormData) {
   }
 
   const { name, industry, country, sizeRange, employeeCount, painPoints, objectives, diagnosticId } = parsed.data;
-  const userId = session!.user.id;
+  const userId = session.user.id;
 
-  // Filet de sécurité contre une double soumission (double-clic, retry réseau) :
-  // n'importe quelle entreprise déjà créée pour cet utilisateur, on ne recrée pas.
-  const existingCompany = await prisma.company.findFirst({ where: { userId } });
-  if (existingCompany) redirect("/app");
+  const existingMembership = await prisma.companyMembership.findFirst({
+    where: { userId, status: "active" },
+    select: { companyId: true },
+  });
+  const existingOwnedCompany = await prisma.company.findFirst({ where: { userId }, select: { id: true } });
+  if (existingMembership || existingOwnedCompany) redirect("/app");
 
   const company = await prisma.company.create({
     data: {
@@ -60,6 +62,13 @@ export async function completeOnboardingAction(formData: FormData) {
       employeeCount,
       painPoints,
       objectives,
+      memberships: {
+        create: {
+          userId,
+          role: "owner",
+          status: "active",
+        },
+      },
     },
   });
 
