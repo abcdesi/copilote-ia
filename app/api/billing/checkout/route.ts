@@ -4,7 +4,10 @@ import { requireSession } from "@/lib/companies/current";
 import { prisma } from "@/lib/db/client";
 import { createBillingPortalSession, createCheckoutSession } from "@/lib/billing/stripe";
 
-const schema = z.object({ plan: z.enum(["starter", "pro", "business"]) });
+const schema = z.object({
+  plan: z.enum(["starter", "pro", "business"]),
+  billingCycle: z.enum(["monthly", "annual"]).default("monthly"),
+});
 
 export async function POST(req: NextRequest) {
   const session = await requireSession();
@@ -31,6 +34,7 @@ export async function POST(req: NextRequest) {
     companyId: company.id,
     email: session.user.email,
     plan: parsed.data.plan,
+    billingCycle: parsed.data.billingCycle,
     stripeCustomerId: sub?.stripeCustomerId,
   });
   return NextResponse.redirect(checkout.url, 303);
