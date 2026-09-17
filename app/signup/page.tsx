@@ -14,7 +14,7 @@ export const metadata: Metadata = {
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
-  invalid: "Merci de vérifier les informations saisies (mot de passe : 8 caractères minimum et acceptation des conditions requise).",
+  invalid: "Merci de vérifier les informations saisies (mot de passe : 12 caractères minimum et acceptation des conditions requise).",
   exists: "Un compte existe déjà avec cet email. Connectez-vous plutôt.",
 };
 
@@ -56,7 +56,8 @@ export default async function SignupPage({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Mot de passe</Label>
-          <Input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8 caractères minimum" />
+          <Input id="password" name="password" type="password" required minLength={12} autoComplete="new-password" placeholder="12 caractères minimum" />
+          <p className="text-xs text-muted-foreground">Privilégiez une phrase de passe longue et unique.</p>
         </div>
         <label className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
           <input name="acceptTerms" value="yes" type="checkbox" required className="mt-1" />
