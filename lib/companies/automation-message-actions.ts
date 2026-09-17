@@ -4,6 +4,7 @@ import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
 import { requireSession } from "@/lib/companies/current";
+import { validateMessageTemplate } from "@/lib/automations/governance";
 
 const schema = z.object({
   automationId: z.string().min(1),
@@ -23,16 +24,36 @@ export async function updateMessageTemplateAction(formData: FormData) {
   const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
   if (!company) return;
 
-  const subject = parsed.data.subject?.trim();
-  const body = parsed.data.body?.trim();
+  const automation = await prisma.automation.findFirst({ where: { id: parsed.data.automationId, companyId: company.id } });
+  if (!automation) return;
 
-  // Chaîne vide = retour aux valeurs par défaut du template (on stocke null).
-  await prisma.automation.updateMany({
-    where: { id: parsed.data.automationId, companyId: company.id },
-    data: {
-      messageSubject: subject ? subject : null,
-      messageBody: body ? body : null,
-    },
-  });
-  revalidatePath(`/app/automations/${parsed.data.automationId}`);
+  const subject = parsed.data.subject?.trim() ?? "";
+  const body = parsed.data.body?.trim() ?? "";
+  const validation = validateMessageTemplate(subject, body);
+  if (!validation.valid) return;
+
+  const changed = (automation.messageSubject ?? "") !== subject || (automation.messageBody ?? "") !== body;
+  if (!changed) return;
+
+  await prisma.$transaction([
+    prisma.automation.update({
+      where: { id: automation.id },
+      data: {
+        messageSubject: subject || null,
+        messageBody: body || null,
+        messageVersion: { increment: 1 },
+        approvedConfigHash: null,
+        lastModifiedAt: new Date(),
+      },
+    }),
+    prisma.automationAuditEvent.create({
+      data: {
+        automationId: automation.id,
+        actorUserId: session.user.id,
+        eventType: "message_changed",
+        detailsJson: JSON.stringify({ variables: validation.variables, approvalInvalidated: true }),
+      },
+    }),
+  ]);
+  revalidatePath(`/app/automations/${automation.id}`);
 }
