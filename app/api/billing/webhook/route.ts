@@ -12,6 +12,7 @@ interface StripeEvent {
 }
 
 const ENTITLED_STATUSES = new Set(["active", "trialing"]);
+const MIN_CREDIT_PACK_VALIDITY_DAYS = 30;
 
 function stringValue(value: unknown) {
   return typeof value === "string" ? value : null;
@@ -48,9 +49,6 @@ function subscriptionStatus(object: Record<string, unknown>) {
     return raw === "canceled" ? "cancelled" : raw;
   }
 
-  // checkout.session.completed n'est pas un objet Subscription. On ne lui attribue
-  // des droits que si Stripe confirme que le paiement est effectué ou non requis
-  // (ex. essai). L'événement customer.subscription.* affinera ensuite le statut.
   const paymentStatus = stringValue(object.payment_status);
   return paymentStatus === "paid" || paymentStatus === "no_payment_required" ? "active" : "incomplete";
 }
@@ -118,6 +116,9 @@ async function grantCreditPack(object: Record<string, unknown>) {
   if (existing) return true;
 
   const period = await getUsagePeriodForCompany(companyId);
+  const minimumExpiry = new Date(Date.now() + MIN_CREDIT_PACK_VALIDITY_DAYS * 86400000);
+  const expiresAt = period.endsAt.getTime() > minimumExpiry.getTime() ? period.endsAt : minimumExpiry;
+
   await prisma.creditPurchase.create({
     data: {
       companyId,
@@ -127,7 +128,7 @@ async function grantCreditPack(object: Record<string, unknown>) {
       amountEur: pack.priceEur,
       status: "paid",
       stripeCheckoutSessionId: checkoutSessionId,
-      expiresAt: period.endsAt,
+      expiresAt,
     },
   });
 
@@ -141,7 +142,8 @@ async function grantCreditPack(object: Record<string, unknown>) {
         amountEur: pack.priceEur,
         costBudgetEur: pack.costBudgetEur,
         stripeCheckoutSessionId: checkoutSessionId,
-        expiresAt: period.endsAt.toISOString(),
+        expiresAt: expiresAt.toISOString(),
+        minimumValidityDays: MIN_CREDIT_PACK_VALIDITY_DAYS,
       }),
     },
   });
