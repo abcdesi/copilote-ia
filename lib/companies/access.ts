@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/db/client";
-import { requireSession } from "@/lib/companies/current-session";
 
 export type CompanyRole = "owner" | "admin" | "operator" | "viewer";
 export type CompanyPermission =
@@ -69,8 +69,14 @@ export function canApproveRisk(role: CompanyRole, riskLevel: string) {
   return hasCompanyPermission(role, "approve_low_risk");
 }
 
+async function requireAuthenticatedSession() {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  return session;
+}
+
 export async function getCurrentCompanyAccess() {
-  const session = await requireSession();
+  const session = await requireAuthenticatedSession();
   const membership = await prisma.companyMembership.findFirst({
     where: { userId: session.user.id, status: "active" },
     include: {
