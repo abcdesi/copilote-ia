@@ -53,6 +53,8 @@ model Company {
   conversations          Conversation[]
   subscriptions          Subscription[]
   purchases              Purchase[]
+  creditPurchases        CreditPurchase[]
+  supportRequests        SupportRequest[]
   events                 Event[]
   prospects              Prospect[]
   integrationConnections IntegrationConnection[]
@@ -324,15 +326,17 @@ model ChatMessage {
 }
 
 model Subscription {
-  id               String   @id @default(cuid())
-  companyId        String
-  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  plan             String   @default("free")
-  status           String   @default("active")
-  currentPeriodEnd DateTime?
-  stripeCustomerId String?
-  stripeSubId      String?
-  createdAt        DateTime @default(now())
+  id                 String   @id @default(cuid())
+  companyId          String
+  company            Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  plan               String   @default("free")
+  status             String   @default("active")
+  currentPeriodStart DateTime?
+  currentPeriodEnd   DateTime?
+  billingInterval    String?
+  stripeCustomerId   String?
+  stripeSubId        String?
+  createdAt          DateTime @default(now())
 
   @@index([companyId])
 }
@@ -350,6 +354,41 @@ model Purchase {
   createdAt     DateTime    @default(now())
 
   @@index([companyId])
+}
+
+model CreditPurchase {
+  id                      String   @id @default(cuid())
+  companyId               String
+  company                 Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  packKey                 String
+  credits                 Int
+  costBudgetEur           Float
+  amountEur               Float
+  status                  String   @default("paid")
+  stripeCheckoutSessionId String   @unique
+  expiresAt               DateTime?
+  createdAt               DateTime @default(now())
+
+  @@index([companyId, status, createdAt])
+  @@index([expiresAt])
+}
+
+model SupportRequest {
+  id             String   @id @default(cuid())
+  companyId      String
+  company        Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requesterEmail String
+  category       String
+  subject        String
+  message        String
+  priority       String   @default("normal")
+  status         String   @default("open")
+  contextJson    String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@index([companyId, status, createdAt])
+  @@index([status, priority, createdAt])
 }
 
 model Event {
