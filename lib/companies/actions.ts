@@ -3,7 +3,7 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
-import { requireSession } from "@/lib/companies/current";
+import { requireCompanyPermission } from "@/lib/companies/access";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
 import { syncBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { track } from "@/lib/analytics/track";
@@ -78,6 +78,15 @@ const FIELD_SECTION: Record<keyof CompanyUpdate, KnowledgeSectionKey> = {
   operationsContext: "operations",
 };
 
+async function requireCompanyEditor() {
+  try {
+    return await requireCompanyPermission("edit_company");
+  } catch (error) {
+    if (error instanceof Error && error.message === "COMPANY_PERMISSION_DENIED") return null;
+    throw error;
+  }
+}
+
 async function refreshGraph(companyId: string) {
   await rebuildBusinessGraph(companyId);
   await syncBusinessRhythms(companyId);
@@ -146,20 +155,24 @@ async function recordToolHistory(companyId: string, action: "added" | "removed",
   });
 }
 
-async function trackContextChange(userId: string, companyId: string, sections: KnowledgeSectionKey[], fieldCount: number) {
+async function trackContextChange(
+  userId: string,
+  companyId: string,
+  actorRole: string,
+  sections: KnowledgeSectionKey[],
+  fieldCount: number
+) {
   if (!sections.length) return;
   await track(EVENTS.COMPANY_CONTEXT_UPDATED, {
     userId,
     companyId,
-    metadata: {
-      sections: sections.join(","),
-      fieldCount,
-    },
+    metadata: { sections: sections.join(","), fieldCount, actorRole },
   });
 }
 
 export async function updateCompanyAction(formData: FormData) {
-  const session = await requireSession();
+  const access = await requireCompanyEditor();
+  if (!access) return;
 
   const parsed = schema.safeParse({
     name: formData.get("name"),
@@ -184,14 +197,29 @@ export async function updateCompanyAction(formData: FormData) {
   });
   if (!parsed.success) return;
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
+  const company = await prisma.company.findUnique({ where: { id: access.company.id } });
   if (!company) return;
 
   const previous = company as unknown as Record<string, unknown>;
   const changes = changedSections(previous, parsed.data);
-  await prisma.company.update({ where: { id: company.id }, data: parsed.data });
-  await recordContextHistory(company.id, previous, parsed.data, changes.changedFields);
-  await trackContextChange(session.user.id, company.id, changes.sections, changes.changedFields.length);
+  if (changes.changedFields.length === 0) return;
+
+  await prisma.$transaction(async (tx) => {
+    await tx.company.update({ where: { id: company.id }, data: parsed.data });
+    const effectiveAt = new Date();
+    await tx.companyContextRevision.createMany({
+      data: changes.changedFields.map((field) => ({
+        companyId: company.id,
+        section: FIELD_SECTION[field],
+        field,
+        previousValueJson: serializeHistoryValue(previous[field as string]),
+        nextValueJson: serializeHistoryValue(parsed.data[field]),
+        source: "company_profile",
+        effectiveAt,
+      })),
+    });
+  });
+  await trackContextChange(access.session.user.id, company.id, access.role, changes.sections, changes.changedFields.length);
   await refreshGraph(company.id);
   revalidatePath("/app/company");
   revalidatePath("/app");
@@ -200,42 +228,40 @@ export async function updateCompanyAction(formData: FormData) {
 }
 
 export async function addToolAction(formData: FormData) {
-  const session = await requireSession();
-  const name = String(formData.get("name") ?? "").trim();
+  const access = await requireCompanyEditor();
+  if (!access) return;
+  const name = String(formData.get("name") ?? "").trim().slice(0, 120);
   if (!name) return;
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
-
-  const existing = await prisma.companyTool.findUnique({ where: { companyId_name: { companyId: company.id, name } } });
+  const existing = await prisma.companyTool.findUnique({ where: { companyId_name: { companyId: access.company.id, name } } });
   await prisma.companyTool.upsert({
-    where: { companyId_name: { companyId: company.id, name } },
+    where: { companyId_name: { companyId: access.company.id, name } },
     update: {},
-    create: { companyId: company.id, name, detected: false },
+    create: { companyId: access.company.id, name, detected: false },
   });
-  if (!existing) await recordToolHistory(company.id, "added", name);
-  await trackContextChange(session.user.id, company.id, ["applications"], 1);
-  await refreshGraph(company.id);
+  if (!existing) {
+    await recordToolHistory(access.company.id, "added", name);
+    await trackContextChange(access.session.user.id, access.company.id, access.role, ["applications"], 1);
+    await refreshGraph(access.company.id);
+  }
   revalidatePath("/app/tools");
   revalidatePath("/app/company");
   revalidatePath("/app");
 }
 
 export async function removeToolAction(formData: FormData) {
-  const session = await requireSession();
+  const access = await requireCompanyEditor();
+  if (!access) return;
   const toolId = String(formData.get("toolId") ?? "");
   if (!toolId) return;
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
-
-  const tool = await prisma.companyTool.findFirst({ where: { id: toolId, companyId: company.id } });
-  const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: company.id } });
+  const tool = await prisma.companyTool.findFirst({ where: { id: toolId, companyId: access.company.id } });
+  const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: access.company.id } });
   if (deleted.count > 0) {
-    if (tool) await recordToolHistory(company.id, "removed", tool.name);
-    await trackContextChange(session.user.id, company.id, ["applications"], 1);
+    if (tool) await recordToolHistory(access.company.id, "removed", tool.name);
+    await trackContextChange(access.session.user.id, access.company.id, access.role, ["applications"], 1);
+    await refreshGraph(access.company.id);
   }
-  await refreshGraph(company.id);
   revalidatePath("/app/tools");
   revalidatePath("/app/company");
   revalidatePath("/app");
