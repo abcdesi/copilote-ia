@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { Bot, User } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { getConversationForCompany } from "@/lib/companies/conversations";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
@@ -9,15 +9,15 @@ const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "l
 
 export default async function ArchivedConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const company = await getCurrentCompany();
-  const conversation = await getConversationForCompany(id, company.id);
+  const access = await getCurrentCompanyAccess();
+  const conversation = await getConversationForCompany(id, access.company.id, access.session.user.id);
   if (!conversation) notFound();
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <p className="text-xs text-muted-foreground">Conversation archivée — lecture seule</p>
+          <p className="text-xs text-muted-foreground">Conversation personnelle archivée — lecture seule</p>
           <h1 className="text-xl font-semibold tracking-tight capitalize">{DATE_FORMAT.format(conversation.createdAt)}</h1>
         </div>
         <Button href="/app/copilot/history" variant="outline" size="sm">
