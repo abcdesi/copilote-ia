@@ -1,5 +1,7 @@
 export type OperationalEventKind =
   | "demand_received"
+  | "email_received"
+  | "meeting_scheduled"
   | "quote_sent"
   | "quote_accepted"
   | "invoice_paid"
