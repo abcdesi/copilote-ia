@@ -1,9 +1,11 @@
 export type PlanKey = "free" | "starter" | "pro" | "business";
+export type BillingCycle = "monthly" | "annual";
 
 export interface PlanDefinition {
   key: PlanKey;
   label: string;
   priceEur: number;
+  annualPriceEur: number;
   positioning: string;
   monthlyCredits: number;
   variableCostCapEur: number;
@@ -20,6 +22,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     key: "free",
     label: "Découverte",
     priceEur: 0,
+    annualPriceEur: 0,
     positioning: "Voir le potentiel de Pilotzia sur votre entreprise avant de payer.",
     monthlyCredits: envNumber("PILOTZIA_TRIAL_CREDITS", 100),
     variableCostCapEur: envNumber("PILOTZIA_TRIAL_COST_CAP_EUR", 3),
@@ -32,10 +35,11 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
   starter: {
     key: "starter",
     label: "Core",
-    priceEur: 49,
+    priceEur: 79,
+    annualPriceEur: 869,
     positioning: "Comprendre, prioriser et piloter votre entreprise avec un contexte vivant.",
-    monthlyCredits: envNumber("PILOTZIA_CORE_MONTHLY_CREDITS", 600),
-    variableCostCapEur: envNumber("PILOTZIA_CORE_COST_CAP_EUR", 8),
+    monthlyCredits: envNumber("PILOTZIA_CORE_MONTHLY_CREDITS", 700),
+    variableCostCapEur: envNumber("PILOTZIA_CORE_COST_CAP_EUR", 7),
     features: [
       "Business Graph vivant",
       "Copilote de direction et Morning Brief",
@@ -46,10 +50,11 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
   pro: {
     key: "pro",
     label: "Action",
-    priceEur: 99,
+    priceEur: 179,
+    annualPriceEur: 1969,
     positioning: "Passer du conseil à l'exécution contrôlée et mesurer les résultats.",
     monthlyCredits: envNumber("PILOTZIA_ACTION_MONTHLY_CREDITS", 2000),
-    variableCostCapEur: envNumber("PILOTZIA_ACTION_COST_CAP_EUR", 18),
+    variableCostCapEur: envNumber("PILOTZIA_ACTION_COST_CAP_EUR", 20),
     features: [
       "Tout Core",
       "Actions et automatisations dans les outils connectés",
@@ -60,10 +65,11 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
   business: {
     key: "business",
     label: "Scale",
-    priceEur: 249,
+    priceEur: 399,
+    annualPriceEur: 4389,
     positioning: "Audit de direction, intelligence financière et pilotage avancé pour une entreprise plus complexe.",
-    monthlyCredits: envNumber("PILOTZIA_SCALE_MONTHLY_CREDITS", 7000),
-    variableCostCapEur: envNumber("PILOTZIA_SCALE_COST_CAP_EUR", 45),
+    monthlyCredits: envNumber("PILOTZIA_SCALE_MONTHLY_CREDITS", 5000),
+    variableCostCapEur: envNumber("PILOTZIA_SCALE_COST_CAP_EUR", 50),
     features: [
       "Tout Action",
       "Audit avancé et intelligence financière",
@@ -79,4 +85,10 @@ export type PaidPlanKey = (typeof PAID_PLAN_KEYS)[number];
 export function getPlanDefinition(plan?: string | null): PlanDefinition {
   if (plan === "starter" || plan === "pro" || plan === "business") return PLAN_DEFINITIONS[plan];
   return PLAN_DEFINITIONS.free;
+}
+
+export function nextPaidPlan(plan?: string | null): PaidPlanKey | null {
+  if (plan === "starter") return "pro";
+  if (plan === "pro") return "business";
+  return null;
 }
