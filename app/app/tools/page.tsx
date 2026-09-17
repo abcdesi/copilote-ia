@@ -1,26 +1,132 @@
-import { CheckCircle2, Cloud, LockKeyhole, Plus, RefreshCcw, ShieldCheck, Unplug, X } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { AlertCircle, CheckCircle2, Cloud, LockKeyhole, Plus, RefreshCcw, ShieldCheck, Unplug, X } from "lucide-react";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
+import { getGoogleConfigurationStatus } from "@/lib/integrations/google";
 import { prisma } from "@/lib/db/client";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 
 function formatSync(date: Date | null) {
-  if (!date) return "Jamais synchronisé";
-  return `Dernière synchronisation : ${new Intl.DateTimeFormat("fr-FR", {
+  if (!date) return "Aucune synchronisation réelle effectuée";
+  return `Dernière synchronisation réelle : ${new Intl.DateTimeFormat("fr-FR", {
     dateStyle: "short",
     timeStyle: "short",
   }).format(date)}`;
 }
 
-export default async function ToolsPage() {
-  const company = await getCurrentCompany();
+const GOOGLE_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string }> = {
+  connected: {
+    tone: "success",
+    title: "Google Workspace est connecté",
+    body: "L'autorisation a été enregistrée et une première synchronisation Gmail / Calendar a réussi.",
+  },
+  synced: {
+    tone: "success",
+    title: "Synchronisation terminée",
+    body: "Le contexte opérationnel Google a été actualisé et transmis au Business Graph.",
+  },
+  disconnected: {
+    tone: "accent",
+    title: "Google Workspace est déconnecté",
+    body: "Pilotzia n'utilise plus les jetons stockés pour ce compte.",
+  },
+  cancelled: {
+    tone: "accent",
+    title: "Connexion annulée",
+    body: "Aucune nouvelle autorisation Google n'a été enregistrée.",
+  },
+  "connected-sync-error": {
+    tone: "warning",
+    title: "Google est autorisé, mais la synchronisation a échoué",
+    body: "La connexion est conservée. Relancez la synchronisation ci-dessous ; si l'erreur persiste, vérifiez que les API Gmail et Calendar sont activées dans le projet Google OAuth.",
+  },
+  "reauth-required": {
+    tone: "warning",
+    title: "Google doit être reconnecté",
+    body: "Le jeton n'est plus utilisable. Reconnectez le compte pour renouveler l'autorisation.",
+  },
+  "scope-or-api-error": {
+    tone: "warning",
+    title: "Google refuse l'accès à une API demandée",
+    body: "Vérifiez que Gmail API et Google Calendar API sont activées et que le compte est autorisé dans l'écran de consentement OAuth.",
+  },
+  "permission-denied": {
+    tone: "danger",
+    title: "Permission Pilotzia insuffisante",
+    body: "Seul un propriétaire ou un administrateur peut connecter ou déconnecter un compte Google.",
+  },
+  "config-error": {
+    tone: "danger",
+    title: "Configuration Google incomplète côté Pilotzia",
+    body: "La connexion est désactivée tant que les paramètres OAuth et le chiffrement des jetons ne sont pas correctement configurés.",
+  },
+  "secure-storage-error": {
+    tone: "danger",
+    title: "Stockage sécurisé indisponible",
+    body: "Pilotzia a refusé d'enregistrer les jetons Google car le chiffrement serveur n'est pas correctement configuré.",
+  },
+  "token-error": {
+    tone: "danger",
+    title: "Google n'a pas pu finaliser l'autorisation",
+    body: "Le code OAuth n'a pas pu être échangé. Vérifiez notamment l'URL de redirection configurée dans Google Cloud.",
+  },
+  "state-error": {
+    tone: "danger",
+    title: "Session OAuth invalide ou expirée",
+    body: "Recommencez la connexion depuis cette page. Pilotzia n'a enregistré aucun accès issu de cette tentative.",
+  },
+  "profile-error": {
+    tone: "danger",
+    title: "Profil Google inaccessible",
+    body: "Google a autorisé l'échange mais n'a pas permis de lire l'identité du compte connecté.",
+  },
+  "provider-error": {
+    tone: "danger",
+    title: "Google a refusé la connexion",
+    body: "Le fournisseur OAuth a renvoyé une erreur. Vérifiez la configuration du projet Google et les utilisateurs de test.",
+  },
+  "invalid-response": {
+    tone: "danger",
+    title: "Réponse Google incomplète",
+    body: "Aucun code OAuth exploitable n'a été reçu. Recommencez la connexion depuis Pilotzia.",
+  },
+  "start-error": {
+    tone: "danger",
+    title: "Impossible de démarrer la connexion Google",
+    body: "Pilotzia a bloqué le démarrage avant toute autorisation. Vérifiez la configuration technique de l'intégration.",
+  },
+  "callback-error": {
+    tone: "danger",
+    title: "Connexion Google non finalisée",
+    body: "Une erreur inattendue est survenue pendant le retour OAuth. Aucun secret n'est affiché ici ; utilisez l'assistance si elle persiste.",
+  },
+  "disconnect-error": {
+    tone: "danger",
+    title: "Déconnexion incomplète",
+    body: "Pilotzia n'a pas pu terminer proprement la déconnexion. Réessayez ou contactez l'assistance.",
+  },
+};
+
+export default async function ToolsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ google?: string }>;
+}) {
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const params = await searchParams;
+  const googleMessage = params.google ? GOOGLE_MESSAGES[params.google] : null;
+  const googleConfiguration = getGoogleConfigurationStatus();
+  const canManageGoogle = hasCompanyPermission(access.role, "manage_integrations");
+  const canSyncGoogle = hasCompanyPermission(access.role, "sync_integrations");
+
   const connections = await prisma.integrationConnection.findMany({ where: { companyId: company.id } });
   const google = connections.find((connection) => connection.provider === "google");
   const googleConnected = google?.status === "connected";
+  const googleNeedsReauth = google?.status === "needs_reauth";
   const currentNames = new Set(company.tools.map((t) => t.name));
   const suggestions = KNOWN_TOOLS.filter((t) => !currentNames.has(t));
 
@@ -35,6 +141,21 @@ export default async function ToolsPage() {
         </p>
       </div>
 
+      {googleMessage && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex gap-3">
+            <AlertCircle size={18} className={googleMessage.tone === "danger" ? "mt-0.5 text-danger" : googleMessage.tone === "warning" ? "mt-0.5 text-warning" : "mt-0.5 text-accent"} />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold">{googleMessage.title}</p>
+                <Badge tone={googleMessage.tone}>{params.google}</Badge>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{googleMessage.body}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
       <div className="rounded-2xl border border-accent/20 bg-accent-soft p-5">
         <div className="flex gap-3">
           <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-card text-accent">
@@ -43,8 +164,8 @@ export default async function ToolsPage() {
           <div>
             <p className="font-semibold">Une application renseignée n'est jamais présentée comme connectée</p>
             <p className="mt-1 text-sm leading-6 text-foreground/75">
-              Les connexions réelles affichent le compte autorisé, le niveau de permission et la dernière synchronisation.
-              Pilotzia ne revendique aucune lecture ou action sans autorisation API effective.
+              Les connexions réelles affichent le compte autorisé, le niveau de permission et la dernière synchronisation effective.
+              Pilotzia commence en lecture seule et ne demande un droit d'action que lorsqu'une fonctionnalité d'écriture l'exige réellement.
             </p>
           </div>
         </div>
@@ -53,43 +174,70 @@ export default async function ToolsPage() {
       <section className="rounded-2xl border border-border bg-card p-6">
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Cloud size={18} className="text-accent" />
               <h2 className="font-semibold">Google Workspace</h2>
-              {googleConnected ? <Badge tone="success">Connecté</Badge> : <Badge tone="accent">Disponible</Badge>}
+              {googleConnected ? (
+                <Badge tone="success">Connecté · lecture seule</Badge>
+              ) : googleNeedsReauth ? (
+                <Badge tone="warning">Reconnexion requise</Badge>
+              ) : (
+                <Badge tone="accent">Disponible</Badge>
+              )}
             </div>
             <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-              Gmail et Google Calendar constituent la première connexion réelle Pilotzia. Lecture du contexte, préparation
-              d'actions et exécution uniquement après confirmation lorsque l'action modifie vos données.
+              Gmail et Google Calendar alimentent le contexte opérationnel. La connexion initiale est limitée à la lecture ;
+              aucune création, modification ou envoi n'est autorisé implicitement.
             </p>
             {google && (
               <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <p>Compte : {google.accountLabel ?? "Compte Google"}</p>
                 <p>{formatSync(google.lastSyncedAt)}</p>
-                {google.status === "needs_reauth" && <p className="text-danger">Reconnexion nécessaire.</p>}
+                {googleNeedsReauth && <p className="font-medium text-warning">Le compte doit être reconnecté avant la prochaine lecture.</p>}
+                {google.lastError && !googleNeedsReauth && (
+                  <p className="font-medium text-warning">La dernière tentative a rencontré une erreur. Relancez la synchronisation.</p>
+                )}
               </div>
+            )}
+            {!googleConfiguration.configured && canManageGoogle && (
+              <p className="mt-3 text-xs font-medium text-danger">
+                Configuration serveur Google incomplète : connexion temporairement indisponible.
+              </p>
             )}
           </div>
 
-          {googleConnected ? (
-            <form method="post" action="/api/integrations/google/disconnect">
-              <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
-                <Unplug size={15} /> Déconnecter
-              </button>
-            </form>
-          ) : (
-            <a
-              href="/api/integrations/google/connect"
-              className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
-            >
-              <RefreshCcw size={15} /> Connecter Google
-            </a>
-          )}
+          <div className="flex flex-wrap gap-2">
+            {googleConnected && canSyncGoogle && (
+              <form method="post" action="/api/integrations/google/sync">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted">
+                  <RefreshCcw size={15} /> Synchroniser
+                </button>
+              </form>
+            )}
+            {(googleNeedsReauth || !googleConnected) && canManageGoogle && googleConfiguration.configured && (
+              <a
+                href="/api/integrations/google/connect"
+                className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+              >
+                <RefreshCcw size={15} /> {googleNeedsReauth ? "Reconnecter Google" : "Connecter Google"}
+              </a>
+            )}
+            {googleConnected && canManageGoogle && (
+              <form method="post" action="/api/integrations/google/disconnect">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                  <Unplug size={15} /> Déconnecter
+                </button>
+              </form>
+            )}
+            {!canManageGoogle && !googleConnected && (
+              <span className="rounded-xl border border-border px-3.5 py-2 text-xs text-muted-foreground">Administrateur requis</span>
+            )}
+          </div>
         </div>
 
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
-          <ConnectionCapability title="Gmail" body="Lire le contexte utile et préparer des brouillons. L'envoi n'est jamais implicite." connected={googleConnected} />
-          <ConnectionCapability title="Google Calendar" body="Lire les rendez-vous et préparer créations ou modifications avec confirmation." connected={googleConnected} />
+          <ConnectionCapability title="Gmail" body="Lecture du contexte utile. Aucun email n'est envoyé avec l'autorisation initiale." connected={googleConnected} />
+          <ConnectionCapability title="Google Calendar" body="Lecture des rendez-vous. Aucune création ou modification n'est autorisée avec l'accès initial." connected={googleConnected} />
         </div>
       </section>
 
@@ -131,16 +279,18 @@ export default async function ToolsPage() {
                         Connexion API : {isReallyConnected ? "active" : "non activée"}
                       </p>
                     </div>
-                    <form action={removeToolAction}>
-                      <input type="hidden" name="toolId" value={tool.id} />
-                      <button
-                        type="submit"
-                        aria-label={`Retirer ${tool.name}`}
-                        className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
-                      >
-                        <X size={15} />
-                      </button>
-                    </form>
+                    {hasCompanyPermission(access.role, "edit_company") && (
+                      <form action={removeToolAction}>
+                        <input type="hidden" name="toolId" value={tool.id} />
+                        <button
+                          type="submit"
+                          aria-label={`Retirer ${tool.name}`}
+                          className="rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-muted hover:text-danger"
+                        >
+                          <X size={15} />
+                        </button>
+                      </form>
+                    )}
                   </div>
                 </li>
               );
@@ -149,7 +299,7 @@ export default async function ToolsPage() {
         )}
       </section>
 
-      {suggestions.length > 0 && (
+      {suggestions.length > 0 && hasCompanyPermission(access.role, "edit_company") && (
         <section className="rounded-2xl border border-border bg-card p-6">
           <h2 className="font-semibold">Ajouter une application à votre contexte</h2>
           <p className="mt-1 text-sm text-muted-foreground">
