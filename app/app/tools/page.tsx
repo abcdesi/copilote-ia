@@ -3,7 +3,12 @@ import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/a
 import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
-import { getGoogleConfigurationStatus } from "@/lib/integrations/google";
+import {
+  GOOGLE_SCOPES,
+  getGoogleConfigurationStatus,
+  googleRedirectUri,
+  parseStoredGoogleScopes,
+} from "@/lib/integrations/google";
 import { prisma } from "@/lib/db/client";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
@@ -125,8 +130,15 @@ export default async function ToolsPage({
 
   const connections = await prisma.integrationConnection.findMany({ where: { companyId: company.id } });
   const google = connections.find((connection) => connection.provider === "google");
-  const googleConnected = google?.status === "connected";
+  const googleScopes = parseStoredGoogleScopes(google?.scopes);
+  const workspaceRequiredScopes = GOOGLE_SCOPES.filter(
+    (scope) => scope.includes("gmail.") || scope.includes("calendar.")
+  );
+  const googleConnected =
+    google?.status === "connected" &&
+    workspaceRequiredScopes.every((scope) => googleScopes.includes(scope));
   const googleNeedsReauth = google?.status === "needs_reauth";
+  const googleRedirect = googleConfiguration.configured ? googleRedirectUri() : null;
   const currentNames = new Set(company.tools.map((t) => t.name));
   const suggestions = KNOWN_TOOLS.filter((t) => !currentNames.has(t));
 
@@ -203,6 +215,12 @@ export default async function ToolsPage({
               <p className="mt-3 text-xs font-medium text-danger">
                 Configuration serveur Google incomplète : connexion temporairement indisponible.
               </p>
+            )}
+            {googleRedirect && canManageGoogle && (
+              <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Callback OAuth à autoriser dans Google Cloud</p>
+                <code className="mt-1 block break-all">{googleRedirect}</code>
+              </div>
             )}
           </div>
 
