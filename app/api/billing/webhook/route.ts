@@ -228,6 +228,61 @@ async function grantCreditPack(object: Record<string, unknown>) {
   return true;
 }
 
+async function handleAutomationInvoice(object: Record<string, unknown>, eventType: string) {
+  const meta = metadata(object);
+  if (stringValue(meta.kind) !== "automation_purchase") return false;
+
+  const purchaseId = stringValue(meta.purchaseId);
+  const companyId = stringValue(meta.companyId);
+  const invoiceId = stringValue(object.id);
+  if (!purchaseId || !companyId || !invoiceId) return true;
+
+  const paid = eventType === "invoice.paid";
+  const failed = eventType === "invoice.payment_failed";
+  const voided = eventType === "invoice.voided";
+  const status = paid ? "paid" : failed ? "payment_failed" : voided ? "void" : "pending";
+  const hostedInvoiceUrl = stringValue(object.hosted_invoice_url);
+
+  await prisma.$transaction(async (tx) => {
+    const purchase = await tx.purchase.findFirst({
+      where: { id: purchaseId, companyId },
+      select: { id: true, opportunityId: true, status: true },
+    });
+    if (!purchase) return;
+
+    await tx.purchase.update({
+      where: { id: purchase.id },
+      data: {
+        providerRef: invoiceId,
+        paymentUrl: hostedInvoiceUrl,
+        status,
+        paidAt: paid ? new Date() : null,
+      },
+    });
+
+    await tx.event.create({
+      data: {
+        companyId,
+        type: paid
+          ? "AUTOMATION_PURCHASE_PAID"
+          : failed
+            ? "AUTOMATION_PURCHASE_PAYMENT_FAILED"
+            : voided
+              ? "AUTOMATION_PURCHASE_VOIDED"
+              : "AUTOMATION_PURCHASE_UPDATED",
+        metadata: JSON.stringify({
+          purchaseId: purchase.id,
+          opportunityId: purchase.opportunityId,
+          stripeInvoiceId: invoiceId,
+          status,
+        }),
+      },
+    });
+  });
+
+  return true;
+}
+
 export async function POST(req: NextRequest) {
   const rawBody = await req.text();
   const signature = req.headers.get("stripe-signature") ?? "";
@@ -263,6 +318,14 @@ export async function POST(req: NextRequest) {
     event.type === "customer.subscription.deleted"
   ) {
     await upsertSubscriptionFromObject(object, providerEvent);
+  }
+
+  if (
+    event.type === "invoice.paid" ||
+    event.type === "invoice.payment_failed" ||
+    event.type === "invoice.voided"
+  ) {
+    await handleAutomationInvoice(object, event.type);
   }
 
   return NextResponse.json({ received: true });
