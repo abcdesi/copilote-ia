@@ -55,6 +55,9 @@ jobs:
       - name: Billing economics tests
         run: npm run test:billing
 
+      - name: Operational refresh and scheduling tests
+        run: npm run test:operations
+
       - name: Lint
         run: npm run lint
 
