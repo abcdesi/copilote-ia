@@ -63,15 +63,9 @@ export default async function DashboardHomePage() {
   const attentionCount = healthCounts.orange + healthCounts.red;
   const briefItems: MorningBriefItem[] = [];
 
-  if (pendingActions.length > 0) {
-    briefItems.push({
-      tone: "accent",
-      text: `${pendingActions.length} action${pendingActions.length > 1 ? "s" : ""} préparée${pendingActions.length > 1 ? "s" : ""} attend${pendingActions.length > 1 ? "ent" : ""} votre validation`,
-      href: "/app/actions",
-    });
-  }
   if (attentionCount > 0) {
     briefItems.push({
+      bucket: "decide",
       tone: "danger",
       text: `${attentionCount} automatisation${attentionCount > 1 ? "s nécessitent" : " nécessite"} votre attention`,
       href: "/app/automations",
@@ -80,6 +74,7 @@ export default async function DashboardHomePage() {
   for (const rhythm of rhythmReminders) {
     const timing = rhythm.daysUntil === 0 ? "est attendue maintenant" : `revient dans environ ${rhythm.daysUntil} jour${rhythm.daysUntil > 1 ? "s" : ""}`;
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: `${rhythm.title} ${timing} — Pilotzia l'a repéré comme un rythme récurrent à anticiper`,
       href: `/app/company#${rhythm.domain}`,
@@ -87,6 +82,7 @@ export default async function DashboardHomePage() {
   }
   if (googleSnapshot && googleSnapshot.unreadInboxLast7Days > 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: `${googleSnapshot.unreadInboxIsEstimate ? "Environ " : ""}${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
       href: "/app/tools",
@@ -94,6 +90,7 @@ export default async function DashboardHomePage() {
   }
   if (opportunities.length > 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: `${opportunities.length} opportunité${opportunities.length > 1 ? "s" : ""} en attente, potentiel ~${formatHours(
         opportunities.reduce((s, o) => s + o.estimatedHoursPerMonth, 0)
@@ -103,6 +100,7 @@ export default async function DashboardHomePage() {
   }
   if (attentionCount === 0 && activeAutomations.length > 0) {
     briefItems.push({
+      bucket: "handled",
       tone: "success",
       text: `Vos ${activeAutomations.length} automatisation${activeAutomations.length > 1 ? "s" : ""} fonctionnent normalement`,
       href: "/app/automations",
@@ -110,6 +108,7 @@ export default async function DashboardHomePage() {
   }
   if (briefItems.length === 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: "Décrivez une tâche qui vous fait perdre du temps à votre copilote pour recevoir vos premières recommandations",
       href: "/app/copilot",
