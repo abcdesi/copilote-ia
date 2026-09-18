@@ -51,10 +51,15 @@ export async function updateAutomationGovernanceAction(formData: FormData) {
   if (!config || !config.allowedApprovalModes.includes(parsed.data.approvalMode)) return;
 
   const cadenceDays = config.defaultCadenceDays === null ? null : parsed.data.cadenceDays ?? config.defaultCadenceDays;
+  if (parsed.data.scheduleEndHour <= parsed.data.scheduleStartHour) return;
+  const scheduleDays = parsed.data.scheduleDays.join(",");
   const changed =
     automation.approvalMode !== parsed.data.approvalMode ||
     automation.cadenceDays !== cadenceDays ||
     automation.maxSendsPerContact !== parsed.data.maxSendsPerContact ||
+    automation.scheduleStartHour !== parsed.data.scheduleStartHour ||
+    automation.scheduleEndHour !== parsed.data.scheduleEndHour ||
+    automation.scheduleDays !== scheduleDays ||
     (automation.replyToEmail ?? null) !== parsed.data.replyToEmail;
   if (!changed) return;
 
@@ -65,6 +70,9 @@ export async function updateAutomationGovernanceAction(formData: FormData) {
         approvalMode: parsed.data.approvalMode,
         cadenceDays,
         maxSendsPerContact: parsed.data.maxSendsPerContact,
+        scheduleStartHour: parsed.data.scheduleStartHour,
+        scheduleEndHour: parsed.data.scheduleEndHour,
+        scheduleDays,
         replyToEmail: parsed.data.replyToEmail,
         configuredAt: new Date(),
         approvedConfigHash: null,
@@ -83,6 +91,9 @@ export async function updateAutomationGovernanceAction(formData: FormData) {
           approvalMode: parsed.data.approvalMode,
           cadenceDays,
           maxSendsPerContact: parsed.data.maxSendsPerContact,
+          scheduleStartHour: parsed.data.scheduleStartHour,
+          scheduleEndHour: parsed.data.scheduleEndHour,
+          scheduleDays,
           replyToEmail: parsed.data.replyToEmail,
           approvalInvalidated: true,
         }),
