@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { CheckCircle2, CreditCard, Database, LifeBuoy, Settings2, Wrench } from "lucide-react";
+import { CheckCircle2, CreditCard, Database, LifeBuoy, Settings2, ShieldCheck, Wrench } from "lucide-react";
 import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { Badge } from "@/components/ui/Badge";
@@ -19,6 +19,13 @@ const HELP_CARDS = [
     body: "Vérifiez ce que Pilotzia connaît, les sources utilisées et les informations à compléter.",
     href: "/app/context",
     label: "Voir le contexte IA",
+  },
+  {
+    icon: ShieldCheck,
+    title: "Confidentialité & droits",
+    body: "Demandez l’accès, l’export, la rectification ou l’effacement des données concernées. Pilotzia conserve uniquement ce qui doit l’être pour la sécurité, la preuve ou les obligations légales.",
+    href: "/app/support?category=privacy",
+    label: "Faire une demande",
   },
   {
     icon: Wrench,
@@ -57,6 +64,7 @@ export default async function SupportPage({
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
   const canSeeCompanyTickets = access.role === "owner" || access.role === "admin";
   const sent = params.sent === "1";
+  const requestedCategory = typeof params.category === "string" && ["technical", "billing", "data", "privacy", "automation", "feature", "other"].includes(params.category) ? params.category : "technical";
   const tickets = await prisma.supportRequest.findMany({
     where: {
       companyId: company.id,
@@ -115,10 +123,11 @@ export default async function SupportPage({
         <form method="post" action="/api/support" className="mt-5 grid gap-4">
           <label className="grid gap-1.5 text-sm font-medium">
             Catégorie
-            <select name="category" defaultValue="technical" className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent">
+            <select name="category" defaultValue={requestedCategory} className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent">
               <option value="technical">Problème technique</option>
               <option value="billing">Facturation & crédits</option>
               <option value="data">Données & contexte</option>
+              <option value="privacy">Confidentialité & droits sur les données</option>
               <option value="automation">Automatisation & action</option>
               <option value="feature">Question produit</option>
               <option value="other">Autre</option>
