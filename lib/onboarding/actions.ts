@@ -9,11 +9,12 @@ import { getDiagnosticSessionToken, clearDiagnosticSessionToken } from "@/lib/se
 import { materializeOpportunities } from "@/lib/companies/opportunities";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { normalizeCompanySize } from "@/lib/companies/company-size";
 
 const schema = z.object({
   name: z.string().trim().min(1).max(120),
   industry: z.string().trim().max(120).optional(),
-  country: z.string().trim().max(80).optional(),
+  country: z.string().trim().min(1).max(80),
   sizeRange: z.string().trim().max(20).optional(),
   employeeCount: z.coerce.number().int().positive().optional(),
   painPoints: z.string().trim().max(2000).optional(),
@@ -39,6 +40,7 @@ export async function completeOnboardingAction(formData: FormData) {
   if (!parsed.success) redirect("/onboarding?error=invalid");
 
   const { name, industry, country, sizeRange, employeeCount, painPoints, objectives, diagnosticId } = parsed.data;
+  const normalizedSizeRange = normalizeCompanySize({ employeeCount, sizeRange });
   const userId = session.user.id;
 
   let company;
@@ -58,7 +60,7 @@ export async function completeOnboardingAction(formData: FormData) {
             name,
             industry,
             country,
-            sizeRange,
+            sizeRange: normalizedSizeRange,
             employeeCount,
             painPoints,
             objectives,
