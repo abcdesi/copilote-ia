@@ -65,10 +65,20 @@ export default async function SupportPage({
   const canSeeCompanyTickets = access.role === "owner" || access.role === "admin";
   const sent = params.sent === "1";
   const requestedCategory = typeof params.category === "string" && ["technical", "billing", "data", "privacy", "automation", "feature", "other"].includes(params.category) ? params.category : "technical";
+  const requesterEmail = access.session.user.email ?? null;
   const tickets = await prisma.supportRequest.findMany({
     where: {
       companyId: company.id,
-      ...(canSeeCompanyTickets || !access.session.user.email ? {} : { requesterEmail: access.session.user.email }),
+      ...(canSeeCompanyTickets && requesterEmail
+        ? {
+            OR: [
+              { category: { not: "privacy" } },
+              { category: "privacy", requesterEmail },
+            ],
+          }
+        : requesterEmail
+          ? { requesterEmail }
+          : { id: "__none__" }),
     },
     orderBy: { createdAt: "desc" },
     take: 8,
