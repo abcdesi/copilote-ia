@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
@@ -15,7 +15,9 @@ import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const canConfigure = hasCompanyPermission(access.role, "configure_automations");
 
   const [opportunity, entitlements] = await Promise.all([
     prisma.opportunity.findFirst({ where: { id, companyId: company.id } }),
@@ -32,6 +34,9 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const steps = template?.steps ?? [];
   const relevantTools = template?.relevantTools ?? [];
   const alreadyInstalled = opportunity.status === "installed";
+  const installedAutomation = alreadyInstalled
+    ? await prisma.automation.findFirst({ where: { companyId: company.id, opportunityId: opportunity.id }, orderBy: { createdAt: "desc" } })
+    : null;
   const isReal = isRealExecutionTemplate(opportunity.templateId);
 
   return (
@@ -127,7 +132,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <div className="max-w-xl">
           <p className="text-sm font-semibold">
             {alreadyInstalled
-              ? "Automatisation active"
+              ? installedAutomation?.status === "needs_review" ? "Automatisation installée · validation requise" : "Automatisation installée"
               : isReal
                 ? entitlements.canExecute
                   ? "Prête à être installée"
@@ -136,7 +141,9 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {alreadyInstalled
-              ? "Pilotzia suit désormais son exécution et sa santé."
+              ? installedAutomation?.status === "needs_review"
+                ? "Le workflow est installé mais aucune exécution ne partira avant validation de la configuration."
+                : "Pilotzia suit désormais son exécution et sa santé."
               : isReal
                 ? entitlements.canExecute
                   ? "Aucun achat séparé : l'exécution fait partie de votre abonnement."
@@ -145,11 +152,15 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           </p>
         </div>
         {alreadyInstalled ? (
-          <div className="flex items-center gap-2 font-medium text-success">
-            <CheckCircle2 size={18} /> Installée
-          </div>
-        ) : isReal && entitlements.canExecute ? (
+          installedAutomation ? (
+            <Button href={`/app/automations/${installedAutomation.id}`} variant="outline">Voir l’automatisation</Button>
+          ) : (
+            <div className="flex items-center gap-2 font-medium text-success"><CheckCircle2 size={18} /> Installée</div>
+          )
+        ) : isReal && entitlements.canExecute && canConfigure ? (
           <InstallDialog opportunityId={opportunity.id} title={opportunity.title} />
+        ) : isReal && entitlements.canExecute ? (
+          <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">Administrateur requis pour installer</span>
         ) : isReal ? (
           <Button href="/app/settings">Débloquer l'exécution</Button>
         ) : (
