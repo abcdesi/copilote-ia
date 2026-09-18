@@ -1,8 +1,9 @@
-import { CheckCircle2, Cloud, LockKeyhole, Plus, RefreshCcw, ShieldCheck, Unplug, X } from "lucide-react";
+import { AlertCircle, CheckCircle2, Cloud, LockKeyhole, Plus, RefreshCcw, ShieldCheck, Unplug, X } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
+import { getGoogleConfigurationStatus } from "@/lib/integrations/google";
 import { prisma } from "@/lib/db/client";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
@@ -16,8 +17,10 @@ function formatSync(date: Date | null) {
   }).format(date)}`;
 }
 
-export default async function ToolsPage() {
+export default async function ToolsPage({ searchParams }: { searchParams: Promise<{ google?: string }> }) {
   const company = await getCurrentCompany();
+  const params = await searchParams;
+  const googleConfiguration = getGoogleConfigurationStatus();
   const connections = await prisma.integrationConnection.findMany({ where: { companyId: company.id } });
   const google = connections.find((connection) => connection.provider === "google");
   const googleConnected = google?.status === "connected";
@@ -56,12 +59,24 @@ export default async function ToolsPage() {
             <div className="flex items-center gap-2">
               <Cloud size={18} className="text-accent" />
               <h2 className="font-semibold">Google Workspace</h2>
-              {googleConnected ? <Badge tone="success">Connecté</Badge> : <Badge tone="accent">Disponible</Badge>}
+              {googleConnected ? <Badge tone="success">Connecté</Badge> : googleConfiguration.configured ? <Badge tone="accent">Disponible</Badge> : <Badge tone="neutral">Configuration requise</Badge>}
             </div>
             <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
               Gmail et Google Calendar constituent la première connexion réelle Pilotzia. Lecture du contexte, préparation
               d'actions et exécution uniquement après confirmation lorsque l'action modifie vos données.
             </p>
+            {!googleConfiguration.configured && (
+              <div className="mt-3 flex gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3 text-xs leading-5 text-danger">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>La connexion Google n'est pas encore complètement configurée côté serveur. Aucun accès Google n'a été accordé.</span>
+              </div>
+            )}
+            {(params.google === "config-error" || params.google === "start-error") && (
+              <div className="mt-3 flex gap-2 rounded-xl border border-danger/20 bg-danger/5 p-3 text-xs leading-5 text-danger">
+                <AlertCircle size={15} className="mt-0.5 shrink-0" />
+                <span>{params.google === "config-error" ? "Configuration Google incomplète côté Pilotzia." : "Impossible de démarrer la connexion Google. La tentative a été bloquée avant toute autorisation."}</span>
+              </div>
+            )}
             {google && (
               <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <p>Compte : {google.accountLabel ?? "Compte Google"}</p>
@@ -77,13 +92,15 @@ export default async function ToolsPage() {
                 <Unplug size={15} /> Déconnecter
               </button>
             </form>
-          ) : (
+          ) : googleConfiguration.configured ? (
             <a
               href="/api/integrations/google/connect"
               className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
             >
               <RefreshCcw size={15} /> Connecter Google
             </a>
+          ) : (
+            <span className="rounded-xl border border-border px-3.5 py-2 text-xs text-muted-foreground">Configuration serveur requise</span>
           )}
         </div>
 
