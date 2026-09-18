@@ -22,6 +22,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Nom de l'entreprise",
   industry: "Activité / secteur",
   country: "Pays / zone",
+  timezone: "Fuseau horaire opérationnel",
   sizeRange: "Taille de l'équipe",
   employeeCount: "Effectif",
   objectives: "Objectifs prioritaires",
