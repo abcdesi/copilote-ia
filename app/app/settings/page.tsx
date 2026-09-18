@@ -133,18 +133,17 @@ export default async function SettingsPage() {
             const active = planKey === currentPlan;
             const monthlyReady = stripeReady(planKey, "monthly");
             const annualReady = stripeReady(planKey, "annual");
-            const recommended = planKey === "pro";
             return (
               <div
                 key={planKey}
                 className={cn(
                   "rounded-2xl border p-5",
-                  active ? "border-accent bg-accent-soft" : recommended ? "border-accent/40 bg-card" : "border-border bg-card"
+                  active ? "border-accent bg-accent-soft" : "border-border bg-card"
                 )}
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">{plan.label}</p>
-                  {active ? <Badge tone="accent">Plan actuel</Badge> : recommended ? <Badge tone="success">Recommandé</Badge> : !monthlyReady ? <Badge tone="neutral">Configuration requise</Badge> : null}
+                  {active ? <Badge tone="accent">Plan actuel</Badge> : !monthlyReady ? <Badge tone="neutral">Configuration requise</Badge> : null}
                 </div>
                 <p className="mt-2 text-2xl font-semibold">{formatEur(plan.priceEur)}<span className="text-sm font-normal text-muted-foreground">/mois</span></p>
                 <p className="mt-1 text-xs text-muted-foreground">ou {formatEur(plan.annualPriceEur)}/an · 1 mois offert</p>
@@ -160,7 +159,7 @@ export default async function SettingsPage() {
                       <form method="post" action="/api/billing/checkout">
                         <input type="hidden" name="plan" value={planKey} />
                         <input type="hidden" name="billingCycle" value="monthly" />
-                        <Button type="submit" size="sm" variant={recommended ? "primary" : "outline"} className="w-full">Activer {plan.label} mensuel</Button>
+                        <Button type="submit" size="sm" variant="outline" className="w-full">Activer {plan.label} mensuel</Button>
                       </form>
                     ) : <p className="text-xs leading-5 text-muted-foreground">Le prix mensuel Stripe doit être configuré.</p>}
                     {annualReady ? (
