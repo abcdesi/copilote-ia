@@ -152,7 +152,7 @@ export function OnboardingWizard({
               <div className="space-y-1.5">
                 <Label>Taille de l'équipe</Label>
                 <div className="flex flex-wrap gap-2">
-                  {SIZE_OPTIONS.map((size, index) => (
+                  {SIZE_OPTIONS.map((size) => (
                     <label key={size} className="cursor-pointer">
                       <input type="radio" name="sizeRange" value={size} className="peer sr-only" />
                       <span className="inline-block rounded-full border border-border px-3.5 py-1.5 text-sm text-muted-foreground transition-colors peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent">
