@@ -54,7 +54,7 @@ export async function getCompanyContextHistory(companyId: string, take = 120) {
     orderBy: [{ effectiveAt: "desc" }, { createdAt: "desc" }],
     take,
   });
-  return revisions.map(mapRevision);
+  return revisions.map((revision) => mapRevision(revision));
 }
 
 export async function getCompanyContextHistoryPage(companyId: string, page = 1, pageSize = 40) {
