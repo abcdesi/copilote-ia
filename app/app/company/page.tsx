@@ -216,6 +216,14 @@ export default async function CompanyPage() {
                 <Input id="country" name="country" defaultValue={company.country ?? ""} placeholder="Ex. France, Martinique, Belgique…" />
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="timezone">Fuseau horaire opérationnel</Label>
+                <Input id="timezone" name="timezone" defaultValue={company.timezone ?? ""} placeholder="Ex. America/Martinique" />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Pilotzia le détecte automatiquement une seule fois au premier accès d'un administrateur. Vous pouvez le corriger ici.
+                  Les automatisations planifiées commencent à partir de 06:00 heure locale, du lundi au samedi.
+                </p>
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="localContext">Contexte local utile</Label>
                 <Input id="localContext" name="localContext" defaultValue={company.localContext ?? ""} placeholder="Marché local, saisonnalité, réglementation, langue…" />
               </div>
