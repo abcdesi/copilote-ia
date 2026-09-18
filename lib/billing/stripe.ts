@@ -141,6 +141,7 @@ export async function createCheckoutSession(input: {
   } else {
     body.set("line_items[0][price_data][currency]", "eur");
     body.set("line_items[0][price_data][unit_amount]", String(Math.round(amountEur * 100)));
+    body.set("line_items[0][price_data][tax_behavior]", "exclusive");
     body.set("line_items[0][price_data][recurring][interval]", interval);
     body.set("line_items[0][price_data][product_data][name]", `Pilotzia ${plan.label}`);
   }
@@ -155,6 +156,9 @@ export async function createCheckoutSession(input: {
   // être modélisées explicitement et testées dans le moteur économique Pilotzia.
   body.set("billing_address_collection", "required");
   body.set("tax_id_collection[enabled]", "true");
+  if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
+    body.set("automatic_tax[enabled]", "true");
+  }
   if (input.stripeCustomerId) {
     body.set("customer", input.stripeCustomerId);
     body.set("customer_update[address]", "auto");
@@ -189,6 +193,11 @@ export async function createCreditPackCheckoutSession(input: {
   body.set("metadata[credits]", String(pack.credits));
   body.set("metadata[costBudgetEur]", String(pack.costBudgetEur));
   body.set("metadata[amountEur]", String(pack.priceEur));
+  body.set("billing_address_collection", "required");
+  body.set("tax_id_collection[enabled]", "true");
+  if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
+    body.set("automatic_tax[enabled]", "true");
+  }
   if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
   else body.set("customer_email", input.email);
 
