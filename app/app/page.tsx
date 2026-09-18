@@ -1,5 +1,5 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { getBusinessRhythmReminders } from "@/lib/business-graph/rhythms";
 import { prisma } from "@/lib/db/client";
@@ -15,7 +15,8 @@ import { TrialJourney } from "@/components/dashboard/TrialJourney";
 import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
 
 export default async function DashboardHomePage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
 
   const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
@@ -60,7 +61,7 @@ export default async function DashboardHomePage() {
 
   const topOpportunity = opportunities[0];
   const moreOpportunities = opportunities.slice(1, 3);
-  const firstName = company.name.split(" ")[0];
+  const firstName = access.session.user.name?.trim().split(/\s+/)[0] || "bonjour";
   const rhythmReminders = getBusinessRhythmReminders(company);
 
   const attentionCount = healthCounts.orange + healthCounts.red;
@@ -226,15 +227,15 @@ export default async function DashboardHomePage() {
         {activeAutomations.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>Valeur générée ce mois-ci</CardTitle>
-              <CardDescription>Estimations basées sur le temps habituellement consacré à ces tâches.</CardDescription>
+              <CardTitle>Potentiel estimé des automatisations actives</CardTitle>
+              <CardDescription>Estimations mensuelles fondées sur le temps déclaré ou modélisé — ce ne sont pas encore des gains réalisés.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat icon={Clock} label="Heures économisées" value={formatHours(totalHours)} />
-                <Stat icon={TrendingUp} label="Valeur estimée" value={formatEur(totalValue)} />
+                <Stat icon={Clock} label="Temps potentiel / mois" value={formatHours(totalHours)} />
+                <Stat icon={TrendingUp} label="Valeur potentielle / mois" value={formatEur(totalValue)} />
                 <Stat icon={Zap} label="Automatisations actives" value={String(activeAutomations.length)} />
-                <Stat icon={Sparkles} label="Fonctionnement" value={`${Math.round(uptimeWeight * 1000) / 10} %`} />
+                <Stat icon={Sparkles} label="Indice de santé" value={`${healthCounts.green}/${countable.length}`} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2 text-sm">
                 <span>🟢 {healthCounts.green} fonctionnent normalement</span>
