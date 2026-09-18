@@ -1,9 +1,8 @@
 "use client";
 
 import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ArrowRight, Loader2, Sparkles } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowRight, Sparkles } from "lucide-react";
 
 const PLACEHOLDERS = [
   "Que voulez-vous faire ? (ex : « Automatise mes relances »)",
@@ -13,11 +12,12 @@ const PLACEHOLDERS = [
   "Quels outils devrais-je connecter en priorité ?",
 ];
 
+const COPILOT_DRAFT_KEY = "pilotzia:copilot-draft";
+
 export function CopilotBar() {
   const pathname = usePathname();
+  const router = useRouter();
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [reply, setReply] = useState<string | null>(null);
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
 
   useEffect(() => {
@@ -27,25 +27,16 @@ export function CopilotBar() {
 
   if (pathname === "/app/copilot") return null;
 
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    setLoading(true);
-    setReply(null);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: input }),
-      });
-      const data = await res.json();
-      setReply(res.ok ? data.reply : "Une erreur est survenue, réessayez.");
-    } catch {
-      setReply("Une erreur est survenue, réessayez.");
-    } finally {
-      setInput("");
-      setLoading(false);
-    }
+  function handleSubmit(event: FormEvent) {
+    event.preventDefault();
+    const prompt = input.trim();
+    if (!prompt) return;
+
+    // Le texte reste dans la session du navigateur : pas de question métier dans l'URL,
+    // pas d'appel IA depuis une page qui n'est pas le Copilote.
+    window.sessionStorage.setItem(COPILOT_DRAFT_KEY, prompt);
+    setInput("");
+    router.push("/app/copilot");
   }
 
   return (
@@ -54,27 +45,23 @@ export function CopilotBar() {
         <Sparkles size={16} className="ml-2 shrink-0 text-accent" />
         <input
           value={input}
-          onChange={(e) => setInput(e.target.value)}
+          onChange={(event) => setInput(event.target.value)}
           placeholder={PLACEHOLDERS[placeholderIndex]}
+          aria-label="Préparer une question pour le Copilote"
           className="flex-1 bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
         />
         <button
           type="submit"
-          disabled={loading || !input.trim()}
+          disabled={!input.trim()}
+          aria-label="Ouvrir dans le Copilote"
           className="flex shrink-0 items-center justify-center rounded-full bg-accent p-1.5 text-accent-foreground disabled:opacity-40"
         >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+          <ArrowRight size={14} />
         </button>
       </form>
-
-      {reply && (
-        <div className="mx-auto mt-2 max-w-3xl rounded-xl bg-accent-soft px-4 py-2.5 text-sm text-foreground">
-          {reply}{" "}
-          <Link href="/app/copilot" className="font-medium text-accent whitespace-nowrap">
-            Continuer dans le copilote →
-          </Link>
-        </div>
-      )}
+      <p className="mx-auto mt-1.5 max-w-3xl px-3 text-[11px] text-muted-foreground">
+        La réponse s'ouvre dans le Copilote pour conserver le contexte et les prochaines actions au même endroit.
+      </p>
     </div>
   );
 }
