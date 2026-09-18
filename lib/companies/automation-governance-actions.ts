@@ -144,6 +144,9 @@ export async function approveAutomationConfigurationAction(formData: FormData) {
     approvalMode: automation.approvalMode,
     cadenceDays: plan.cadenceDays,
     maxSendsPerContact: plan.maxSendsPerContact,
+    scheduleStartHour: automation.scheduleStartHour,
+    scheduleEndHour: automation.scheduleEndHour,
+    scheduleDays: automation.scheduleDays,
     replyToEmail: automation.replyToEmail,
   });
   const now = new Date();
@@ -171,6 +174,9 @@ export async function approveAutomationConfigurationAction(formData: FormData) {
           riskLevel: automation.riskLevel,
           cadenceDays: plan.cadenceDays,
           maxSendsPerContact: plan.maxSendsPerContact,
+          scheduleStartHour: automation.scheduleStartHour,
+          scheduleEndHour: automation.scheduleEndHour,
+          scheduleDays: automation.scheduleDays,
           messageVersion: automation.messageVersion,
           eligibleContactsAtApproval: plan.eligibleContacts.length,
         }),
