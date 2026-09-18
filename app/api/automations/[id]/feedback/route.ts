@@ -40,7 +40,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     actorRole: access.role,
   };
 
-  const feedback = await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     const created = await tx.automationFeedback.create({
       data: {
         automationId: automation.id,
@@ -103,7 +103,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
         }),
       },
     });
-    return created;
   });
   await track(EVENTS.FEEDBACK_SUBMITTED, {
     userId: access.session.user.id,
