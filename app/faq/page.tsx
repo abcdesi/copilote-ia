@@ -54,7 +54,11 @@ const FAQ = [
   ],
   [
     "Quels sont les plans ?",
-    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et le rafraîchissement hebdomadaire. Action à 179 €/mois ajoute l'exécution contrôlée, les automatisations et le suivi des résultats. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Des sièges supplémentaires peuvent être activés sur demande, et les tarifs annuels ou packs de crédits sont affichés avant achat.",
+    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et le rafraîchissement hebdomadaire. Action à 179 €/mois ouvre le moteur d'exécution et le suivi des résultats ; les automatisations exécutables sont ensuite achetées séparément au prix affiché. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Les crédits couvrent l'usage courant des fonctions et automatisations, pas leur prix d'achat initial.",
+  ],
+  [
+    "Comment sont facturées les automatisations ?",
+    "Une offre Action ou Scale est nécessaire pour accéder au moteur d'exécution. Chaque automatisation exécutable est ensuite achetée une seule fois au prix affiché. Après le premier abonnement, Pilotzia utilise le compte Stripe déjà associé à l'entreprise afin d'éviter de ressaisir la carte à chaque achat ; une confirmation bancaire supplémentaire peut toutefois être demandée. L'usage courant de l'automatisation consomme ensuite les crédits du plan.",
   ],
   [
     "Pilotzia peut-il analyser un bilan ou un compte de résultat ?",
