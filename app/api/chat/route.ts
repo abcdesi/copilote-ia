@@ -6,7 +6,8 @@ import { buildChatContext } from "@/lib/companies/context";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
 import { inferConversationIntent } from "@/lib/ai/expert-response-policy";
-import { AUTOMATION_CATALOG, getTemplateById } from "@/lib/automations/catalog";
+import { getTemplateById } from "@/lib/automations/catalog";
+import { mentionedAutomationTemplateIds } from "@/lib/automations/recommendation-match";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 import { isN8nConfigured } from "@/lib/n8n/client";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
@@ -24,35 +25,6 @@ export interface CopilotAction {
   description?: string;
   requiresConfirmation?: boolean;
   automationReadiness?: "ready" | "configuration_required" | "not_executable";
-}
-
-function normalizeRecommendationText(value: string) {
-  return value
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function mentionedAutomationTemplateIds(reply: string) {
-  const normalizedReply = normalizeRecommendationText(reply);
-  if (!normalizedReply) return [];
-
-  const recommendationSignal =
-    /\b(recommande|recommandation|priorit|commencerais|regarderais|traiterais|conseille|suggere|devriez|il faut|mettre en place|automatis)/.test(
-      normalizedReply
-    );
-  if (!recommendationSignal) return [];
-
-  return AUTOMATION_CATALOG
-    .filter((template) => {
-      const title = normalizeRecommendationText(template.title);
-      return title.length >= 8 && normalizedReply.includes(title);
-    })
-    .slice(0, 3)
-    .map((template) => template.id);
 }
 
 function isSmartRequest(message: string) {
