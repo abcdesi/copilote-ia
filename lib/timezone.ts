@@ -1,8 +1,9 @@
 export const AUTOMATION_LOCAL_START_HOUR = 10;
 export const AUTOMATION_LOCAL_END_HOUR = 18;
+export const DEFAULT_AUTOMATION_DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 export const MAX_SCHEDULED_RETRIES_PER_LOCAL_DAY = 3;
 
-const ALLOWED_WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]);
+const VALID_WEEKDAYS = new Set(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
 
 export function isValidTimeZone(value?: string | null) {
   if (!value) return false;
@@ -17,6 +18,14 @@ export function isValidTimeZone(value?: string | null) {
 export function normalizeTimeZone(value?: string | null) {
   const timezone = value?.trim();
   return timezone && isValidTimeZone(timezone) ? timezone : null;
+}
+
+export function normalizeAutomationDays(value?: string | null) {
+  const days = (value ?? "")
+    .split(",")
+    .map((item) => item.trim())
+    .filter((item) => VALID_WEEKDAYS.has(item));
+  return days.length > 0 ? [...new Set(days)] : [...DEFAULT_AUTOMATION_DAYS];
 }
 
 export function zonedScheduleParts(date: Date, timeZone: string) {
@@ -41,7 +50,7 @@ export function zonedScheduleParts(date: Date, timeZone: string) {
   const minute = Number(read("minute"));
 
   return {
-    dateKey: `${year}-${month}-${day}`,
+    dateKey: year + "-" + month + "-" + day,
     weekday,
     hour,
     minute,
@@ -49,7 +58,11 @@ export function zonedScheduleParts(date: Date, timeZone: string) {
   };
 }
 
-export function automationScheduleState(date: Date, timeZone?: string | null) {
+export function automationScheduleState(
+  date: Date,
+  timeZone?: string | null,
+  schedule?: { startHour?: number | null; endHour?: number | null; days?: string | null }
+) {
   const normalized = normalizeTimeZone(timeZone);
   if (!normalized) {
     return {
@@ -63,13 +76,29 @@ export function automationScheduleState(date: Date, timeZone?: string | null) {
     };
   }
 
-  const local = zonedScheduleParts(date, normalized);
-  if (!ALLOWED_WEEKDAYS.has(local.weekday)) {
-    return { eligible: false, reason: "sunday" as const, timeZone: normalized, ...local };
+  const startHour = Number.isInteger(schedule?.startHour) ? Number(schedule?.startHour) : AUTOMATION_LOCAL_START_HOUR;
+  const endHour = Number.isInteger(schedule?.endHour) ? Number(schedule?.endHour) : AUTOMATION_LOCAL_END_HOUR;
+  const allowedDays = new Set(normalizeAutomationDays(schedule?.days));
+
+  if (startHour < 0 || startHour > 23 || endHour < 1 || endHour > 24 || endHour <= startHour) {
+    return {
+      eligible: false,
+      reason: "invalid_schedule" as const,
+      timeZone: normalized,
+      dateKey: null,
+      weekday: null,
+      hour: null,
+      minute: null,
+    };
   }
 
-  const startsAt = AUTOMATION_LOCAL_START_HOUR * 60;
-  const endsAt = AUTOMATION_LOCAL_END_HOUR * 60;
+  const local = zonedScheduleParts(date, normalized);
+  if (!allowedDays.has(local.weekday)) {
+    return { eligible: false, reason: "day_not_selected" as const, timeZone: normalized, ...local };
+  }
+
+  const startsAt = startHour * 60;
+  const endsAt = endHour * 60;
   if (local.minutesSinceMidnight < startsAt) {
     return { eligible: false, reason: "before_start" as const, timeZone: normalized, ...local };
   }
