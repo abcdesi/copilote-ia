@@ -26,11 +26,16 @@ interface FeedEntry {
 }
 
 export async function PilotziaFeed({ companyId }: { companyId: string }) {
-  const events = await prisma.event.findMany({
-    where: { companyId, type: { in: FEED_EVENT_TYPES } },
-    orderBy: { createdAt: "desc" },
-    take: 12,
-  });
+  const events = await prisma.event
+    .findMany({
+      where: { companyId, type: { in: FEED_EVENT_TYPES } },
+      orderBy: { createdAt: "desc" },
+      take: 12,
+    })
+    .catch((error) => {
+      console.error("Pilotzia feed unavailable", error);
+      return [];
+    });
 
   if (events.length === 0) return null;
 
@@ -41,7 +46,12 @@ export async function PilotziaFeed({ companyId }: { companyId: string }) {
   }
 
   const automations = automationIds.size
-    ? await prisma.automation.findMany({ where: { id: { in: [...automationIds] } }, select: { id: true, name: true } })
+    ? await prisma.automation
+        .findMany({ where: { id: { in: [...automationIds] } }, select: { id: true, name: true } })
+        .catch((error) => {
+          console.error("Pilotzia feed automation labels unavailable", error);
+          return [];
+        })
     : [];
   const automationNames = new Map(automations.map((a) => [a.id, a.name]));
 

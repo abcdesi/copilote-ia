@@ -20,11 +20,21 @@ export default async function DashboardHomePage() {
   const company = access.company;
 
   const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh, marketingSnapshot] = await Promise.all([
-    prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
-    prisma.opportunity.findMany({
-      where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
-      orderBy: { estimatedValueEur: "desc" },
-    }),
+    prisma.automation
+      .findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } })
+      .catch((error) => {
+        console.error("Automations unavailable on dashboard", error);
+        return [];
+      }),
+    prisma.opportunity
+      .findMany({
+        where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
+        orderBy: { estimatedValueEur: "desc" },
+      })
+      .catch((error) => {
+        console.error("Opportunities unavailable on dashboard", error);
+        return [];
+      }),
     prisma.pendingAction
       .findMany({
         where: { companyId: company.id, status: "pending" },
@@ -39,18 +49,37 @@ export default async function DashboardHomePage() {
       console.error("Google operational snapshot unavailable on dashboard", error);
       return null;
     }),
-    getTrialJourneyState(company.id),
-    getCompanyKnowledgeCoverage(company.id),
-    prisma.automationOutcome.findMany({
-      where: { automation: { companyId: company.id } },
-      orderBy: { observedAt: "desc" },
-      take: 200,
+    getTrialJourneyState(company.id).catch((error) => {
+      console.error("Trial journey unavailable on dashboard", error);
+      return null;
     }),
-    prisma.event.findFirst({
-      where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
-      orderBy: { createdAt: "desc" },
+    getCompanyKnowledgeCoverage(company.id).catch((error) => {
+      console.error("Knowledge coverage unavailable on dashboard", error);
+      return null;
     }),
-    getLatestMarketingKpiSnapshot(company.id),
+    prisma.automationOutcome
+      .findMany({
+        where: { automation: { companyId: company.id } },
+        orderBy: { observedAt: "desc" },
+        take: 200,
+      })
+      .catch((error) => {
+        console.error("Automation outcomes unavailable on dashboard", error);
+        return [];
+      }),
+    prisma.event
+      .findFirst({
+        where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
+        orderBy: { createdAt: "desc" },
+      })
+      .catch((error) => {
+        console.error("Weekly refresh status unavailable on dashboard", error);
+        return null;
+      }),
+    getLatestMarketingKpiSnapshot(company.id).catch((error) => {
+      console.error("Marketing KPI snapshot unavailable on dashboard", error);
+      return null;
+    }),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -235,48 +264,61 @@ export default async function DashboardHomePage() {
         </Card>
       )}
 
-      <TrialJourney
-        paid={trialJourney.usage.paid}
-        trialStartedAt={trialJourney.usage.trialStartedAt}
-        trialEndsAt={trialJourney.usage.trialEndsAt}
-        trialActive={trialJourney.usage.trialActive}
-        trialExpired={trialJourney.usage.trialExpired}
-        creditsUsed={trialJourney.usage.creditsUsed}
-        creditsLimit={trialJourney.usage.creditsLimit}
-        hasCompanyContext={trialJourney.hasCompanyContext}
-        hasConnection={trialJourney.hasConnection}
-        opportunitiesCount={opportunities.length}
-        pendingActionsCount={pendingActions.length}
-        activeAutomationsCount={activeAutomations.length}
-        hasMeasuredOutcome={outcomes.length > 0}
-        totalHoursPerMonth={identifiedHours}
-      />
+      {trialJourney && (
+        <TrialJourney
+          paid={trialJourney.usage.paid}
+          trialStartedAt={trialJourney.usage.trialStartedAt}
+          trialEndsAt={trialJourney.usage.trialEndsAt}
+          trialActive={trialJourney.usage.trialActive}
+          trialExpired={trialJourney.usage.trialExpired}
+          creditsUsed={trialJourney.usage.creditsUsed}
+          creditsLimit={trialJourney.usage.creditsLimit}
+          hasCompanyContext={trialJourney.hasCompanyContext}
+          hasConnection={trialJourney.hasConnection}
+          opportunitiesCount={opportunities.length}
+          pendingActionsCount={pendingActions.length}
+          activeAutomationsCount={activeAutomations.length}
+          hasMeasuredOutcome={outcomes.length > 0}
+          totalHoursPerMonth={identifiedHours}
+        />
+      )}
 
-      <Card className="border-accent/20 bg-accent-soft">
-        <CardContent className="grid gap-5 pt-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
-          <div className="flex flex-col items-center text-center">
-            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Connaissance de votre entreprise</p>
-            <div className="mt-1 text-3xl font-semibold">{knowledge.overall}%</div>
-            <RadarChart items={knowledge.radar} size={265} />
-          </div>
-          <div>
-            <h2 className="text-lg font-semibold">Plus le contexte est riche, plus les conseils deviennent précis</h2>
-            <p className="mt-2 text-sm leading-6 text-foreground/75">{knowledge.message}</p>
-            {knowledge.nextSection && (
-              <div className="mt-4 rounded-xl border border-border bg-card/80 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Prochaine information utile</p>
-                <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div>
-                    <p className="font-medium">{knowledge.nextSection.label} · {knowledge.nextSection.score}%</p>
-                    <p className="mt-1 text-xs text-muted-foreground">{knowledge.nextSection.description}</p>
+      {knowledge ? (
+        <Card className="border-accent/20 bg-accent-soft">
+          <CardContent className="grid gap-5 pt-6 lg:grid-cols-[0.75fr_1.25fr] lg:items-center">
+            <div className="flex flex-col items-center text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Connaissance de votre entreprise</p>
+              <div className="mt-1 text-3xl font-semibold">{knowledge.overall}%</div>
+              <RadarChart items={knowledge.radar} size={265} />
+            </div>
+            <div>
+              <h2 className="text-lg font-semibold">Plus le contexte est riche, plus les conseils deviennent précis</h2>
+              <p className="mt-2 text-sm leading-6 text-foreground/75">{knowledge.message}</p>
+              {knowledge.nextSection && (
+                <div className="mt-4 rounded-xl border border-border bg-card/80 p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Prochaine information utile</p>
+                  <div className="mt-1 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="font-medium">{knowledge.nextSection.label} · {knowledge.nextSection.score}%</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{knowledge.nextSection.description}</p>
+                    </div>
+                    <Button href={knowledge.nextSection.href} size="sm">Compléter</Button>
                   </div>
-                  <Button href={knowledge.nextSection.href} size="sm">Compléter</Button>
                 </div>
-              </div>
-            )}
-          </div>
-        </CardContent>
-      </Card>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="border-warning/20">
+          <CardContent className="pt-6">
+            <p className="text-sm font-semibold">Contexte entreprise temporairement indisponible</p>
+            <p className="mt-1 text-sm text-muted-foreground">
+              Le reste du tableau de bord reste accessible. Réessayez plus tard ou utilisez l&apos;assistance si ce bloc ne revient pas.
+            </p>
+          </CardContent>
+        </Card>
+      )}
 
       {googleSnapshot && (
         <div className="grid gap-3 sm:grid-cols-3">

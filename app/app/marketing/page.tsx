@@ -110,8 +110,21 @@ export default async function MarketingPage({
   const access = await getCurrentCompanyAccess();
   const params = await searchParams;
   const [snapshot, googleState] = await Promise.all([
-    getLatestMarketingKpiSnapshot(access.company.id),
-    getGoogleMarketingState(access.company.id),
+    getLatestMarketingKpiSnapshot(access.company.id).catch((error) => {
+      console.error("Marketing KPI snapshot unavailable", error);
+      return null;
+    }),
+    getGoogleMarketingState(access.company.id).catch((error) => {
+      console.error("Google marketing state unavailable", error);
+      return {
+        connection: null,
+        scopes: [] as string[],
+        settings: {},
+        analyticsAuthorized: false,
+        adsAuthorized: false,
+        adsServerConfigured: Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()),
+      };
+    }),
   ]);
   const derived = snapshot ? deriveMarketingKpis(snapshot) : null;
   const canEdit = hasCompanyPermission(access.role, "edit_company");

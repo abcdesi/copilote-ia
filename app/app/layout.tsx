@@ -31,14 +31,19 @@ export default async function DashboardLayout({ children }: { children: React.Re
       console.error("Usage status unavailable in dashboard layout", error);
       return null;
     }),
-    prisma.event.findFirst({
-      where: {
-        companyId: company.id,
-        userId: access.session.user.id,
-        type: "COMPANY_PROFILE_GUIDE_DISMISSED",
-      },
-      select: { id: true },
-    }),
+    prisma.event
+      .findFirst({
+        where: {
+          companyId: company.id,
+          userId: access.session.user.id,
+          type: "COMPANY_PROFILE_GUIDE_DISMISSED",
+        },
+        select: { id: true },
+      })
+      .catch((error) => {
+        console.error("Profile guide dismissal unavailable in dashboard layout", error);
+        return null;
+      }),
   ]);
 
   const hasDomainContext = Boolean(
