@@ -238,7 +238,7 @@ export async function acceptInvitationForUser(input: { token: string; userId: st
         async (tx) => {
           const invitation = await tx.companyInvitation.findUnique({
             where: { tokenHash: hashInvitationToken(input.token) },
-            include: { company: { select: { id: true, name: true } } },
+            include: { company: { select: { id: true, name: true, additionalSeats: true } } },
           });
           if (!invitation || invitation.status !== "pending" || invitation.expiresAt <= new Date()) {
             throw new Error("INVITATION_INVALID");
@@ -251,7 +251,11 @@ export async function acceptInvitationForUser(input: { token: string; userId: st
             select: { plan: true, status: true },
           });
           const plan = planSubscription && ["active", "trialing"].includes(planSubscription.status) ? planSubscription.plan : "free";
-          const seatLimit = plan === "business" ? 10 : plan === "pro" ? 3 : 1;
+          const seatLimit = plan === "business"
+            ? 10 + Math.max(0, invitation.company.additionalSeats)
+            : plan === "pro"
+              ? 3
+              : 1;
           const existingMembership = await tx.companyMembership.findUnique({
             where: { companyId_userId: { companyId: invitation.companyId, userId: input.userId } },
           });
