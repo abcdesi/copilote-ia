@@ -7,6 +7,8 @@ import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 
 interface StripeEvent {
+  id?: string;
+  created?: number;
   type: string;
   data: { object: Record<string, unknown> };
 }
@@ -66,6 +68,7 @@ function subscriptionStatus(object: Record<string, unknown>) {
 
 async function upsertSubscriptionFromObject(
   object: Record<string, unknown>,
+  providerEvent?: { id?: string; createdAt?: Date | null },
   fallback?: { companyId?: string; plan?: string; customerId?: string; billingCycle?: string }
 ) {
   const meta = metadata(object);
@@ -99,10 +102,22 @@ async function upsertSubscriptionFromObject(
     currentPeriodStart: periodStart ? new Date(periodStart * 1000) : existing?.currentPeriodStart ?? null,
     currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : existing?.currentPeriodEnd ?? null,
     billingInterval: interval ?? existing?.billingInterval ?? null,
+    providerEventId: providerEvent?.id ?? existing?.providerEventId ?? null,
+    providerEventCreatedAt: providerEvent?.createdAt ?? existing?.providerEventCreatedAt ?? null,
   };
 
-  if (existing) await prisma.subscription.update({ where: { id: existing.id }, data });
-  else await prisma.subscription.create({ data: { companyId, ...data } });
+  await prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
+    const latest = await tx.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } });
+    if (
+      latest?.providerEventCreatedAt &&
+      providerEvent?.createdAt &&
+      providerEvent.createdAt.getTime() < latest.providerEventCreatedAt.getTime()
+    ) return;
+    if (latest?.providerEventId && providerEvent?.id && latest.providerEventId === providerEvent.id) return;
+    if (latest) await tx.subscription.update({ where: { id: latest.id }, data });
+    else await tx.subscription.create({ data: { companyId, ...data } });
+  }, { timeout: 10_000 });
 
   const wasEntitled = previousStatus ? ENTITLED_STATUSES.has(previousStatus) : false;
   const isEntitled = ENTITLED_STATUSES.has(status);
@@ -132,41 +147,44 @@ async function grantCreditPack(object: Record<string, unknown>) {
   const pack = getCreditPack(packKey);
   if (!pack) return true;
 
-  const existing = await prisma.creditPurchase.findUnique({ where: { stripeCheckoutSessionId: checkoutSessionId } });
-  if (existing) return true;
-
   const period = await getUsagePeriodForCompany(companyId);
   const minimumExpiry = new Date(Date.now() + MIN_CREDIT_PACK_VALIDITY_DAYS * 86400000);
   const expiresAt = period.endsAt.getTime() > minimumExpiry.getTime() ? period.endsAt : minimumExpiry;
 
-  await prisma.creditPurchase.create({
-    data: {
-      companyId,
-      packKey: pack.key,
-      credits: pack.credits,
-      costBudgetEur: pack.costBudgetEur,
-      amountEur: pack.priceEur,
-      status: "paid",
-      stripeCheckoutSessionId: checkoutSessionId,
-      expiresAt,
-    },
-  });
-
-  await prisma.event.create({
-    data: {
-      companyId,
-      type: "CREDIT_PACK_PURCHASED",
-      metadata: JSON.stringify({
-        packKey: pack.key,
-        credits: pack.credits,
-        amountEur: pack.priceEur,
-        costBudgetEur: pack.costBudgetEur,
-        stripeCheckoutSessionId: checkoutSessionId,
-        expiresAt: expiresAt.toISOString(),
-        minimumValidityDays: MIN_CREDIT_PACK_VALIDITY_DAYS,
+  try {
+    await prisma.$transaction([
+      prisma.creditPurchase.create({
+        data: {
+          companyId,
+          packKey: pack.key,
+          credits: pack.credits,
+          costBudgetEur: pack.costBudgetEur,
+          amountEur: pack.priceEur,
+          status: "paid",
+          stripeCheckoutSessionId: checkoutSessionId,
+          expiresAt,
+        },
       }),
-    },
-  });
+      prisma.event.create({
+        data: {
+          companyId,
+          type: "CREDIT_PACK_PURCHASED",
+          metadata: JSON.stringify({
+            packKey: pack.key,
+            credits: pack.credits,
+            amountEur: pack.priceEur,
+            costBudgetEur: pack.costBudgetEur,
+            stripeCheckoutSessionId: checkoutSessionId,
+            expiresAt: expiresAt.toISOString(),
+            minimumValidityDays: MIN_CREDIT_PACK_VALIDITY_DAYS,
+          }),
+        },
+      }),
+    ]);
+  } catch (error) {
+    const code = error && typeof error === "object" && "code" in error ? String((error as { code?: unknown }).code ?? "") : "";
+    if (code !== "P2002") throw error;
+  }
   return true;
 }
 
@@ -182,6 +200,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Payload Stripe invalide." }, { status: 400 });
   }
   const object = event.data.object;
+  const providerEvent = {
+    id: typeof event.id === "string" ? event.id : undefined,
+    createdAt: typeof event.created === "number" ? new Date(event.created * 1000) : null,
+  };
 
   if (event.type === "checkout.session.completed") {
     const creditPackHandled = await grantCreditPack(object);
@@ -191,7 +213,7 @@ export async function POST(req: NextRequest) {
       const plan = stringValue(meta.plan) ?? undefined;
       const billingCycle = stringValue(meta.billingCycle) ?? undefined;
       const customerId = stringValue(object.customer) ?? undefined;
-      await upsertSubscriptionFromObject(object, { companyId, plan, customerId, billingCycle });
+      await upsertSubscriptionFromObject(object, providerEvent, { companyId, plan, customerId, billingCycle });
     }
   }
 
@@ -200,7 +222,7 @@ export async function POST(req: NextRequest) {
     event.type === "customer.subscription.updated" ||
     event.type === "customer.subscription.deleted"
   ) {
-    await upsertSubscriptionFromObject(object);
+    await upsertSubscriptionFromObject(object, providerEvent);
   }
 
   return NextResponse.json({ received: true });
