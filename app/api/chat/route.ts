@@ -357,15 +357,15 @@ function buildSafeAction(
           ? `Automatiser : ${template.title}`
           : "Automatiser cette recommandation"
         : template
-          ? `Voir : ${template.title}`
-          : "Voir la recommandation",
+          ? `Préparer l'automatisation : ${template.title}`
+          : "Préparer cette automatisation",
       href: `/app/opportunities/${opportunityId}`,
       description:
         readiness === "ready"
           ? "Pilotzia sait exécuter ce workflow. La page suivante affiche le prix d'achat unique, les destinataires, les permissions et la configuration avant toute activation."
           : readiness === "configuration_required"
             ? `Cette recommandation est automatisable après prérequis : ${capability?.blockers.join(" · ") || "configuration à compléter"}. Aucune activation n'est effectuée automatiquement.`
-            : "Cette recommandation reste utile, mais Pilotzia ne la présente pas comme automatisable tant que son workflow réel n'est pas pris en charge.",
+            : "Pilotzia a identifié une piste d'automatisation cohérente avec cette recommandation. Vous pouvez la préparer et l'évaluer, mais aucune exécution réelle ne sera proposée tant que le workflow ou le connecteur requis n'est pas disponible.",
       requiresConfirmation: automatable,
       automationReadiness: readiness,
     };
