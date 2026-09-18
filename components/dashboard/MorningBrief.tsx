@@ -49,13 +49,13 @@ export function MorningBrief({
       </div>
       <h1 className="mt-2 text-xl font-semibold tracking-tight sm:text-2xl">Bonjour, {firstName} 👋</h1>
       <p className="mt-1 text-sm text-foreground/80">
-        J&apos;ai analysé vos opérations. Voici ce qui mérite votre attention aujourd&apos;hui.
+        Voici ce qui ressort des données actuellement disponibles et mérite votre attention aujourd&apos;hui.
       </p>
 
       {stats && (
         <div className="mt-5 grid grid-cols-3 gap-3">
-          <StatBox value={String(stats.opportunitiesCount)} label="opportunités détectées" />
-          <StatBox value={stats.potentialHoursLabel} label="potentiel ce mois-ci" />
+          <StatBox value={String(stats.opportunitiesCount)} label="opportunités identifiées" />
+          <StatBox value={stats.potentialHoursLabel} label="potentiel mensuel estimé" />
           <StatBox value={stats.healthRatioLabel} label="automatisations en bonne santé" />
         </div>
       )}
@@ -80,8 +80,10 @@ export function MorningBrief({
         </Link>
       )}
 
-      {!priority && items.length > 0 && (
-        <ul className="mt-4 space-y-2">
+      {items.length > 0 && (
+        <div className="mt-4">
+          {priority && <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">Autres éléments à suivre</p>}
+          <ul className="space-y-2">
           {items.map((item, i) => (
             <li key={i}>
               <Link
@@ -93,7 +95,8 @@ export function MorningBrief({
               </Link>
             </li>
           ))}
-        </ul>
+          </ul>
+        </div>
       )}
     </div>
   );
