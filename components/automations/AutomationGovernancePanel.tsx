@@ -100,7 +100,7 @@ export function AutomationGovernancePanel({
             </select>
             <p className="text-[11px] leading-4 text-muted-foreground">
               Le mode autonome reste limité à cette configuration exacte ; un changement redemande une validation.
-              Les passages automatiques sont actuellement exécutés les jours ouvrés ; un lancement manuel reste possible selon votre rôle.
+              Les passages automatiques commencent à partir de 06:00 dans le fuseau horaire de l’entreprise, du lundi au samedi. Une seule exécution planifiée aboutie est autorisée par jour local ; les échecs techniques peuvent être retentés dans la journée.
             </p>
           </div>
           <div className="space-y-1.5">
