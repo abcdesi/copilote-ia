@@ -7,9 +7,11 @@ import { getIntegrationDefinition } from "../lib/integrations/registry";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
 import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
+import { BUSINESS_TERRITORIES } from "../lib/companies/territories";
 
 function testDemandingExecutive() {
   assert.equal(canApproveRisk("owner", "critical"), true, "Le propriétaire doit pouvoir valider le risque critique.");
+  assert.ok(AUTOMATION_CATALOG.every((template) => template.priceEur > 0), "Chaque automatisation catalogue doit conserver un prix d'achat unique.");
   assert.equal(hasCompanyPermission("owner", "manage_billing"), true);
   assert.equal(hasCompanyPermission("owner", "manage_team"), true);
   assert.ok(
@@ -21,6 +23,10 @@ function testDemandingExecutive() {
 function testSixtyEmployeeCompany() {
   assert.equal(normalizeCompanySize({ employeeCount: 60, sizeRange: "6-20" }), "51-200");
   assert.equal(PLAN_DEFINITIONS.business.includedSeats, 10);
+  assert.ok(
+    PLAN_DEFINITIONS.pro.features.some((feature) => /achetées à l'unité/i.test(feature)),
+    "Action doit donner accès au moteur sans faire croire que les automatisations sont gratuites."
+  );
   assert.equal(hasCompanyPermission("admin", "manage_team"), true);
   assert.equal(hasCompanyPermission("admin", "manage_billing"), false, "La facturation reste propriétaire.");
   assert.equal(canApproveRisk("admin", "high"), false, "Le risque élevé reste propriétaire.");
@@ -67,6 +73,9 @@ function testMarketingExpert() {
 
 function testSolopreneur() {
   assert.equal(normalizeCompanySize({ employeeCount: 1, sizeRange: "6-20" }), "1-5");
+  for (const territory of ["Martinique", "Guadeloupe", "Guyane", "La Réunion"]) {
+    assert.ok(BUSINESS_TERRITORIES.includes(territory as (typeof BUSINESS_TERRITORIES)[number]), `${territory} doit être proposé explicitement à l'inscription.`);
+  }
   assert.equal(PLAN_DEFINITIONS.starter.includedSeats, 1);
   assert.equal(PLAN_DEFINITIONS.starter.priceEur, 79);
   assert.equal(hasCompanyPermission("owner", "view"), true);
