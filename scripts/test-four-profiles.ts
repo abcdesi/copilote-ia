@@ -78,7 +78,7 @@ function testCopilotRecommendationActions() {
   );
   assert.deepEqual(ids, [
     "onboarding-clients",
-    "reponses-questions-frequentes",
+    "support-questions-frequentes",
     "sync-crm-facturation",
   ]);
 }
