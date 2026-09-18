@@ -4,6 +4,8 @@ import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { canApproveRisk, hasCompanyPermission } from "../lib/companies/access";
 import { KNOWN_TOOLS } from "../lib/automations/types";
 import { getIntegrationDefinition } from "../lib/integrations/registry";
+import { BUSINESS_TERRITORY_GROUPS, BUSINESS_TERRITORIES } from "../lib/companies/territories";
+import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
@@ -81,6 +83,44 @@ function testCopilotRecommendationActions() {
     "support-questions-frequentes",
     "sync-crm-facturation",
   ]);
+}
+
+function testTerritoriesAndCopilotAutomationProposals() {
+  for (const territory of [
+    "France métropolitaine",
+    "Martinique",
+    "Guadeloupe",
+    "Guyane",
+    "La Réunion",
+    "Mayotte",
+    "Saint-Martin",
+    "Saint-Barthélemy",
+    "Saint-Pierre-et-Miquelon",
+    "Polynésie française",
+    "Nouvelle-Calédonie",
+    "Wallis-et-Futuna",
+  ]) {
+    assert.ok(BUSINESS_TERRITORIES.includes(territory as (typeof BUSINESS_TERRITORIES)[number]), `${territory} doit être sélectionnable individuellement à l'inscription.`);
+  }
+  assert.ok(
+    BUSINESS_TERRITORY_GROUPS.some((group) => group.label === "Outre-mer — Antilles & Guyane"),
+    "Les Antilles et la Guyane doivent être regroupées sous un libellé Outre-mer clair."
+  );
+
+  const prospectMatches = mentionedAutomationTemplateIds(
+    "Je vous recommande de mettre en place une relance automatique des prospects qui ne répondent plus depuis plusieurs jours."
+  );
+  assert.ok(prospectMatches.includes("relance-prospects"), "Une recommandation de relance prospects doit proposer l'automatisation correspondante.");
+
+  const reportingMatches = mentionedAutomationTemplateIds(
+    "Il faudrait automatiser un reporting chaque semaine pour réunir les KPI marketing et les diffuser à l'équipe."
+  );
+  assert.ok(reportingMatches.includes("reporting-hebdo"), "Une recommandation de reporting hebdomadaire doit proposer l'automatisation correspondante.");
+
+  const vagueMatches = mentionedAutomationTemplateIds(
+    "Votre équipe devrait mieux suivre les clients."
+  );
+  assert.ok(vagueMatches.length <= 1, "Une recommandation trop vague ne doit pas générer plusieurs automatisations arbitraires.");
 }
 
 function testSolopreneur() {
