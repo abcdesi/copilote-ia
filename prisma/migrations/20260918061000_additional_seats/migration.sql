@@ -1,0 +1,1 @@
+ALTER TABLE "Company" ADD COLUMN "additionalSeats" INTEGER NOT NULL DEFAULT 0;
