@@ -11,6 +11,11 @@ import {
 } from "@/lib/timezone";
 
 const RUN_LOOKBACK_MS = 36 * 60 * 60 * 1000;
+const RETENTION_INTERVAL_MS = 23 * 60 * 60 * 1000;
+const WEEKLY_REFRESH_BATCH_LIMIT = Math.min(
+  10,
+  Math.max(1, Number(process.env.PILOTZIA_WEEKLY_REFRESH_BATCH_LIMIT) || 5)
+);
 
 function hasValidCronSecret(req: NextRequest) {
   const secret = process.env.CRON_SECRET?.trim();
@@ -162,10 +167,10 @@ export async function GET(req: NextRequest) {
     },
     select: { id: true },
     orderBy: { updatedAt: "asc" },
-    take: 10,
+    take: WEEKLY_REFRESH_BATCH_LIMIT,
   });
 
-  const weeklyRefresh = [];
+  const weeklyRefresh: Array<{ companyId: string; ok: boolean; skipped: boolean; reason?: string }> = [];
   for (const company of weeklyCompanies) {
     const refresh = await runWeeklyBusinessRefresh(company.id);
     weeklyRefresh.push({
@@ -176,13 +181,29 @@ export async function GET(req: NextRequest) {
     });
   }
 
-  // Le scheduler principal tourne fréquemment pour respecter les fuseaux horaires.
-  // La maintenance de rétention reste volontairement quotidienne.
-  const retention = now.getUTCHours() === 3
-    ? await runDataRetentionMaintenance().catch((error) => {
-        console.error("Data retention maintenance failed", error);
-        return null;
-      })
+  // La maintenance est pilotée par fraîcheur, pas par une heure UTC fixe. Cela reste
+  // correct sur le cron Vercel quotidien actuel et après migration vers un scheduler plus fréquent.
+  const lastRetention = await prisma.event.findFirst({
+    where: { type: "DATA_RETENTION_MAINTENANCE" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true },
+  });
+  const retentionDue = !lastRetention || now.getTime() - lastRetention.createdAt.getTime() >= RETENTION_INTERVAL_MS;
+  const retention = retentionDue
+    ? await runDataRetentionMaintenance(now)
+        .then(async (result) => {
+          await prisma.event.create({
+            data: {
+              type: "DATA_RETENTION_MAINTENANCE",
+              metadata: JSON.stringify({ ranAt: now.toISOString(), ...result }),
+            },
+          });
+          return result;
+        })
+        .catch((error) => {
+          console.error("Data retention maintenance failed", error);
+          return null;
+        })
     : undefined;
 
   return NextResponse.json({
