@@ -128,9 +128,11 @@ export function OnboardingWizard({
                   <select
                     id="country"
                     name="country"
-                    defaultValue="France métropolitaine"
+                    defaultValue=""
+                    required
                     className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
                   >
+                    <option value="" disabled>Sélectionner votre territoire</option>
                     {COUNTRY_OPTIONS.map((country) => <option key={country} value={country}>{country}</option>)}
                   </select>
                 </div>
@@ -144,13 +146,16 @@ export function OnboardingWizard({
                 <div className="flex flex-wrap gap-2">
                   {SIZE_OPTIONS.map((size, index) => (
                     <label key={size} className="cursor-pointer">
-                      <input type="radio" name="sizeRange" value={size} defaultChecked={index === 1} className="peer sr-only" />
+                      <input type="radio" name="sizeRange" value={size} className="peer sr-only" />
                       <span className="inline-block rounded-full border border-border px-3.5 py-1.5 text-sm text-muted-foreground transition-colors peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent">
                         {size}
                       </span>
                     </label>
                   ))}
                 </div>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Si vous renseignez l'effectif exact, Pilotzia déduit automatiquement la tranche correspondante pour éviter toute incohérence.
+                </p>
               </div>
             </div>
 
