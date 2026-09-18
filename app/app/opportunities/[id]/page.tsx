@@ -60,7 +60,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <p className="font-semibold">{isReal ? "⚡ Exécution réelle disponible" : "🧪 Simulation disponible"}</p>
         <p className="mt-1 leading-6">
           {isReal
-            ? "Cette automatisation peut agir réellement après activation sur une offre Action ou Scale. Pilotzia vous montre d'abord ce qui sera fait et les permissions nécessaires."
+            ? "Cette automatisation est incluse avec Action ou Scale. Pilotzia vous montre d'abord ce qui sera fait, les permissions nécessaires et la consommation est ensuite couverte par les crédits d'usage."
             : "Cette recommandation sert aujourd'hui à valider la logique et la valeur potentielle. Pilotzia ne la présente pas comme exécutable tant que son connecteur réel n'est pas prêt."}
         </p>
       </div>
@@ -146,7 +146,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
                 : "Pilotzia suit désormais son exécution et sa santé."
               : isReal
                 ? entitlements.canExecute
-                  ? "Aucun achat séparé : l'exécution fait partie de votre abonnement."
+                  ? "Aucun achat séparé : l'automatisation fait partie de votre abonnement Action / Scale. Seul l'usage réel consomme des crédits."
                   : "Vous pouvez analyser cette opportunité et sa logique maintenant ; l'offre Action débloque l'exécution réelle et le monitoring."
                 : "La logique peut être évaluée sans laisser croire qu'une action réelle est déjà disponible."}
           </p>
