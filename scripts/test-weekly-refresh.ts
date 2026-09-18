@@ -43,9 +43,14 @@ async function main() {
     const entitlements = await getCompanyEntitlements(company.id);
     assert.equal(entitlements.seatLimit, 14, "Scale doit additionner les sièges approuvés aux 10 sièges inclus.");
 
-    const first = await runWeeklyBusinessRefresh(company.id);
-    assert.equal(first.ok, true);
-    assert.equal(first.skipped, false);
+    const concurrent = await Promise.all([
+      runWeeklyBusinessRefresh(company.id),
+      runWeeklyBusinessRefresh(company.id),
+    ]);
+    const executed = concurrent.filter((result) => result.ok && !result.skipped);
+    const skipped = concurrent.filter((result) => result.ok && result.skipped);
+    assert.equal(executed.length, 1, "Un seul refresh concurrent doit réellement travailler.");
+    assert.equal(skipped.length, 1, "Le second refresh concurrent doit être ignoré.");
 
     const completion = await prisma.event.findFirst({
       where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
