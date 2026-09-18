@@ -67,7 +67,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     includedSeats: 3,
     features: [
       "Tout Core",
-      "Actions et automatisations dans les outils connectés",
+      "Accès au moteur d'exécution et aux automatisations achetées à l'unité",
       "Confirmations pour les actions sensibles",
       "Monitoring, incidents et suivi des résultats",
       "3 utilisateurs avec rôles et traçabilité",
