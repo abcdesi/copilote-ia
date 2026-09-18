@@ -49,6 +49,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     includedSeats: 1,
     features: [
       "Business Graph vivant",
+      "Rafraîchissement hebdomadaire automatique du contexte",
       "Copilote de direction et Morning Brief",
       "Recommandations continues avec niveau de preuve",
       "Historique du contexte et des décisions",
