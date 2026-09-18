@@ -14,6 +14,7 @@ interface TrialJourneyProps {
   opportunitiesCount: number;
   pendingActionsCount: number;
   activeAutomationsCount: number;
+  hasMeasuredOutcome: boolean;
   totalHoursPerMonth: number;
 }
 
@@ -59,7 +60,7 @@ export function TrialJourney(props: TrialJourneyProps) {
       href: props.pendingActionsCount > 0 ? "/app/actions" : "/app/opportunities",
     },
     {
-      done: props.activeAutomationsCount > 0,
+      done: props.hasMeasuredOutcome,
       label: "Mesurer une première valeur réelle",
       detail: "Suivre ce qui fonctionne, le temps récupéré et les prochaines améliorations.",
       href: "/app/results",
