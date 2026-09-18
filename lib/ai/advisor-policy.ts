@@ -88,5 +88,13 @@ const RECOMMENDATION_SIGNAL =
 
 export function findRecommendedTemplateMatch(message: string, templates: AutomationTemplate[], tools: string[]) {
   if (!RECOMMENDATION_SIGNAL.test(message) || isCorrectionRequest(message)) return undefined;
+
+  const viable = templates
+    .map((template) => ({ template, ...scoreTemplateIntent(message, template, tools) }))
+    .filter((candidate) => candidate.strongMatches >= 2 || candidate.keywordScore >= 2.5);
+
+  // Une réponse qui recommande plusieurs processus ne doit jamais laisser Pilotzia
+  // choisir silencieusement lequel automatiser.
+  if (viable.length !== 1) return undefined;
   return findConfidentTemplateMatch(message, templates, tools);
 }
