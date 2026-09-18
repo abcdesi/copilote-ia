@@ -4,6 +4,7 @@ import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { canApproveRisk, hasCompanyPermission } from "../lib/companies/access";
 import { KNOWN_TOOLS } from "../lib/automations/types";
 import { getIntegrationDefinition } from "../lib/integrations/registry";
+import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
 import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
@@ -71,6 +72,17 @@ function testMarketingExpert() {
   }
 }
 
+function testCopilotRecommendationActions() {
+  const ids = mentionedAutomationTemplateIds(
+    "Je regarderais d'abord ces trois zones, dans cet ordre : 1. **Onboarding automatique des nouveaux clients** — priorité haute. 2. **Réponses automatiques aux questions fréquentes** — priorité moyenne. 3. **Synchronisation CRM et facturation** — priorité moyenne."
+  );
+  assert.deepEqual(ids, [
+    "onboarding-clients",
+    "reponses-questions-frequentes",
+    "sync-crm-facturation",
+  ]);
+}
+
 function testSolopreneur() {
   assert.equal(normalizeCompanySize({ employeeCount: 1, sizeRange: "6-20" }), "1-5");
   for (const territory of ["Martinique", "Guadeloupe", "Guyane", "La Réunion"]) {
@@ -86,6 +98,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testCopilotRecommendationActions();
   testSolopreneur();
   testCopilotRecommendationGovernance();
   console.log("Four-profile product acceptance tests: OK");
