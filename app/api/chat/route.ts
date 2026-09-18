@@ -207,6 +207,7 @@ export async function POST(req: NextRequest) {
 
 async function createOpportunityFromChatMatch(companyId: string, templateId: string) {
   const existing = await prisma.opportunity.findFirst({ where: { companyId, templateId } });
+  if (existing?.status === "rejected" || existing?.status === "installed") return null;
   if (existing) return existing;
 
   const template = getTemplateById(templateId);
@@ -233,13 +234,17 @@ async function createOpportunityFromChatMatch(companyId: string, templateId: str
 }
 
 
-async function getAutomationCapability(companyId: string, role: string, templateId: string) {
+async function getAutomationCapability(
+  companyId: string,
+  role: Parameters<typeof hasCompanyPermission>[0],
+  templateId: string
+) {
   if (!isRealExecutionTemplate(templateId)) {
     return { readiness: "not_executable" as const, blockers: ["workflow réel non disponible"] };
   }
 
   const blockers: string[] = [];
-  if (!hasCompanyPermission(role as Parameters<typeof hasCompanyPermission>[0], "configure_automations")) {
+  if (!hasCompanyPermission(role, "configure_automations")) {
     blockers.push("validation d'un Propriétaire ou Administrateur");
   }
 
