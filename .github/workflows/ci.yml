@@ -58,6 +58,9 @@ jobs:
       - name: Operational refresh and scheduling tests
         run: npm run test:operations
 
+      - name: Four-profile product acceptance tests
+        run: npm run test:profiles
+
       - name: Lint
         run: npm run lint
 
