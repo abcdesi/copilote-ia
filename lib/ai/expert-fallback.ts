@@ -179,7 +179,9 @@ function withAutomationSuggestion(reply: string, context: ChatContext): ChatRepl
   const alreadyInstalled = context.automations.some(
     (automation) => normalize(automation.name) === normalize(match.title)
   );
-  return alreadyInstalled ? { reply } : { reply, matchedTemplateId: match.id };
+  return alreadyInstalled
+    ? { reply }
+    : { reply, matchedTemplateId: match.id, matchedTemplateSource: "assistant_recommendation" };
 }
 
 export function runExpertFallbackChat(messages: ChatMessageInput[], context: ChatContext): ChatReply {
@@ -222,6 +224,7 @@ export function runExpertFallbackChat(messages: ChatMessageInput[], context: Cha
       return {
         reply: `Oui, **${match.title}** correspond au processus que vous voulez automatiser. Je la traiterais comme une recommandation à valider, avec une estimation catalogue d'environ ${match.estimatedHoursPerMonth} h/mois, puis je vérifierais votre volume réel avant activation.`,
         matchedTemplateId: match.id,
+        matchedTemplateSource: "explicit_request",
       };
     }
   }
