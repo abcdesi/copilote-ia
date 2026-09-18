@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { CREDIT_PACKS } from "../lib/billing/credit-packs";
 import { creditsRequiredForCost, normalizeUsageReservation, usageAlertLevel } from "../lib/billing/economics";
 import { PLAN_DEFINITIONS } from "../lib/billing/plans";
+import { identifyStripeSubscriptionPrice } from "../lib/billing/stripe";
 
 assert.equal(creditsRequiredForCost(0), 0);
 assert.equal(creditsRequiredForCost(0.01), 1);
@@ -37,5 +38,16 @@ for (const pack of CREDIT_PACKS) {
 assert.equal(usageAlertLevel({ creditsUsed: 79, creditsLimit: 100, reservedCostEur: 0, costCapEur: 1 }), "normal");
 assert.equal(usageAlertLevel({ creditsUsed: 80, creditsLimit: 100, reservedCostEur: 0, costCapEur: 1 }), "warning");
 assert.equal(usageAlertLevel({ creditsUsed: 10, creditsLimit: 100, reservedCostEur: 0.9, costCapEur: 1 }), "critical");
+
+process.env.STRIPE_PRICE_STARTER = "price_core_monthly_test";
+process.env.STRIPE_PRICE_STARTER_ANNUAL = "price_core_annual_test";
+process.env.STRIPE_PRICE_PRO = "price_action_monthly_test";
+process.env.STRIPE_PRICE_PRO_ANNUAL = "price_action_annual_test";
+process.env.STRIPE_PRICE_BUSINESS = "price_scale_monthly_test";
+process.env.STRIPE_PRICE_BUSINESS_ANNUAL = "price_scale_annual_test";
+assert.deepEqual(identifyStripeSubscriptionPrice("price_core_monthly_test"), { plan: "starter", billingCycle: "monthly" });
+assert.deepEqual(identifyStripeSubscriptionPrice("price_action_annual_test"), { plan: "pro", billingCycle: "annual" });
+assert.deepEqual(identifyStripeSubscriptionPrice("price_scale_monthly_test"), { plan: "business", billingCycle: "monthly" });
+assert.equal(identifyStripeSubscriptionPrice("price_unknown"), null);
 
 console.log("Billing economics: OK");
