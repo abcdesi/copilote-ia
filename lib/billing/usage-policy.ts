@@ -229,7 +229,7 @@ export async function getUsageStatus(companyId: string) {
 async function lockCompanyUsage(tx: Prisma.TransactionClient, companyId: string) {
   // Verrou transactionnel Postgres partagé par toutes les réservations/remboursements
   // d'une société. Deux requêtes concurrentes ne peuvent plus dépenser le même solde.
-  await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${companyId}))`;
+  await tx.$queryRaw`SELECT id FROM \"Company\" WHERE id = ${companyId} FOR UPDATE`;
 }
 
 export async function reserveUsage(input: {
