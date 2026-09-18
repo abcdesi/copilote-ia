@@ -85,7 +85,12 @@ export async function getCurrentCompanyAccess() {
   const memberships = await prisma.companyMembership.findMany({
     where: { userId: session.user.id, status: "active" },
     include: {
-      company: { include: { tools: true, subscriptions: true } },
+      company: {
+        include: {
+          tools: true,
+          subscriptions: { orderBy: { createdAt: "desc" } },
+        },
+      },
     },
     orderBy: { joinedAt: "desc" },
   });
@@ -108,7 +113,10 @@ export async function getCurrentCompanyAccess() {
 
   const legacyCompany = await prisma.company.findFirst({
     where: { userId: session.user.id },
-    include: { tools: true, subscriptions: true },
+    include: {
+      tools: true,
+      subscriptions: { orderBy: { createdAt: "desc" } },
+    },
     orderBy: { createdAt: "desc" },
   });
   if (!legacyCompany) redirect("/onboarding");
