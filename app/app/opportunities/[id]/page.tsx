@@ -18,10 +18,14 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const access = await getCurrentCompanyAccess();
   const company = access.company;
   const canConfigure = hasCompanyPermission(access.role, "configure_automations");
+  const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
 
-  const [opportunity, entitlements] = await Promise.all([
+  const [opportunity, entitlements, purchase] = await Promise.all([
     prisma.opportunity.findFirst({ where: { id, companyId: company.id } }),
     getCompanyEntitlements(company.id),
+    prisma.purchase.findUnique({
+      where: { companyId_opportunityId: { companyId: company.id, opportunityId: id } },
+    }),
   ]);
   if (!opportunity) notFound();
 
@@ -38,6 +42,8 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
     ? await prisma.automation.findFirst({ where: { companyId: company.id, opportunityId: opportunity.id }, orderBy: { createdAt: "desc" } })
     : null;
   const isReal = isRealExecutionTemplate(opportunity.templateId);
+  const priceEur = template?.priceEur ?? opportunity.priceEur;
+  const purchased = purchase?.status === "paid";
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
@@ -60,15 +66,16 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <p className="font-semibold">{isReal ? "⚡ Exécution réelle disponible" : "🧪 Simulation disponible"}</p>
         <p className="mt-1 leading-6">
           {isReal
-            ? "Cette automatisation est incluse avec Action ou Scale. Pilotzia vous montre d'abord ce qui sera fait, les permissions nécessaires et la consommation est ensuite couverte par les crédits d'usage."
-            : "Cette recommandation sert aujourd'hui à valider la logique et la valeur potentielle. Pilotzia ne la présente pas comme exécutable tant que son connecteur réel n'est pas prêt."}
+            ? "Action ou Scale donne accès au moteur d'exécution. Cette automatisation s'achète séparément une seule fois ; son usage courant consomme ensuite les crédits du plan. Le prix et les permissions sont visibles avant achat."
+            : "Cette recommandation sert aujourd'hui à valider la logique et la valeur potentielle. Pilotzia ne la présente pas comme achetable tant que son exécution réelle n'est pas prête."}
         </p>
       </div>
 
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatBox label="Potentiel" value={`~${formatHours(opportunity.estimatedHoursPerMonth)}/mois`} />
         <StatBox label="Valeur estimée" value={formatEur(opportunity.estimatedValueEur)} />
         <StatBox label="Mise en place" value={COMPLEXITY_LABELS[opportunity.complexity]} small />
+        <StatBox label="Prix automatisation" value={isReal ? `${formatEur(priceEur)} HT` : "Non disponible"} small />
       </div>
 
       <div className="rounded-2xl border border-border bg-card p-6">
@@ -133,22 +140,26 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           <p className="text-sm font-semibold">
             {alreadyInstalled
               ? installedAutomation?.status === "needs_review" ? "Automatisation installée · validation requise" : "Automatisation installée"
-              : isReal
-                ? entitlements.canExecute
-                  ? "Prête à être installée"
-                  : "Exécution incluse à partir d'Action"
-                : "Validation en simulation"}
+              : !isReal
+                ? "Validation en simulation"
+                : !entitlements.canExecute
+                  ? "Action ou Scale requis avant achat"
+                  : purchased
+                    ? "Automatisation payée · prête à installer"
+                    : `${formatEur(priceEur)} HT · achat unique`}
           </p>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">
             {alreadyInstalled
               ? installedAutomation?.status === "needs_review"
                 ? "Le workflow est installé mais aucune exécution ne partira avant validation de la configuration."
                 : "Pilotzia suit désormais son exécution et sa santé."
-              : isReal
-                ? entitlements.canExecute
-                  ? "Aucun achat séparé : l'automatisation fait partie de votre abonnement Action / Scale. Seul l'usage réel consomme des crédits."
-                  : "Vous pouvez analyser cette opportunité et sa logique maintenant ; l'offre Action débloque l'exécution réelle et le monitoring."
-                : "La logique peut être évaluée sans laisser croire qu'une action réelle est déjà disponible."}
+              : !isReal
+                ? "La logique peut être évaluée sans laisser croire qu'une action réelle est déjà disponible."
+                : !entitlements.canExecute
+                  ? "L'abonnement ouvre le moteur d'exécution et les crédits d'usage. L'automatisation reste ensuite un achat séparé."
+                  : purchased
+                    ? "L'achat est enregistré. Vous pouvez installer le workflow sans repayer ; son usage consommera ensuite les crédits du plan."
+                    : "Le Propriétaire valide l'achat. Pilotzia tente d'utiliser le moyen de paiement Stripe déjà enregistré, sans demander de ressaisir la carte sauf exigence bancaire."}
           </p>
         </div>
         {alreadyInstalled ? (
@@ -157,14 +168,20 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
           ) : (
             <div className="flex items-center gap-2 font-medium text-success"><CheckCircle2 size={18} /> Installée</div>
           )
-        ) : isReal && entitlements.canExecute && canConfigure ? (
-          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} />
-        ) : isReal && entitlements.canExecute ? (
-          <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">Administrateur requis pour installer</span>
-        ) : isReal ? (
-          <Button href="/app/settings">Débloquer l'exécution</Button>
-        ) : (
+        ) : !isReal ? (
           <Button href="/app/copilot" variant="outline">Approfondir avec le copilote</Button>
+        ) : !entitlements.canExecute ? (
+          <Button href="/app/settings#plans">Choisir Action ou Scale</Button>
+        ) : purchased && canConfigure ? (
+          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased />
+        ) : purchased ? (
+          <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">Administrateur requis pour installer</span>
+        ) : canManageBilling ? (
+          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased={false} />
+        ) : (
+          <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">
+            Achat par le Propriétaire requis · {formatEur(priceEur)} HT
+          </span>
         )}
       </div>
     </div>
