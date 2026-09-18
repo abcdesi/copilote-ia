@@ -75,61 +75,101 @@ async function upsertSubscriptionFromObject(
   const companyId = stringValue(meta.companyId) ?? fallback?.companyId ?? null;
   if (!companyId) return;
 
-  const existing = await prisma.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } });
   const priceId = recurringPriceId(object);
   const mappedPrice = identifyStripeSubscriptionPrice(priceId);
   const isSubscriptionObject = stringValue(object.object) === "subscription";
-  const fallbackPlan = stringValue(meta.plan) ?? fallback?.plan ?? existing?.plan ?? null;
-  const fallbackCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
-  const plan = mappedPrice?.plan ?? fallbackPlan;
-  const billingCycle = mappedPrice?.billingCycle ?? fallbackCycle;
-  if (!plan) return;
-
-  const customerId = stringValue(object.customer) ?? fallback?.customerId ?? existing?.stripeCustomerId ?? null;
-  const stripeSubId = stringValue(object.subscription) ?? stringValue(object.id);
-  const status = isSubscriptionObject && priceId && !mappedPrice ? "configuration_error" : subscriptionStatus(object);
+  const objectStatus = isSubscriptionObject && priceId && !mappedPrice
+    ? "configuration_error"
+    : subscriptionStatus(object);
   const periodStart = numberValue(object.current_period_start);
   const periodEnd = numberValue(object.current_period_end);
-  const interval = mappedPrice
-    ? mappedPrice.billingCycle === "annual" ? "year" : "month"
-    : recurringInterval(object) ?? (billingCycle === "annual" ? "year" : billingCycle === "monthly" ? "month" : null);
-  const previousStatus = existing?.status ?? null;
-  const data = {
-    plan,
-    status,
-    stripeCustomerId: customerId,
-    stripeSubId,
-    currentPeriodStart: periodStart ? new Date(periodStart * 1000) : existing?.currentPeriodStart ?? null,
-    currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : existing?.currentPeriodEnd ?? null,
-    billingInterval: interval ?? existing?.billingInterval ?? null,
-    providerEventId: providerEvent?.id ?? existing?.providerEventId ?? null,
-    providerEventCreatedAt: providerEvent?.createdAt ?? existing?.providerEventCreatedAt ?? null,
-  };
+  const objectCustomerId = stringValue(object.customer);
+  const objectStripeSubId = stringValue(object.subscription) ?? (isSubscriptionObject ? stringValue(object.id) : null);
+  const objectInterval = recurringInterval(object);
 
-  await prisma.$transaction(async (tx) => {
-    await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
-    const latest = await tx.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } });
-    if (
-      latest?.providerEventCreatedAt &&
-      providerEvent?.createdAt &&
-      providerEvent.createdAt.getTime() < latest.providerEventCreatedAt.getTime()
-    ) return;
-    if (latest?.providerEventId && providerEvent?.id && latest.providerEventId === providerEvent.id) return;
-    if (latest) await tx.subscription.update({ where: { id: latest.id }, data });
-    else await tx.subscription.create({ data: { companyId, ...data } });
-  }, { timeout: 10_000 });
+  const transition = await prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
+      const latest = await tx.subscription.findFirst({
+        where: { companyId },
+        orderBy: { createdAt: "desc" },
+      });
 
-  const wasEntitled = previousStatus ? ENTITLED_STATUSES.has(previousStatus) : false;
-  const isEntitled = ENTITLED_STATUSES.has(status);
+      if (
+        latest?.providerEventCreatedAt &&
+        providerEvent?.createdAt &&
+        providerEvent.createdAt.getTime() < latest.providerEventCreatedAt.getTime()
+      ) {
+        return { applied: false as const, reason: "stale_event" as const };
+      }
+      if (latest?.providerEventId && providerEvent?.id && latest.providerEventId === providerEvent.id) {
+        return { applied: false as const, reason: "duplicate_event" as const };
+      }
+
+      const fallbackPlan = stringValue(meta.plan) ?? fallback?.plan ?? latest?.plan ?? null;
+      const fallbackCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
+      const plan = mappedPrice?.plan ?? fallbackPlan;
+      if (!plan) return { applied: false as const, reason: "missing_plan" as const };
+
+      const billingCycle = mappedPrice?.billingCycle ?? fallbackCycle;
+      const interval = mappedPrice
+        ? mappedPrice.billingCycle === "annual" ? "year" : "month"
+        : objectInterval ?? (billingCycle === "annual" ? "year" : billingCycle === "monthly" ? "month" : latest?.billingInterval ?? null);
+
+      const data = {
+        plan,
+        status: objectStatus,
+        stripeCustomerId: objectCustomerId ?? fallback?.customerId ?? latest?.stripeCustomerId ?? null,
+        stripeSubId: objectStripeSubId ?? latest?.stripeSubId ?? null,
+        currentPeriodStart: periodStart ? new Date(periodStart * 1000) : latest?.currentPeriodStart ?? null,
+        currentPeriodEnd: periodEnd ? new Date(periodEnd * 1000) : latest?.currentPeriodEnd ?? null,
+        billingInterval: interval,
+        providerEventId: providerEvent?.id ?? latest?.providerEventId ?? null,
+        providerEventCreatedAt: providerEvent?.createdAt ?? latest?.providerEventCreatedAt ?? null,
+      };
+      const previousStatus = latest?.status ?? null;
+
+      if (latest) await tx.subscription.update({ where: { id: latest.id }, data });
+      else await tx.subscription.create({ data: { companyId, ...data } });
+
+      return {
+        applied: true as const,
+        previousStatus,
+        status: objectStatus,
+        plan,
+        billingInterval: data.billingInterval,
+        priceId,
+      };
+    },
+    { timeout: 10_000 }
+  );
+
+  if (!transition.applied) return;
+
+  const wasEntitled = transition.previousStatus ? ENTITLED_STATUSES.has(transition.previousStatus) : false;
+  const isEntitled = ENTITLED_STATUSES.has(transition.status);
   if (!wasEntitled && isEntitled) {
     await track(EVENTS.SUBSCRIPTION_STARTED, {
       companyId,
-      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status, priceId },
+      metadata: {
+        plan: transition.plan,
+        provider: "stripe",
+        billingInterval: transition.billingInterval,
+        status: transition.status,
+        priceId: transition.priceId,
+        providerEventId: providerEvent?.id ?? null,
+      },
     });
   } else if (wasEntitled && !isEntitled) {
     await track(EVENTS.SUBSCRIPTION_CANCELLED, {
       companyId,
-      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status },
+      metadata: {
+        plan: transition.plan,
+        provider: "stripe",
+        billingInterval: transition.billingInterval,
+        status: transition.status,
+        providerEventId: providerEvent?.id ?? null,
+      },
     });
   }
 }
