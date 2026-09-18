@@ -9,6 +9,9 @@ export interface CompanyContextRevision {
   source: string;
   effectiveAt: string;
   createdAt: string;
+  actorName?: string | null;
+  actorEmail?: string | null;
+  actorRole?: string | null;
 }
 
 function parseValue(value: string | null) {
@@ -29,7 +32,7 @@ function mapRevision(revision: {
   source: string;
   effectiveAt: Date;
   createdAt: Date;
-}): CompanyContextRevision {
+}, actor?: { name?: string | null; email?: string | null; role?: string | null }): CompanyContextRevision {
   return {
     id: revision.id,
     section: revision.section,
@@ -39,6 +42,9 @@ function mapRevision(revision: {
     source: revision.source,
     effectiveAt: revision.effectiveAt.toISOString(),
     createdAt: revision.createdAt.toISOString(),
+    actorName: actor?.name ?? null,
+    actorEmail: actor?.email ?? null,
+    actorRole: actor?.role ?? null,
   };
 }
 
@@ -63,8 +69,40 @@ export async function getCompanyContextHistoryPage(companyId: string, page = 1, 
     }),
     prisma.companyContextRevision.count({ where: { companyId } }),
   ]);
+
+  const actorByEffectiveAt = new Map<string, { name?: string | null; email?: string | null; role?: string | null }>();
+  if (revisions.length > 0) {
+    const times = revisions.map((revision) => revision.effectiveAt.getTime());
+    const events = await prisma.event.findMany({
+      where: {
+        companyId,
+        type: "COMPANY_CONTEXT_UPDATED",
+        createdAt: {
+          gte: new Date(Math.min(...times) - 60_000),
+          lte: new Date(Math.max(...times) + 60_000),
+        },
+      },
+      include: { user: { select: { name: true, email: true } } },
+      orderBy: { createdAt: "desc" },
+    });
+    for (const event of events) {
+      if (!event.metadata) continue;
+      try {
+        const metadata = JSON.parse(event.metadata) as { effectiveAt?: string; actorRole?: string };
+        if (!metadata.effectiveAt) continue;
+        actorByEffectiveAt.set(metadata.effectiveAt, {
+          name: event.user?.name ?? null,
+          email: event.user?.email ?? null,
+          role: metadata.actorRole ?? null,
+        });
+      } catch {
+        // Anciennes entrées sans métadonnées structurées : l'historique reste lisible.
+      }
+    }
+  }
+
   return {
-    items: revisions.map(mapRevision),
+    items: revisions.map((revision) => mapRevision(revision, actorByEffectiveAt.get(revision.effectiveAt.toISOString()))),
     total,
     page: safePage,
     pageSize: safePageSize,
