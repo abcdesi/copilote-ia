@@ -118,7 +118,7 @@ function serializeHistoryValue(value: unknown) {
   return JSON.stringify(value);
 }
 
-async function recordToolHistory(companyId: string, action: "added" | "removed", tool: string) {
+async function recordToolHistory(companyId: string, action: "added" | "removed", tool: string, effectiveAt: Date) {
   const previousValueJson = action === "removed" ? JSON.stringify(tool) : null;
   const nextValueJson = action === "added" ? JSON.stringify(tool) : null;
   await prisma.companyContextRevision.create({
@@ -129,7 +129,7 @@ async function recordToolHistory(companyId: string, action: "added" | "removed",
       previousValueJson,
       nextValueJson,
       source: "company_tools",
-      effectiveAt: new Date(),
+      effectiveAt,
     },
   });
 }
@@ -139,13 +139,22 @@ async function trackContextChange(
   companyId: string,
   actorRole: string,
   sections: KnowledgeSectionKey[],
-  fieldCount: number
+  changedFields: string[],
+  effectiveAt: Date,
+  detail?: Record<string, unknown>
 ) {
   if (!sections.length) return;
   await track(EVENTS.COMPANY_CONTEXT_UPDATED, {
     userId,
     companyId,
-    metadata: { sections: sections.join(","), fieldCount, actorRole },
+    metadata: {
+      sections: sections.join(","),
+      fieldCount: changedFields.length,
+      changedFields: changedFields.join(","),
+      actorRole,
+      effectiveAt: effectiveAt.toISOString(),
+      ...detail,
+    },
   });
 }
 
@@ -183,9 +192,9 @@ export async function updateCompanyAction(formData: FormData) {
   const changes = changedSections(previous, parsed.data);
   if (changes.changedFields.length === 0) return;
 
-  await prisma.$transaction(async (tx) => {
+  const effectiveAt = await prisma.$transaction(async (tx) => {
     await tx.company.update({ where: { id: company.id }, data: parsed.data });
-    const effectiveAt = new Date();
+    const changedAt = new Date();
     await tx.companyContextRevision.createMany({
       data: changes.changedFields.map((field) => ({
         companyId: company.id,
@@ -194,11 +203,19 @@ export async function updateCompanyAction(formData: FormData) {
         previousValueJson: serializeHistoryValue(previous[field as string]),
         nextValueJson: serializeHistoryValue(parsed.data[field]),
         source: "company_profile",
-        effectiveAt,
+        effectiveAt: changedAt,
       })),
     });
+    return changedAt;
   });
-  await trackContextChange(access.session.user.id, company.id, access.role, changes.sections, changes.changedFields.length);
+  await trackContextChange(
+    access.session.user.id,
+    company.id,
+    access.role,
+    changes.sections,
+    changes.changedFields.map(String),
+    effectiveAt
+  );
   await refreshGraph(company.id);
   revalidatePath("/app/company");
   revalidatePath("/app");
@@ -219,8 +236,17 @@ export async function addToolAction(formData: FormData) {
     create: { companyId: access.company.id, name, detected: false },
   });
   if (!existing) {
-    await recordToolHistory(access.company.id, "added", name);
-    await trackContextChange(access.session.user.id, access.company.id, access.role, ["applications"], 1);
+    const effectiveAt = new Date();
+    await recordToolHistory(access.company.id, "added", name, effectiveAt);
+    await trackContextChange(
+      access.session.user.id,
+      access.company.id,
+      access.role,
+      ["applications"],
+      ["tool"],
+      effectiveAt,
+      { tool: name, toolAction: "added" }
+    );
     await refreshGraph(access.company.id);
   }
   revalidatePath("/app/tools");
@@ -237,8 +263,17 @@ export async function removeToolAction(formData: FormData) {
   const tool = await prisma.companyTool.findFirst({ where: { id: toolId, companyId: access.company.id } });
   const deleted = await prisma.companyTool.deleteMany({ where: { id: toolId, companyId: access.company.id } });
   if (deleted.count > 0) {
-    if (tool) await recordToolHistory(access.company.id, "removed", tool.name);
-    await trackContextChange(access.session.user.id, access.company.id, access.role, ["applications"], 1);
+    const effectiveAt = new Date();
+    if (tool) await recordToolHistory(access.company.id, "removed", tool.name, effectiveAt);
+    await trackContextChange(
+      access.session.user.id,
+      access.company.id,
+      access.role,
+      ["applications"],
+      ["tool"],
+      effectiveAt,
+      { tool: tool?.name ?? null, toolAction: "removed" }
+    );
     await refreshGraph(access.company.id);
   }
   revalidatePath("/app/tools");
