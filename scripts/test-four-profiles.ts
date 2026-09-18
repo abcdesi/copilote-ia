@@ -45,6 +45,13 @@ function testCopilotRecommendationGovernance() {
   );
   assert.equal(mereMention, undefined, "Une simple mention ne doit pas créer une automatisation.");
 
+  const ambiguous = findRecommendedTemplateMatch(
+    "Je recommande d'automatiser les relances prospects et le reporting hebdomadaire KPI.",
+    AUTOMATION_CATALOG,
+    ["Gmail", "Google Sheets"]
+  );
+  assert.equal(ambiguous, undefined, "Pilotzia ne doit pas choisir silencieusement entre plusieurs recommandations.");
+
   assert.equal(isRealExecutionTemplate("relance-prospects"), true);
   assert.equal(isRealExecutionTemplate("reporting-hebdo"), false);
 }
