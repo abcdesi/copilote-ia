@@ -49,14 +49,14 @@ export function InstallDialog({
       <DialogTrigger asChild>
         <Button size="lg">Installer dans Pilotzia</Button>
       </DialogTrigger>
-      <DialogContent title={status === "done" ? "Automatisation installée" : "Confirmer l'installation réelle"}>
+      <DialogContent title={status === "done" ? "Automatisation installée" : "Installer puis vérifier la configuration réelle"}>
         {status === "done" ? (
           <div className="py-2 text-center">
             <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-success-soft text-success">
               <CheckCircle2 size={24} />
             </div>
             <p className="mt-3 text-sm text-muted-foreground">
-              « {title} » est maintenant active. Pilotzia surveille son exécution et vous remontera les incidents importants.
+              « {title} » est installée. Aucune exécution ne partira avant votre validation de la configuration, du message, de la cadence et des destinataires.
             </p>
             <Button
               className="mt-5 w-full"
