@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { CheckCircle2, CreditCard, Database, LifeBuoy, Settings2, Wrench } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -51,11 +51,17 @@ export default async function SupportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
   const params = await searchParams;
+  const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
+  const canSeeCompanyTickets = access.role === "owner" || access.role === "admin";
   const sent = params.sent === "1";
   const tickets = await prisma.supportRequest.findMany({
-    where: { companyId: company.id },
+    where: {
+      companyId: company.id,
+      ...(canSeeCompanyTickets || !access.session.user.email ? {} : { requesterEmail: access.session.user.email }),
+    },
     orderBy: { createdAt: "desc" },
     take: 8,
   });
@@ -80,18 +86,25 @@ export default async function SupportPage({
       <section>
         <h2 className="font-semibold">Résoudre rapidement</h2>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
-          {HELP_CARDS.map(({ icon: Icon, title, body, href, label }) => (
+          {HELP_CARDS.map(({ icon: Icon, title, body, href, label }) => {
+            const billingCard = title === "Abonnement & crédits";
+            const effectiveBody = billingCard && !canManageBilling
+              ? "Consultez la capacité de l'entreprise. Seul le Propriétaire peut acheter des crédits ou modifier l'abonnement."
+              : body;
+            const effectiveLabel = billingCard && !canManageBilling ? "Voir l'usage" : label;
+            return (
             <div key={title} className="rounded-2xl border border-border bg-card p-5">
               <div className="flex items-start gap-3">
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent"><Icon size={17} /></div>
                 <div>
                   <h3 className="font-semibold">{title}</h3>
-                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{body}</p>
-                  <Link href={href} className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">{label}</Link>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">{effectiveBody}</p>
+                  <Link href={href} className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">{effectiveLabel}</Link>
                 </div>
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
         <p className="mt-3 text-xs text-muted-foreground">Pour les questions générales, la <Link href="/faq" className="font-semibold text-accent hover:underline">FAQ Pilotzia</Link> reste accessible sans ouvrir de ticket.</p>
       </section>
@@ -125,7 +138,7 @@ export default async function SupportPage({
 
       {tickets.length > 0 && (
         <section>
-          <h2 className="font-semibold">Mes demandes récentes</h2>
+          <h2 className="font-semibold">{canSeeCompanyTickets ? "Demandes récentes de l’entreprise" : "Mes demandes récentes"}</h2>
           <div className="mt-4 space-y-3">
             {tickets.map((ticket) => (
               <div key={ticket.id} className="rounded-2xl border border-border bg-card p-4">
