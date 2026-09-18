@@ -64,12 +64,12 @@ export default async function DashboardHomePage() {
     if (!latestOutcomeByMetric.has(key)) latestOutcomeByMetric.set(key, outcome);
   }
   const latestOutcomes = [...latestOutcomeByMetric.values()];
-  const reportedHoursPerWeek = latestOutcomes
-    .filter((outcome) => outcome.kind === "time_saved_weekly_hours")
-    .reduce((sum, outcome) => sum + outcome.value, 0);
-  const reportedValue30d = latestOutcomes
-    .filter((outcome) => outcome.kind === "value_observed_eur_30d")
-    .reduce((sum, outcome) => sum + outcome.value, 0);
+  const timeOutcomes = latestOutcomes.filter((outcome) => outcome.kind === "time_saved_weekly_hours");
+  const valueOutcomes = latestOutcomes.filter((outcome) => outcome.kind === "value_observed_eur_30d");
+  const hasReportedTime = timeOutcomes.length > 0;
+  const hasReportedValue = valueOutcomes.length > 0;
+  const reportedHoursPerWeek = timeOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedValue30d = valueOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
   const reportedHoursPerMonth = reportedHoursPerWeek * 4.33;
 
   const countable = automations.filter((a) => a.status !== "inactive");
@@ -226,7 +226,7 @@ export default async function DashboardHomePage() {
         </div>
       )}
 
-      {(reportedHoursPerWeek > 0 || reportedValue30d > 0 || lastWeeklyRefresh) && (
+      {(outcomes.length > 0 || lastWeeklyRefresh) && (
         <Card className="border-success/20">
           <CardHeader>
             <CardTitle>Résultats observés & fraîcheur</CardTitle>
@@ -238,12 +238,12 @@ export default async function DashboardHomePage() {
             <Stat
               icon={Clock}
               label="Temps déclaré économisé"
-              value={reportedHoursPerWeek > 0 ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "Non renseigné"}
+              value={hasReportedTime ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "Non renseigné"}
             />
             <Stat
               icon={TrendingUp}
               label="Impact € déclaré · 30 j"
-              value={reportedValue30d > 0 ? formatEur(reportedValue30d) : "Non renseigné"}
+              value={hasReportedValue ? formatEur(reportedValue30d) : "Non renseigné"}
             />
             <Stat
               icon={Sparkles}
