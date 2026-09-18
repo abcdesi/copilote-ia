@@ -4,6 +4,20 @@ import { getCreditPack, type CreditPackKey } from "@/lib/billing/credit-packs";
 
 export type PaidPlan = PaidPlanKey;
 
+export function identifyStripeSubscriptionPrice(priceIdValue?: string | null): { plan: PaidPlanKey; billingCycle: BillingCycle } | null {
+  if (!priceIdValue) return null;
+  const configured: Array<{ env: string; plan: PaidPlanKey; billingCycle: BillingCycle }> = [
+    { env: "STRIPE_PRICE_STARTER", plan: "starter", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_STARTER_ANNUAL", plan: "starter", billingCycle: "annual" },
+    { env: "STRIPE_PRICE_PRO", plan: "pro", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_PRO_ANNUAL", plan: "pro", billingCycle: "annual" },
+    { env: "STRIPE_PRICE_BUSINESS", plan: "business", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_BUSINESS_ANNUAL", plan: "business", billingCycle: "annual" },
+  ];
+  const match = configured.find((entry) => process.env[entry.env]?.trim() === priceIdValue);
+  return match ? { plan: match.plan, billingCycle: match.billingCycle } : null;
+}
+
 type StripePrice = {
   id: string;
   active?: boolean;
