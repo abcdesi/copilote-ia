@@ -63,6 +63,7 @@ export default async function AutomationDetailPage({ params }: { params: Promise
       feedback: { orderBy: { createdAt: "desc" }, take: 5 },
       runs: { orderBy: { startedAt: "desc" }, take: 10 },
       auditEvents: { orderBy: { createdAt: "desc" }, take: 30 },
+      outcomes: { orderBy: { observedAt: "desc" }, take: 20 },
     },
   });
   if (!automation) notFound();
@@ -232,6 +233,35 @@ export default async function AutomationDetailPage({ params }: { params: Promise
           <p className="mt-4 text-sm text-muted-foreground">Aucun changement sensible enregistré.</p>
         )}
       </section>
+
+      {automation.outcomes.length > 0 && (
+        <section className="rounded-2xl border border-success/20 bg-card p-6">
+          <h2 className="font-semibold">Résultats observés</h2>
+          <p className="mt-1 text-sm text-muted-foreground">
+            Ces résultats sont séparés des estimations. La source et la personne qui les a déclarés restent conservées.
+          </p>
+          <div className="mt-4 space-y-3">
+            {automation.outcomes.map((outcome) => (
+              <div key={outcome.id} className="rounded-xl bg-muted/40 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold">
+                    {outcome.kind === "time_saved_weekly_hours"
+                      ? `${outcome.value} h / semaine déclarées`
+                      : outcome.kind === "value_observed_eur_30d"
+                        ? `${formatEur(outcome.value)} observés sur 30 jours`
+                        : `${outcome.value} ${outcome.unit}`}
+                  </p>
+                  <Badge tone="neutral">{outcome.source === "user_reported" ? "Déclaré par un utilisateur" : outcome.source}</Badge>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {outcome.actorName || outcome.actorEmail || "Utilisateur"} · {outcome.actorRole || "membre"} · {new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short" }).format(outcome.observedAt)}
+                </p>
+                {outcome.note && <p className="mt-2 text-xs leading-5 text-foreground/80">{outcome.note}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="rounded-2xl border border-border bg-card p-6">
         <h2 className="font-semibold">Historique synthétique</h2>
