@@ -1,0 +1,2 @@
+ALTER TABLE "Purchase"
+  ADD COLUMN "billingAttempt" INTEGER NOT NULL DEFAULT 0;
