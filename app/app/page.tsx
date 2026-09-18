@@ -119,7 +119,7 @@ export default async function DashboardHomePage() {
     briefItems.push({
       bucket: "know",
       tone: "accent",
-      text: `Marketing : ROAS déclaré ${marketingKpis.roas.toFixed(2)}× sur le dernier instantané`,
+      text: `Marketing : ROAS ${marketingSnapshot.source === "google_marketing" ? "synchronisé" : "déclaré"} ${marketingKpis.roas.toFixed(2)}× sur le dernier instantané`,
       href: "/app/marketing",
     });
   }
@@ -204,13 +204,33 @@ export default async function DashboardHomePage() {
         <Card className="border-accent/20">
           <CardHeader>
             <CardTitle>Acquisition marketing</CardTitle>
-            <CardDescription>Dernier instantané déclaré — aucune donnée publicitaire n&apos;est présentée comme synchronisée sans connecteur live.</CardDescription>
+            <CardDescription>
+              {marketingSnapshot.source === "google_marketing"
+                ? "Données Google synchronisées sur les 30 derniers jours, avec provenance conservée."
+                : "Dernier instantané déclaré — aucune donnée n'est présentée comme synchronisée sans connecteur live."}
+            </CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat icon={TrendingUp} label="Revenu attribué" value={formatEur(marketingSnapshot.revenueEur)} />
-            <Stat icon={Clock} label="Dépenses" value={formatEur(marketingSnapshot.spendEur)} />
+            <Stat
+              icon={TrendingUp}
+              label={marketingSnapshot.source === "google_marketing" ? "Revenu site · 30 j" : "Revenu attribué"}
+              value={marketingSnapshot.revenueEur == null ? "—" : formatEur(marketingSnapshot.revenueEur)}
+            />
+            <Stat icon={Clock} label="Dépenses Ads" value={marketingSnapshot.spendEur == null ? "—" : formatEur(marketingSnapshot.spendEur)} />
             <Stat icon={Sparkles} label="ROAS" value={marketingKpis.roas == null ? "—" : `${marketingKpis.roas.toFixed(2)}×`} />
-            <Stat icon={Zap} label="CAC" value={marketingKpis.cacEur == null ? "—" : formatEur(marketingKpis.cacEur)} />
+            <Stat
+              icon={Zap}
+              label={marketingSnapshot.source === "google_marketing" ? "Sessions GA4" : "CAC"}
+              value={
+                marketingSnapshot.source === "google_marketing"
+                  ? marketingSnapshot.sessions == null
+                    ? "—"
+                    : Math.round(marketingSnapshot.sessions).toLocaleString("fr-FR")
+                  : marketingKpis.cacEur == null
+                    ? "—"
+                    : formatEur(marketingKpis.cacEur)
+              }
+            />
           </CardContent>
         </Card>
       )}

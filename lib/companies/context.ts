@@ -86,8 +86,8 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
         subject: company.name,
         predicate: "marketing_kpi_snapshot",
         value: { ...marketingSnapshot, derived: deriveMarketingKpis(marketingSnapshot) },
-        source: "user-reported-marketing",
-        confidence: 0.9,
+        source: marketingSnapshot.source === "google_marketing" ? "google-marketing" : "user-reported-marketing",
+        confidence: marketingSnapshot.source === "google_marketing" ? 0.98 : 0.9,
         observedAt: marketingSnapshot.observedAt,
       }]
     : [];
