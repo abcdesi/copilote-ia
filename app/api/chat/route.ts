@@ -1,13 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 import { z } from "zod";
 import { prisma } from "@/lib/db/client";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { buildChatContext } from "@/lib/companies/context";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
 import { inferConversationIntent } from "@/lib/ai/expert-response-policy";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
+import { isN8nConfigured } from "@/lib/n8n/client";
+import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
@@ -21,6 +23,7 @@ export interface CopilotAction {
   href: string;
   description?: string;
   requiresConfirmation?: boolean;
+  automationReadiness?: "ready" | "configuration_required" | "not_executable";
 }
 
 function isSmartRequest(message: string) {
@@ -175,7 +178,15 @@ export async function POST(req: NextRequest) {
     ? await createOpportunityFromChatMatch(company.id, matchedTemplateId)
     : null;
 
-  const action = buildSafeAction(parsed.data.message, opportunity?.id ?? null, matchedTemplateId ?? null);
+  const automationCapability = opportunity && matchedTemplateId
+    ? await getAutomationCapability(company.id, role, matchedTemplateId)
+    : null;
+  const action = buildSafeAction(
+    parsed.data.message,
+    opportunity?.id ?? null,
+    matchedTemplateId ?? null,
+    automationCapability
+  );
 
   if (action) {
     await track(EVENTS.RECOMMENDATION_SHOWN, {
@@ -221,17 +232,50 @@ async function createOpportunityFromChatMatch(companyId: string, templateId: str
   return opportunity;
 }
 
-function buildSafeAction(message: string, opportunityId: string | null, templateId?: string | null): CopilotAction | null {
+
+async function getAutomationCapability(companyId: string, role: string, templateId: string) {
+  if (!isRealExecutionTemplate(templateId)) {
+    return { readiness: "not_executable" as const, blockers: ["workflow réel non disponible"] };
+  }
+
+  const blockers: string[] = [];
+  if (!hasCompanyPermission(role as Parameters<typeof hasCompanyPermission>[0], "configure_automations")) {
+    blockers.push("validation d'un Propriétaire ou Administrateur");
+  }
+
+  const entitlements = await getCompanyEntitlements(companyId);
+  if (!entitlements.canExecute) blockers.push("offre Action ou Scale requise");
+  if (!isN8nConfigured()) blockers.push("moteur d'exécution à configurer");
+
+  return blockers.length === 0
+    ? { readiness: "ready" as const, blockers }
+    : { readiness: "configuration_required" as const, blockers };
+}
+
+function buildSafeAction(
+  message: string,
+  opportunityId: string | null,
+  templateId?: string | null,
+  capability?: {
+    readiness: "ready" | "configuration_required" | "not_executable";
+    blockers: string[];
+  } | null
+): CopilotAction | null {
   if (opportunityId) {
-    const executable = Boolean(templateId && isRealExecutionTemplate(templateId));
+    const readiness = capability?.readiness ?? (templateId && isRealExecutionTemplate(templateId) ? "configuration_required" : "not_executable");
+    const automatable = readiness !== "not_executable";
     return {
       kind: "navigate",
-      label: executable ? "Automatiser cette recommandation" : "Voir la recommandation",
+      label: automatable ? "Automatiser cette recommandation" : "Voir la recommandation",
       href: `/app/opportunities/${opportunityId}`,
-      description: executable
-        ? "Cette recommandation correspond à un workflow réellement pris en charge. Vous verrez l'aperçu, les destinataires, les permissions et la configuration avant toute activation."
-        : "Cette recommandation est pertinente, mais Pilotzia ne la présente pas comme exécutable tant que son connecteur ou workflow réel n'est pas prêt.",
-      requiresConfirmation: executable,
+      description:
+        readiness === "ready"
+          ? "Pilotzia sait exécuter ce workflow. Vous verrez l'aperçu, les destinataires, les permissions et la configuration avant toute activation."
+          : readiness === "configuration_required"
+            ? `Cette recommandation est automatisable après prérequis : ${capability?.blockers.join(" · ") || "configuration à compléter"}. Aucune activation n'est effectuée automatiquement.`
+            : "Cette recommandation reste utile, mais Pilotzia ne la présente pas comme automatisable tant que son workflow réel n'est pas pris en charge.",
+      requiresConfirmation: automatable,
+      automationReadiness: readiness,
     };
   }
 
