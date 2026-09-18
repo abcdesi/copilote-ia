@@ -120,6 +120,7 @@ const COMMON_ROUTES = [
   "/app/automations",
   "/app/actions",
   "/app/results",
+  "/app/marketing",
   "/app/tools",
   "/app/settings",
   "/app/team",
@@ -207,6 +208,26 @@ async function ensureProfile(profile: Profile) {
     data: profile.tools.map((name) => ({ companyId: company.id, name, detected: true })),
   });
 
+  if (profile.key === "marketing") {
+    await prisma.event.deleteMany({ where: { companyId: company.id, type: "MARKETING_KPI_SNAPSHOT" } });
+    await prisma.event.create({
+      data: {
+        companyId: company.id,
+        userId: user.id,
+        type: "MARKETING_KPI_SNAPSHOT",
+        metadata: JSON.stringify({
+          source: "manual",
+          observedAt: new Date().toISOString(),
+          spendEur: 12000,
+          leads: 480,
+          conversions: 96,
+          customers: 32,
+          revenueEur: 42000,
+        }),
+      },
+    });
+  }
+
   return company;
 }
 
@@ -283,6 +304,9 @@ async function testRuntimeProfile(profile: Profile) {
     );
   }
 
+  const dashboard = await request("/app");
+  assert.match(await dashboard.text(), /Pilotage de direction/i, `[${profile.key}] executive scorecard should render`);
+
   if (profile.key === "ceo") {
     const finance = await request("/app/finance");
     assert.match(await finance.text(), /Intelligence financière/i, "[ceo] Scale finance surface should render");
@@ -301,13 +325,17 @@ async function testRuntimeProfile(profile: Profile) {
     for (const tool of profile.tools) {
       assert.ok(html.includes(tool), `[marketing] ${tool} should be visible in tools`);
     }
+    const marketing = await request("/app/marketing");
+    const marketingHtml = await marketing.text();
+    assert.match(marketingHtml, /Pilotage marketing/i, "[marketing] marketing cockpit should render");
+    assert.match(marketingHtml, /ROAS/i, "[marketing] ROAS should be exposed");
   }
 
   if (profile.key === "solopreneur") {
     assert.equal(company.employeeCount, 1);
     assert.equal(company.country, "Martinique");
-    const dashboard = await request("/app");
-    assert.match(await dashboard.text(), /Connaissance de votre entreprise/i, "[solopreneur] dashboard should render");
+    const soloDashboard = await request("/app");
+    assert.match(await soloDashboard.text(), /Connaissance de votre entreprise/i, "[solopreneur] dashboard should render");
   }
 
   console.log(`Runtime profile ${profile.key}: OK`);

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { Menu, Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, Network, ShieldCheck, Landmark, LifeBuoy, Users } from "lucide-react";
+import { Menu, Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, Network, ShieldCheck, Landmark, LifeBuoy, Users, Megaphone } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
@@ -14,6 +14,7 @@ const NAV = [
   { href: "/app/automations", label: "Automatisations", icon: Zap },
   { href: "/app/opportunities", label: "Opportunités", icon: Lightbulb },
   { href: "/app/results", label: "Résultats", icon: BarChart3 },
+  { href: "/app/marketing", label: "Marketing", icon: Megaphone },
   { href: "/app/finance", label: "Finance & audit", icon: Landmark },
   { href: "/app/context", label: "Contexte IA", icon: Network },
   { href: "/app/tools", label: "Outils", icon: Wrench },

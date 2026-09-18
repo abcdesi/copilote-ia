@@ -15,13 +15,15 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
         <AlertTriangle size={22} />
       </div>
       <h1 className="mt-4 text-xl font-semibold tracking-tight">Une erreur est survenue</h1>
-      <p className="mt-2 max-w-sm text-sm text-muted-foreground">
-        Quelque chose s&apos;est mal passé de notre côté. Réessayez, ou revenez un peu plus tard.
+      <p className="mt-2 max-w-md text-sm text-muted-foreground">
+        Quelque chose s&apos;est mal passé de notre côté. Réessayez. Si le problème persiste, transmettez la référence ci-dessous à l&apos;assistance.
       </p>
+      {error.digest && (
+        <p className="mt-3 rounded-lg bg-muted px-3 py-2 font-mono text-xs text-muted-foreground">Référence : {error.digest}</p>
+      )}
       <div className="mt-6 flex gap-3">
-        <Button variant="outline" href="/">
-          Retour à l&apos;accueil
-        </Button>
+        <Button variant="outline" href="/app/support">Assistance</Button>
+        <Button variant="outline" href="/">Retour à l&apos;accueil</Button>
         <Button onClick={() => reset()}>Réessayer</Button>
       </div>
     </div>

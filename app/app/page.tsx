@@ -4,6 +4,7 @@ import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage"
 import { getBusinessRhythmReminders } from "@/lib/business-graph/rhythms";
 import { prisma } from "@/lib/db/client";
 import { getLatestGoogleOperationalSnapshot } from "@/lib/integrations/observe";
+import { deriveMarketingKpis, getLatestMarketingKpiSnapshot } from "@/lib/marketing/kpis";
 import { getTrialJourneyState } from "@/lib/billing/trial-journey";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/Card";
 import { RadarChart } from "@/components/knowledge/RadarChart";
@@ -18,7 +19,7 @@ export default async function DashboardHomePage() {
   const access = await getCurrentCompanyAccess();
   const company = access.company;
 
-  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh, marketingSnapshot] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
@@ -49,6 +50,7 @@ export default async function DashboardHomePage() {
       where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
       orderBy: { createdAt: "desc" },
     }),
+    getLatestMarketingKpiSnapshot(company.id),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -84,6 +86,8 @@ export default async function DashboardHomePage() {
   const rhythmReminders = getBusinessRhythmReminders(company);
 
   const attentionCount = healthCounts.orange + healthCounts.red;
+  const healthRate = countable.length ? Math.round((healthCounts.green / countable.length) * 100) : null;
+  const marketingKpis = marketingSnapshot ? deriveMarketingKpis(marketingSnapshot) : null;
   const briefItems: MorningBriefItem[] = [];
 
   if (attentionCount > 0) {
@@ -109,6 +113,14 @@ export default async function DashboardHomePage() {
       tone: "accent",
       text: `${googleSnapshot.unreadInboxIsEstimate ? "Environ " : ""}${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
       href: "/app/tools",
+    });
+  }
+  if (marketingSnapshot && marketingKpis?.roas != null) {
+    briefItems.push({
+      bucket: "know",
+      tone: "accent",
+      text: `Marketing : ROAS déclaré ${marketingKpis.roas.toFixed(2)}× sur le dernier instantané`,
+      href: "/app/marketing",
     });
   }
   if (opportunities.length > 0) {
@@ -174,6 +186,34 @@ export default async function DashboardHomePage() {
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
       <MorningBrief firstName={firstName} items={briefItems} stats={briefStats} priority={briefPriority} />
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Pilotage de direction</CardTitle>
+          <CardDescription>Quatre signaux courts, en séparant strictement les résultats observés des estimations.</CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Stat icon={Sparkles} label="Décisions à valider" value={String(pendingActions.length)} />
+          <Stat icon={Clock} label="Temps observé / mois" value={hasReportedTime ? "~" + formatHours(reportedHoursPerMonth) : "À mesurer"} />
+          <Stat icon={TrendingUp} label="Impact observé · 30 j" value={hasReportedValue ? formatEur(reportedValue30d) : "À mesurer"} />
+          <Stat icon={Zap} label="Santé automatisations" value={healthRate == null ? "Aucune active" : `${healthRate}%`} />
+        </CardContent>
+      </Card>
+
+      {marketingSnapshot && marketingKpis && (
+        <Card className="border-accent/20">
+          <CardHeader>
+            <CardTitle>Acquisition marketing</CardTitle>
+            <CardDescription>Dernier instantané déclaré — aucune donnée publicitaire n&apos;est présentée comme synchronisée sans connecteur live.</CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            <Stat icon={TrendingUp} label="Revenu attribué" value={formatEur(marketingSnapshot.revenueEur)} />
+            <Stat icon={Clock} label="Dépenses" value={formatEur(marketingSnapshot.spendEur)} />
+            <Stat icon={Sparkles} label="ROAS" value={marketingKpis.roas == null ? "—" : `${marketingKpis.roas.toFixed(2)}×`} />
+            <Stat icon={Zap} label="CAC" value={marketingKpis.cacEur == null ? "—" : formatEur(marketingKpis.cacEur)} />
+          </CardContent>
+        </Card>
+      )}
 
       <TrialJourney
         paid={trialJourney.usage.paid}
