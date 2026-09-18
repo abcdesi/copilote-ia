@@ -1,9 +1,9 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { requireCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { createBillingPortalSession } from "@/lib/billing/stripe";
 
-export async function POST(_req: NextRequest) {
+export async function POST() {
   try {
     const access = await requireCompanyPermission("manage_billing");
     const subscription = await prisma.subscription.findFirst({
