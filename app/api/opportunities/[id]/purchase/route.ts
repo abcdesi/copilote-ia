@@ -55,7 +55,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json({ error: "Prix d'automatisation invalide." }, { status: 409 });
     }
 
-    const purchase = await prisma.$transaction(
+    const purchaseDecision = await prisma.$transaction(
       async (tx) => {
         await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
 
@@ -64,15 +64,41 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
         });
         if (existing) {
           if (!existing.providerRef && existing.amountEur !== template.priceEur) {
-            return tx.purchase.update({
+            const updated = await tx.purchase.update({
               where: { id: existing.id },
               data: { amountEur: template.priceEur, status: "pending", paymentUrl: null },
             });
+            return { blocked: false as const, purchase: updated };
           }
-          return existing;
+          return { blocked: false as const, purchase: existing };
         }
 
-        return tx.purchase.create({
+        const company = await tx.company.findUnique({
+          where: { id: companyId },
+          select: { automationPurchaseMonthlyCapEur: true },
+        });
+        const monthlyCapEur = Math.max(0, company?.automationPurchaseMonthlyCapEur ?? 0);
+        const now = new Date();
+        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+        const committed = await tx.purchase.aggregate({
+          where: {
+            companyId,
+            createdAt: { gte: monthStart },
+            status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
+          },
+          _sum: { amountEur: true },
+        });
+        const committedEur = committed._sum.amountEur ?? 0;
+        if (committedEur + template.priceEur > monthlyCapEur) {
+          return {
+            blocked: true as const,
+            monthlyCapEur,
+            committedEur,
+            requestedEur: template.priceEur,
+          };
+        }
+
+        const purchase = await tx.purchase.create({
           data: {
             companyId,
             opportunityId: opportunity.id,
@@ -81,9 +107,26 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
             provider: "stripe",
           },
         });
+        return { blocked: false as const, purchase };
       },
       { timeout: 10_000 }
     );
+
+    if (purchaseDecision.blocked) {
+      return NextResponse.json(
+        {
+          error: `Cet achat dépasserait le plafond mensuel d'automatisations (${purchaseDecision.monthlyCapEur} € HT). Modifiez le plafond dans Compte & abonnement si vous souhaitez continuer.`,
+          purchaseCapReached: true,
+          monthlyCapEur: purchaseDecision.monthlyCapEur,
+          committedEur: purchaseDecision.committedEur,
+          requestedEur: purchaseDecision.requestedEur,
+          href: "/app/settings#automation-purchases",
+        },
+        { status: 409 }
+      );
+    }
+
+    const purchase = purchaseDecision.purchase;
 
     if (purchase.status === "paid") {
       return NextResponse.json({ paid: true, purchaseId: purchase.id, amountEur: purchase.amountEur });
