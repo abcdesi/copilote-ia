@@ -10,6 +10,7 @@ import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import type { KnowledgeSectionKey } from "@/lib/companies/knowledge-model";
 import { normalizeTimeZone } from "@/lib/timezone";
+import { normalizeCompanySize } from "@/lib/companies/company-size";
 
 const optionalText = (max = 4000) => z.string().max(max).nullable().optional();
 const optionalTimezone = z.preprocess(
@@ -196,12 +197,20 @@ export async function updateCompanyAction(formData: FormData) {
   const company = await prisma.company.findUnique({ where: { id: access.company.id } });
   if (!company) return;
 
+  const normalizedData: CompanyUpdate = {
+    ...parsed.data,
+    sizeRange: normalizeCompanySize({
+      employeeCount: parsed.data.employeeCount,
+      sizeRange: parsed.data.sizeRange,
+    }),
+  };
+
   const previous = company as unknown as Record<string, unknown>;
-  const changes = changedSections(previous, parsed.data);
+  const changes = changedSections(previous, normalizedData);
   if (changes.changedFields.length === 0) return;
 
   const effectiveAt = await prisma.$transaction(async (tx) => {
-    await tx.company.update({ where: { id: company.id }, data: parsed.data });
+    await tx.company.update({ where: { id: company.id }, data: normalizedData });
     const changedAt = new Date();
     await tx.companyContextRevision.createMany({
       data: changes.changedFields.map((field) => ({
@@ -209,7 +218,7 @@ export async function updateCompanyAction(formData: FormData) {
         section: FIELD_SECTION[field],
         field,
         previousValueJson: serializeHistoryValue(previous[field as string]),
-        nextValueJson: serializeHistoryValue(parsed.data[field]),
+        nextValueJson: serializeHistoryValue(normalizedData[field]),
         source: "company_profile",
         effectiveAt: changedAt,
       })),
