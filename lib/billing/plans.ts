@@ -68,7 +68,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
       "Tout Core",
       "Actions et automatisations dans les outils connectés",
       "Confirmations pour les actions sensibles",
-      "Monitoring, incidents et suivi ROI",
+      "Monitoring, incidents et suivi des résultats",
       "3 utilisateurs avec rôles et traçabilité",
     ],
   },
@@ -84,7 +84,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     features: [
       "Tout Action",
       "Audit avancé et intelligence financière",
-      "Analyses croisées, benchmarks agrégés et recommandations de direction",
+      "Analyses croisées et recommandations de direction fondées sur vos données",
       "Volumes, gouvernance et usages équipe supérieurs",
       "10 utilisateurs avec rôles et journal d'audit",
     ],
