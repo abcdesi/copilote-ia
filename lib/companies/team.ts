@@ -64,6 +64,68 @@ export async function getTeamOverview(companyId: string) {
   return { capacity, members, invitations };
 }
 
+export async function transferCompanyOwnership(input: {
+  companyId: string;
+  currentOwnerUserId: string;
+  currentOwnerEmail?: string | null;
+  targetMembershipId: string;
+}) {
+  return prisma.$transaction(
+    async (tx) => {
+      await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${input.companyId} FOR UPDATE`;
+
+      const company = await tx.company.findUnique({
+        where: { id: input.companyId },
+        select: { id: true, userId: true, name: true },
+      });
+      if (!company || company.userId !== input.currentOwnerUserId) throw new Error("OWNERSHIP_CHANGED");
+
+      const [currentOwner, target] = await Promise.all([
+        tx.companyMembership.findUnique({
+          where: { companyId_userId: { companyId: input.companyId, userId: input.currentOwnerUserId } },
+        }),
+        tx.companyMembership.findFirst({
+          where: {
+            id: input.targetMembershipId,
+            companyId: input.companyId,
+            status: "active",
+            userId: { not: input.currentOwnerUserId },
+          },
+          include: { user: { select: { id: true, email: true, name: true } } },
+        }),
+      ]);
+      if (!currentOwner || currentOwner.role !== "owner") throw new Error("OWNERSHIP_CHANGED");
+      if (!target) throw new Error("MEMBER_NOT_FOUND");
+
+      await tx.company.update({
+        where: { id: company.id },
+        data: { userId: target.userId },
+      });
+      await tx.companyMembership.update({ where: { id: currentOwner.id }, data: { role: "admin" } });
+      await tx.companyMembership.update({ where: { id: target.id }, data: { role: "owner" } });
+      await tx.event.create({
+        data: {
+          companyId: company.id,
+          userId: input.currentOwnerUserId,
+          type: "TEAM_OWNERSHIP_TRANSFERRED",
+          metadata: JSON.stringify({
+            previousOwnerUserId: input.currentOwnerUserId,
+            previousOwnerEmail: input.currentOwnerEmail ?? null,
+            nextOwnerUserId: target.userId,
+            nextOwnerEmail: target.user.email,
+            nextOwnerName: target.user.name,
+            previousOwnerNextRole: "admin",
+            transferredAt: new Date().toISOString(),
+          }),
+        },
+      });
+
+      return { previousOwnerUserId: input.currentOwnerUserId, nextOwnerUserId: target.userId };
+    },
+    { isolationLevel: "Serializable", timeout: 10_000 }
+  );
+}
+
 export async function createCompanyInvitation(input: {
   companyId: string;
   companyName: string;
