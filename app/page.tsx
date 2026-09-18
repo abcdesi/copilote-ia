@@ -112,13 +112,13 @@ export default function HomePage() {
         <section id="top" className="mx-auto max-w-6xl px-6 pb-16 pt-10 sm:pt-16">
           <div className="mx-auto max-w-5xl text-center">
             <div className="mx-auto mb-5 inline-flex items-center gap-2 rounded-full border border-accent/20 bg-accent-soft px-3 py-1.5 text-xs font-medium text-accent">
-              <Sparkles size={13} /> Le système opérationnel IA qui apprend votre entreprise
+              <Sparkles size={13} /> Le copilote opérationnel qui apprend votre entreprise
             </div>
             <h1 className="text-balance text-4xl font-semibold tracking-tight sm:text-5xl lg:text-[3.45rem] lg:leading-[1.08]">
-              Pilotzia fait avancer votre entreprise.
+              Voyez ce qui compte. Décidez. Pilotzia prend en charge le reste.
             </h1>
             <p className="mx-auto mt-5 max-w-3xl text-lg leading-8 text-muted-foreground">
-              Plus Pilotzia comprend votre entreprise, plus ses recommandations deviennent précises, utiles et adaptées à votre réalité.
+              Pilotzia relie vos données, repère ce qui mérite votre attention, prépare la prochaine action et mesure ce qui a réellement changé — sans présenter une estimation comme un résultat.
             </p>
             <div className="mt-6 flex flex-wrap items-center justify-center gap-x-2 gap-y-1 text-sm font-medium text-accent">
               {[
@@ -150,7 +150,22 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="mt-9 flex flex-wrap items-center justify-center gap-1.5">
+          <div className="mx-auto mt-9 grid max-w-4xl gap-3 text-left sm:grid-cols-3">
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Le matin</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Ce qui a changé, ce qui bloque et les décisions qui attendent réellement votre validation.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Pendant la journée</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Pilotzia prépare ou exécute les tâches autorisées, avec cadence, permissions et preuve.</p>
+            </div>
+            <div className="rounded-xl border border-border bg-card p-4">
+              <p className="text-sm font-semibold">Après l'action</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">Le potentiel estimé reste séparé des résultats réellement constatés pour apprendre ce qui fonctionne.</p>
+            </div>
+          </div>
+
+          <div className="mt-7 flex flex-wrap items-center justify-center gap-1.5">
             {KNOWN_TOOLS.slice(0, 8).map((tool) => (
               <span key={tool} className="rounded-full border border-border bg-card px-3 py-1 text-xs text-muted-foreground">{tool}</span>
             ))}
