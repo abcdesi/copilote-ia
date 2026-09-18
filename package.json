@@ -13,7 +13,8 @@
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "test:operations": "tsx scripts/test-automation-scheduling.ts && tsx scripts/test-weekly-refresh.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
