@@ -61,6 +61,9 @@ jobs:
       - name: Four-profile product acceptance tests
         run: npm run test:profiles
 
+      - name: Team governance tests
+        run: npm run test:team
+
       - name: Lint
         run: npm run lint
 
