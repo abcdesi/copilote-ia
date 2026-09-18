@@ -18,7 +18,7 @@ export default async function DashboardHomePage() {
   const access = await getCurrentCompanyAccess();
   const company = access.company;
 
-  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
@@ -40,6 +40,15 @@ export default async function DashboardHomePage() {
     }),
     getTrialJourneyState(company.id),
     getCompanyKnowledgeCoverage(company.id),
+    prisma.automationOutcome.findMany({
+      where: { automation: { companyId: company.id } },
+      orderBy: { observedAt: "desc" },
+      take: 200,
+    }),
+    prisma.event.findFirst({
+      where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -48,6 +57,20 @@ export default async function DashboardHomePage() {
   const totalHours = activeAutomations.reduce((s, a) => s + a.estimatedHoursPerMonth, 0);
   const totalValue = activeAutomations.reduce((s, a) => s + a.estimatedValueEur, 0);
   const identifiedHours = Math.max(totalHours, opportunities.reduce((sum, opportunity) => sum + opportunity.estimatedHoursPerMonth, 0));
+
+  const latestOutcomeByMetric = new Map<string, (typeof outcomes)[number]>();
+  for (const outcome of outcomes) {
+    const key = outcome.automationId + ":" + outcome.kind;
+    if (!latestOutcomeByMetric.has(key)) latestOutcomeByMetric.set(key, outcome);
+  }
+  const latestOutcomes = [...latestOutcomeByMetric.values()];
+  const reportedHoursPerWeek = latestOutcomes
+    .filter((outcome) => outcome.kind === "time_saved_weekly_hours")
+    .reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedValue30d = latestOutcomes
+    .filter((outcome) => outcome.kind === "value_observed_eur_30d")
+    .reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedHoursPerMonth = reportedHoursPerWeek * 4.33;
 
   const countable = automations.filter((a) => a.status !== "inactive");
   const healthCounts = {
@@ -200,6 +223,34 @@ export default async function DashboardHomePage() {
           <MiniOperationalStat label="Événements · 7 jours" value={String(googleSnapshot.upcomingEventsNext7Days)} />
           <MiniOperationalStat label="Observation Google" value="Synchronisée" />
         </div>
+      )}
+
+      {(reportedHoursPerWeek > 0 || reportedValue30d > 0 || lastWeeklyRefresh) && (
+        <Card className="border-success/20">
+          <CardHeader>
+            <CardTitle>Résultats observés & fraîcheur</CardTitle>
+            <CardDescription>
+              Les résultats déclarés restent séparés des estimations. Le contexte opérationnel est rafraîchi automatiquement chaque semaine.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-3">
+            <Stat
+              icon={Clock}
+              label="Temps déclaré économisé"
+              value={reportedHoursPerWeek > 0 ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "Non renseigné"}
+            />
+            <Stat
+              icon={TrendingUp}
+              label="Impact € déclaré · 30 j"
+              value={reportedValue30d > 0 ? formatEur(reportedValue30d) : "Non renseigné"}
+            />
+            <Stat
+              icon={Sparkles}
+              label="Dernier refresh hebdo"
+              value={lastWeeklyRefresh ? relativeTime(lastWeeklyRefresh.createdAt) : "À venir"}
+            />
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
