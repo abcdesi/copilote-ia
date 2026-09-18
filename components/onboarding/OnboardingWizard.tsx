@@ -11,10 +11,9 @@ import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
-const COUNTRY_OPTIONS = [
-  "France métropolitaine",
-  "Guadeloupe",
+const FRANCE_OVERSEAS_OPTIONS = [
   "Martinique",
+  "Guadeloupe",
   "Guyane",
   "La Réunion",
   "Mayotte",
@@ -24,7 +23,6 @@ const COUNTRY_OPTIONS = [
   "Polynésie française",
   "Nouvelle-Calédonie",
   "Wallis-et-Futuna",
-  "Autre",
 ];
 
 const STEPS = [
@@ -135,7 +133,15 @@ export function OnboardingWizard({
                     className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
                   >
                     <option value="" disabled>Sélectionner votre territoire</option>
-                    {COUNTRY_OPTIONS.map((country) => <option key={country} value={country}>{country}</option>)}
+                    <optgroup label="France">
+                      <option value="France métropolitaine">France métropolitaine</option>
+                    </optgroup>
+                    <optgroup label="France — Outre-mer">
+                      {FRANCE_OVERSEAS_OPTIONS.map((country) => <option key={country} value={country}>{country}</option>)}
+                    </optgroup>
+                    <optgroup label="Autre">
+                      <option value="Autre">Autre territoire</option>
+                    </optgroup>
                   </select>
                 </div>
                 <div className="space-y-1.5">
