@@ -9,6 +9,7 @@ import { mentionedAutomationTemplateIds } from "../lib/automations/recommendatio
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
 import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
+import { deriveMarketingKpis } from "../lib/marketing/kpis";
 
 function testDemandingExecutive() {
   assert.equal(canApproveRisk("owner", "critical"), true, "Le propriétaire doit pouvoir valider le risque critique.");
@@ -64,12 +65,41 @@ function testCopilotRecommendationGovernance() {
 }
 
 function testMarketingExpert() {
-  for (const tool of ["Google Analytics 4", "Google Ads", "Meta Ads", "LinkedIn Ads"]) {
+  for (const tool of ["Google Analytics 4", "Google Ads"]) {
     assert.ok(KNOWN_TOOLS.includes(tool as (typeof KNOWN_TOOLS)[number]), `${tool} doit pouvoir être renseigné.`);
     const definition = getIntegrationDefinition(tool);
-    assert.equal(definition.mvpPriority, "next", `${tool} ne doit pas être présenté comme un connecteur live.`);
-    assert.equal(definition.permissionMode, "read_only", `${tool} doit commencer en lecture seule.`);
+    assert.equal(definition.mvpPriority, "now", `${tool} doit être présenté comme un connecteur Google disponible.`);
+    assert.equal(definition.permissionMode, "read_only", `${tool} doit rester en lecture seule côté Pilotzia.`);
   }
+
+  for (const tool of ["Meta Ads", "LinkedIn Ads"]) {
+    assert.ok(KNOWN_TOOLS.includes(tool as (typeof KNOWN_TOOLS)[number]), `${tool} doit pouvoir être renseigné.`);
+    const definition = getIntegrationDefinition(tool);
+    assert.equal(definition.mvpPriority, "next", `${tool} ne doit pas encore être présenté comme un connecteur live.`);
+    assert.equal(definition.permissionMode, "read_only");
+  }
+
+  const kpis = deriveMarketingKpis({
+    source: "google_marketing",
+    observedAt: new Date().toISOString(),
+    periodDays: 30,
+    spendEur: 1000,
+    leads: null,
+    conversions: 20,
+    customers: null,
+    revenueEur: 5000,
+    attributedRevenueEur: 4000,
+    sessions: 10000,
+    users: 7000,
+    clicks: 500,
+    impressions: 10000,
+    currencyCode: "EUR",
+    providers: ["ga4", "google_ads"],
+  });
+  assert.equal(kpis.roas, 4, "Le ROAS doit utiliser la valeur de conversion Google Ads attribuée.");
+  assert.equal(kpis.cpaEur, 50);
+  assert.equal(kpis.costPerClickEur, 2);
+  assert.equal(kpis.clickThroughRate, 5);
 }
 
 function testCopilotRecommendationActions() {
