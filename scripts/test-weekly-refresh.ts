@@ -81,7 +81,32 @@ async function main() {
     const opportunityCountAfterSecondRun = await prisma.opportunity.count({ where: { companyId: company.id } });
     assert.equal(opportunityCountAfterSecondRun, opportunities.length, "Le refresh hebdomadaire ne doit pas dupliquer les opportunités.");
 
-    console.log("Weekly refresh bounded/idempotent tests: OK");
+    // Simule la semaine suivante avec un contexte qui ne soutient plus l'ancienne
+    // recommandation. Elle doit sortir de la liste active sans être supprimée.
+    const oldDate = new Date(Date.now() - 8 * 24 * 60 * 60 * 1000);
+    await prisma.event.updateMany({
+      where: { companyId: company.id, type: { in: ["WEEKLY_REFRESH_STARTED", "WEEKLY_REFRESH_COMPLETED"] } },
+      data: { createdAt: oldDate },
+    });
+    await prisma.company.update({
+      where: { id: company.id },
+      data: {
+        objectives: "Structurer la gouvernance interne.",
+        painPoints: "Aucun problème commercial prioritaire cette semaine.",
+        salesContext: null,
+        industry: null,
+      },
+    });
+
+    const nextWeek = await runWeeklyBusinessRefresh(company.id);
+    assert.equal(nextWeek.ok, true);
+    assert.equal(nextWeek.skipped, false);
+    const staleOpportunity = await prisma.opportunity.findFirst({
+      where: { companyId: company.id, templateId: "relance-prospects" },
+    });
+    assert.equal(staleOpportunity?.status, "stale", "Une recommandation hebdo devenue non pertinente doit être archivée logiquement.");
+
+    console.log("Weekly refresh bounded/idempotent/lifecycle tests: OK");
   } finally {
     await prisma.company.delete({ where: { id: company.id } }).catch(() => undefined);
     await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
