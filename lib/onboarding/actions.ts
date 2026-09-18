@@ -67,7 +67,7 @@ export async function completeOnboardingAction(formData: FormData) {
         });
         if (tools.length) {
           await tx.companyTool.createMany({
-            data: tools.map((tool) => ({ companyId: created.id, name: tool.slice(0, 120), detected: true })),
+            data: tools.map((tool) => ({ companyId: created.id, name: tool.slice(0, 120), detected: false })),
             skipDuplicates: true,
           });
         }
