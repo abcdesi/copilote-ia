@@ -11,13 +11,26 @@ import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
-const COUNTRY_OPTIONS = ["France", "Belgique", "Suisse", "Canada", "Autre"];
+const COUNTRY_OPTIONS = [
+  "France métropolitaine",
+  "Guadeloupe",
+  "Martinique",
+  "Guyane",
+  "La Réunion",
+  "Mayotte",
+  "Saint-Martin",
+  "Saint-Barthélemy",
+  "Saint-Pierre-et-Miquelon",
+  "Polynésie française",
+  "Nouvelle-Calédonie",
+  "Wallis-et-Futuna",
+  "Autre",
+];
 
 const STEPS = [
-  { title: "Votre entreprise", subtitle: "Quelques informations pour personnaliser votre cockpit." },
-  { title: "Sa taille", subtitle: "Cela nous aide à calibrer nos recommandations." },
-  { title: "Vos outils", subtitle: "Sélectionnez ceux que vous utilisez déjà." },
-  { title: "Vos priorités", subtitle: "Qu'est-ce qui vous fait perdre le plus de temps ?" },
+  { title: "Votre entreprise", subtitle: "Le minimum utile pour calibrer les premières priorités." },
+  { title: "Vos outils", subtitle: "Renseignez ce que vous utilisez déjà. Rien n'est connecté sans votre accord." },
+  { title: "Votre priorité", subtitle: "Le problème que Pilotzia doit aider à résoudre en premier." },
 ];
 
 export function OnboardingWizard({
@@ -30,10 +43,6 @@ export function OnboardingWizard({
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
   const [selectedTools, setSelectedTools] = useState<string[]>(prefill?.detectedTools ?? []);
-  // Verrou d'étape : un double-clic sur "Continuer" avance l'étape en un seul re-render React,
-  // et un deuxième clic (même geste) peut retomber pile sur le bouton suivant — qui, une fois à
-  // la dernière étape, est le bouton de soumission. `navLocked` désactive réellement les boutons
-  // (pas juste ignorer le clic) le temps que l'utilisateur voie la nouvelle étape.
   const [navLocked, setNavLocked] = useState(false);
 
   const isLast = step === STEPS.length - 1;
@@ -47,31 +56,34 @@ export function OnboardingWizard({
   function goNext() {
     if (navLocked) return;
     lockNav();
-    setStep((s) => Math.min(STEPS.length - 1, s + 1));
+    setStep((value) => Math.min(STEPS.length - 1, value + 1));
   }
+
   function goBack() {
     if (navLocked) return;
     lockNav();
-    setStep((s) => Math.max(0, s - 1));
+    setStep((value) => Math.max(0, value - 1));
   }
 
   function toggleTool(tool: string) {
-    setSelectedTools((prev) => (prev.includes(tool) ? prev.filter((t) => t !== tool) : [...prev, tool]));
+    setSelectedTools((previous) => previous.includes(tool) ? previous.filter((item) => item !== tool) : [...previous, tool]);
   }
+
+  const welcomeName = userName ? userName.split(" ")[0] : null;
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6 py-12">
-      <div className="w-full max-w-lg">
+      <div className="w-full max-w-xl">
         <div className="mb-6 text-center">
           <p className="text-sm text-muted-foreground">
-            {userName ? `Bienvenue ${userName.split(" ")[0]} —` : "Bienvenue —"} configurons {APP_NAME} pour votre
-            entreprise
+            {welcomeName ? "Bienvenue " + welcomeName + " — " : "Bienvenue — "}
+            3 étapes pour donner à {APP_NAME} assez de contexte pour être utile immédiatement.
           </p>
           <div className="mt-4 flex items-center justify-center gap-1.5">
-            {STEPS.map((_, i) => (
+            {STEPS.map((_, index) => (
               <div
-                key={i}
-                className={cn("h-1.5 w-10 rounded-full transition-colors", i <= step ? "bg-accent" : "bg-muted")}
+                key={index}
+                className={cn("h-1.5 w-12 rounded-full transition-colors", index <= step ? "bg-accent" : "bg-muted")}
               />
             ))}
           </div>
@@ -79,14 +91,12 @@ export function OnboardingWizard({
 
         <form
           action={completeOnboardingAction}
-          onKeyDown={(e) => {
-            // Entrée dans un champ ne doit jamais soumettre le formulaire avant la dernière
-            // étape (et jamais dans un textarea, où Entrée doit insérer une ligne).
-            if (e.key !== "Enter") return;
-            const tag = (e.target as HTMLElement).tagName;
+          onKeyDown={(event) => {
+            if (event.key !== "Enter") return;
+            const tag = (event.target as HTMLElement).tagName;
             if (tag === "TEXTAREA") return;
             if (!isLast) {
-              e.preventDefault();
+              event.preventDefault();
               if (canAdvance) goNext();
             }
           }}
@@ -94,67 +104,57 @@ export function OnboardingWizard({
         >
           {prefill && <input type="hidden" name="diagnosticId" value={prefill.diagnosticId} />}
 
-          <h1 className="text-xl font-semibold tracking-tight">{STEPS[step].title}</h1>
-          <p className="mt-1 text-sm text-muted-foreground">{STEPS[step].subtitle}</p>
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Étape {step + 1} / {STEPS.length}</p>
+              <h1 className="mt-1 text-xl font-semibold tracking-tight">{STEPS[step].title}</h1>
+              <p className="mt-1 text-sm text-muted-foreground">{STEPS[step].subtitle}</p>
+            </div>
+          </div>
 
           <div className="mt-6 space-y-4">
-            {/* Étape 0 — Entreprise */}
             <div hidden={step !== 0} className="space-y-4">
               <div className="space-y-1.5">
                 <Label htmlFor="name">Nom de l'entreprise</Label>
-                <Input
-                  id="name"
-                  name="name"
-                  required
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Nova Studio"
-                />
+                <Input id="name" name="name" required value={name} onChange={(event) => setName(event.target.value)} placeholder="Nova Studio" />
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="industry">Activité</Label>
                 <Input id="industry" name="industry" placeholder="Agence marketing, e-commerce, conseil…" />
               </div>
-            </div>
-
-            {/* Étape 1 — Taille */}
-            <div hidden={step !== 1} className="space-y-4">
-              <div className="space-y-1.5">
-                <Label htmlFor="country">Pays</Label>
-                <select
-                  id="country"
-                  name="country"
-                  defaultValue="France"
-                  className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
-                >
-                  {COUNTRY_OPTIONS.map((c) => (
-                    <option key={c} value={c}>
-                      {c}
-                    </option>
-                  ))}
-                </select>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <div className="space-y-1.5">
+                  <Label htmlFor="country">Territoire principal</Label>
+                  <select
+                    id="country"
+                    name="country"
+                    defaultValue="France métropolitaine"
+                    className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+                  >
+                    {COUNTRY_OPTIONS.map((country) => <option key={country} value={country}>{country}</option>)}
+                  </select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="employeeCount">Effectif</Label>
+                  <Input id="employeeCount" name="employeeCount" type="number" min={1} placeholder="Ex. 18" />
+                </div>
               </div>
               <div className="space-y-1.5">
                 <Label>Taille de l'équipe</Label>
                 <div className="flex flex-wrap gap-2">
-                  {SIZE_OPTIONS.map((s, i) => (
-                    <label key={s} className="cursor-pointer">
-                      <input type="radio" name="sizeRange" value={s} defaultChecked={i === 1} className="peer sr-only" />
-                      <span className="inline-block rounded-full border border-border px-3.5 py-1.5 text-sm text-muted-foreground peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent transition-colors">
-                        {s}
+                  {SIZE_OPTIONS.map((size, index) => (
+                    <label key={size} className="cursor-pointer">
+                      <input type="radio" name="sizeRange" value={size} defaultChecked={index === 1} className="peer sr-only" />
+                      <span className="inline-block rounded-full border border-border px-3.5 py-1.5 text-sm text-muted-foreground transition-colors peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent">
+                        {size}
                       </span>
                     </label>
                   ))}
                 </div>
               </div>
-              <div className="space-y-1.5">
-                <Label htmlFor="employeeCount">Nombre d'employés (optionnel)</Label>
-                <Input id="employeeCount" name="employeeCount" type="number" min={1} placeholder="8" />
-              </div>
             </div>
 
-            {/* Étape 2 — Outils */}
-            <div hidden={step !== 2} className="space-y-3">
+            <div hidden={step !== 1} className="space-y-3">
               <div className="flex flex-wrap gap-2">
                 {KNOWN_TOOLS.map((tool) => {
                   const checked = selectedTools.includes(tool);
@@ -165,9 +165,7 @@ export function OnboardingWizard({
                       onClick={() => toggleTool(tool)}
                       className={cn(
                         "rounded-full border px-3.5 py-1.5 text-sm transition-colors",
-                        checked
-                          ? "border-accent bg-accent-soft text-accent"
-                          : "border-border text-muted-foreground hover:border-accent/40"
+                        checked ? "border-accent bg-accent-soft text-accent" : "border-border text-muted-foreground hover:border-accent/40"
                       )}
                     >
                       {tool}
@@ -175,39 +173,35 @@ export function OnboardingWizard({
                   );
                 })}
               </div>
-              {selectedTools.map((tool) => (
-                <input key={tool} type="hidden" name="tools" value={tool} />
-              ))}
+              {selectedTools.map((tool) => <input key={tool} type="hidden" name="tools" value={tool} />)}
+              <p className="text-xs leading-5 text-muted-foreground">
+                Cette étape indique seulement les outils utilisés. Une vraie connexion API demandera toujours une autorisation séparée.
+              </p>
             </div>
 
-            {/* Étape 3 — Priorités */}
-            <div hidden={step !== 3} className="space-y-4">
+            <div hidden={step !== 2} className="space-y-4">
               <div className="space-y-1.5">
-                <Label htmlFor="painPoints">Vos principales pertes de temps</Label>
+                <Label htmlFor="painPoints">Qu'est-ce qui mérite d'être réglé en premier ?</Label>
                 <Textarea
                   id="painPoints"
                   name="painPoints"
-                  rows={3}
+                  rows={4}
                   defaultValue={prefill?.rawInput ?? ""}
-                  placeholder="Ex : relancer les prospects, rédiger les comptes-rendus…"
+                  placeholder="Ex : nous perdons des prospects faute de relance, je manque de visibilité sur ma marge…"
                 />
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="objectives">Vos objectifs pour les prochains mois</Label>
-                <Textarea id="objectives" name="objectives" rows={2} placeholder="Ex : gagner du temps, mieux suivre mes prospects…" />
+                <Label htmlFor="objectives">Résultat recherché</Label>
+                <Textarea id="objectives" name="objectives" rows={2} placeholder="Ex : obtenir plus de rendez-vous sans ajouter de charge manuelle." />
+              </div>
+              <div className="rounded-xl bg-accent-soft p-3 text-xs leading-5 text-foreground/80">
+                À l'étape suivante, Pilotzia construit vos premières priorités à partir de ce contexte. Les estimations restent identifiées comme telles tant qu'un résultat réel n'est pas mesuré.
               </div>
             </div>
           </div>
 
           <div className="mt-7 flex items-center justify-between">
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onClick={goBack}
-              disabled={navLocked}
-              className={step === 0 ? "invisible" : ""}
-            >
+            <Button type="button" variant="ghost" size="sm" onClick={goBack} disabled={navLocked} className={step === 0 ? "invisible" : ""}>
               <ArrowLeft size={16} /> Retour
             </Button>
 
@@ -225,14 +219,11 @@ export function OnboardingWizard({
   );
 }
 
-// useFormStatus() ne reflète l'état "pending" qu'une fois la soumission réellement en cours
-// (contrairement à un state local mis à jour dans le onClick, qui désactive le bouton trop tôt
-// et peut empêcher le navigateur de déclencher la soumission native du formulaire).
 function SubmitButton({ navLocked }: { navLocked: boolean }) {
   const { pending } = useFormStatus();
   return (
     <Button type="submit" disabled={pending || navLocked}>
-      {pending ? <Loader2 size={16} className="animate-spin" /> : "Découvrir mon plan d'automatisation"}
+      {pending ? <Loader2 size={16} className="animate-spin" /> : "Obtenir mes premières priorités"}
     </Button>
   );
 }
