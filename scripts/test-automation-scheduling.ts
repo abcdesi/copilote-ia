@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { automationScheduleState, localDateKey } from "../lib/timezone";
+import { automationConfigHash } from "../lib/automations/governance";
 
 function main() {
   const martiniqueMonday10 = new Date("2026-09-21T14:00:00.000Z");
@@ -45,6 +46,30 @@ function main() {
   assert.equal(
     localDateKey(new Date("2026-09-22T02:00:00.000Z"), "America/Martinique"),
     "2026-09-21"
+  );
+
+  const baseConfig = {
+    templateId: "relance-prospects",
+    messageSubject: "Bonjour {{name}}",
+    messageBody: "Message",
+    approvalMode: "first_then_auto",
+    cadenceDays: 7,
+    maxSendsPerContact: 3,
+    scheduleStartHour: 10,
+    scheduleEndHour: 18,
+    scheduleDays: "Mon,Tue,Wed,Thu,Fri,Sat",
+    replyToEmail: "contact@example.com",
+  };
+  const baseHash = automationConfigHash(baseConfig);
+  assert.notEqual(
+    baseHash,
+    automationConfigHash({ ...baseConfig, scheduleStartHour: 11 }),
+    "Changer l'heure doit invalider l'approbation précédente."
+  );
+  assert.notEqual(
+    baseHash,
+    automationConfigHash({ ...baseConfig, scheduleDays: "Mon,Tue,Wed,Thu,Fri" }),
+    "Changer les jours doit invalider l'approbation précédente."
   );
 
   console.log("Automation scheduling tests: OK");
