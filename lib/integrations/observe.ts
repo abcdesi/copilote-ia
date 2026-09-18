@@ -78,7 +78,11 @@ export async function getLatestGoogleOperationalSnapshot(companyId: string): Pro
   if (!event?.metadata) return null;
   try {
     const parsed = JSON.parse(event.metadata) as { provider?: string } & GoogleOperationalSnapshot;
-    return parsed.provider === "google" ? parsed : null;
+    if (parsed.provider !== "google") return null;
+    const observedAt = new Date(parsed.observedAt);
+    if (!Number.isFinite(observedAt.getTime())) return null;
+    if (Date.now() - observedAt.getTime() > 24 * 60 * 60 * 1000) return null;
+    return parsed;
   } catch {
     return null;
   }
