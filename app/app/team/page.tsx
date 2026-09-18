@@ -74,8 +74,17 @@ export default async function TeamPage({
             </form>
           ) : (
             <div className="mt-4 flex flex-col gap-3 rounded-xl bg-muted/50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span>Aucun siège disponible dans l'offre actuelle.</span>
-              <Link href="/app/settings" className="font-semibold text-accent">Voir l'offre supérieure</Link>
+              <span>
+                {overview.capacity.plan === "business"
+                  ? "Les 10 sièges inclus sont utilisés. Des sièges supplémentaires peuvent être activés après validation."
+                  : "Aucun siège disponible dans l'offre actuelle."}
+              </span>
+              <Link
+                href={overview.capacity.plan === "business" ? "/app/support?category=billing" : "/app/settings"}
+                className="font-semibold text-accent"
+              >
+                {overview.capacity.plan === "business" ? "Demander des sièges supplémentaires" : "Voir l'offre supérieure"}
+              </Link>
             </div>
           )}
         </section>
