@@ -188,6 +188,7 @@ export default async function DashboardHomePage() {
         opportunitiesCount={opportunities.length}
         pendingActionsCount={pendingActions.length}
         activeAutomationsCount={activeAutomations.length}
+        hasMeasuredOutcome={outcomes.length > 0}
         totalHoursPerMonth={identifiedHours}
       />
 
