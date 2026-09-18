@@ -311,6 +311,7 @@ model Automation {
   runs          AutomationRun[]
   auditEvents   AutomationAuditEvent[]
   contactEvents AutomationContactEvent[]
+  outcomes      AutomationOutcome[]
 
   @@index([companyId])
   @@index([companyId, status])
@@ -411,6 +412,28 @@ model AutomationFeedback {
   createdAt        DateTime   @default(now())
 
   @@index([automationId])
+}
+
+model AutomationOutcome {
+  id           String     @id @default(cuid())
+  automationId String
+  automation   Automation @relation(fields: [automationId], references: [id], onDelete: Cascade)
+  kind         String
+  value        Float
+  unit         String
+  source       String     @default("user_reported")
+  confidence   Float      @default(0.75)
+  note         String?
+  evidenceJson String?
+  actorUserId  String?
+  actorName    String?
+  actorEmail   String?
+  actorRole    String?
+  observedAt   DateTime   @default(now())
+  createdAt    DateTime   @default(now())
+
+  @@index([automationId, observedAt])
+  @@index([source, observedAt])
 }
 
 model Conversation {
