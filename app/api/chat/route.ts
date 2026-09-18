@@ -370,9 +370,16 @@ function buildSafeAction(
   if (opportunityId) {
     const readiness = capability?.readiness ?? (templateId && isRealExecutionTemplate(templateId) ? "configuration_required" : "not_executable");
     const automatable = readiness !== "not_executable";
+    const template = templateId ? getTemplateById(templateId) : null;
     return {
       kind: "navigate",
-      label: automatable ? "Automatiser cette recommandation" : "Voir la recommandation",
+      label: automatable
+        ? template
+          ? `Automatiser : ${template.title}`
+          : "Automatiser cette recommandation"
+        : template
+          ? `Voir : ${template.title}`
+          : "Voir la recommandation",
       href: `/app/opportunities/${opportunityId}`,
       description:
         readiness === "ready"
