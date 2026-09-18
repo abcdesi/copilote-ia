@@ -30,7 +30,7 @@ const FAQ = [
   ],
   [
     "Pilotzia utilise-t-il les données d'autres entreprises pour me conseiller ?",
-    "Pilotzia ne doit jamais réinjecter les données privées brutes d'un autre client dans vos réponses. Les apprentissages transverses doivent être limités à des patterns génériques, des ontologies et, lorsque suffisamment de données existent, des benchmarks agrégés et anonymisés avec un seuil minimal de cohorte.",
+    "Pilotzia ne réinjecte pas les données privées brutes d'un autre client dans vos réponses. Les recommandations actuelles s'appuient sur votre propre contexte, les sources que vous avez connectées, des règles métier explicites et des connaissances générales — pas sur un benchmark client présenté comme disponible alors qu'il ne l'est pas encore.",
   ],
   [
     "Pilotzia stocke-t-il le contenu de mes emails ?",
@@ -54,15 +54,15 @@ const FAQ = [
   ],
   [
     "Quels sont les plans ?",
-    "Core à 79 €/mois approfondit le contexte, le pilotage et les recommandations. Action à 179 €/mois ajoute l'exécution contrôlée, les automatisations, le monitoring et le suivi ROI. Scale à 399 €/mois vise l'audit avancé, l'intelligence financière, les analyses croisées et les usages d'équipe plus importants. Des tarifs annuels et des packs de crédits supplémentaires sont affichés avant achat.",
+    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et le rafraîchissement hebdomadaire. Action à 179 €/mois ajoute l'exécution contrôlée, les automatisations et le suivi des résultats. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Des sièges supplémentaires peuvent être activés sur demande, et les tarifs annuels ou packs de crédits sont affichés avant achat.",
   ],
   [
     "Pilotzia peut-il analyser un bilan ou un compte de résultat ?",
-    "L'architecture Scale intègre une couche d'intelligence financière capable de calculer des ratios, détecter des alertes et générer des questions d'audit à partir de données financières normalisées. L'ingestion documentaire est déployée progressivement ; Pilotzia doit toujours indiquer la provenance, les données manquantes et le niveau de confiance de ses conclusions.",
+    "Scale permet d'analyser un PDF financier, d'extraire les données structurées, de calculer des ratios déterministes, de signaler les informations manquantes et de produire des priorités. Une extraction trop incertaine n'alimente pas le Business Graph, et un document semblant appartenir à une autre entreprise est bloqué avant intégration sauf validation tracée d'un rôle autorisé.",
   ],
   [
     "Puis-je résilier ?",
-    "Oui. Vous pouvez gérer votre abonnement depuis l'espace de facturation. La résiliation prend effet selon la période de facturation en cours et les conditions précisées dans les CGV.",
+    "Oui. Les offres mensuelles sont sans engagement au-delà de la période déjà payée. Vous pouvez résilier depuis l'espace de facturation ; la résiliation prend effet à la fin de la période en cours, selon les CGV.",
   ],
   [
     "Puis-je supprimer mes données ?",
@@ -73,8 +73,12 @@ const FAQ = [
     "Non. Le modèle produit n'est pas fondé sur la revente de données brutes client. Les données connectées servent à fournir le service, sous réserve des traitements et sous-traitants décrits dans la politique de confidentialité.",
   ],
   [
-    "Le ROI affiché est-il garanti ?",
-    "Non. Les économies de temps, valeurs et ROI affichés sont des estimations destinées à aider à prioriser. Les résultats observés doivent être mesurés séparément et ne constituent jamais une garantie de performance future.",
+    "Comment Pilotzia reste-t-il à jour ?",
+    "Le contexte opérationnel est rafraîchi automatiquement chaque semaine pour les espaces éligibles : sources connectées, Business Graph et opportunités déterministes sont réévalués. Ce refresh est conçu pour coûter 0 € d'IA lorsqu'aucune analyse payante n'est nécessaire ; toute future analyse IA hebdomadaire devra respecter une enveloppe explicite avant exécution.",
+  ],
+  [
+    "Les gains affichés sont-ils garantis ?",
+    "Non. Pilotzia sépare les estimations de potentiel des résultats observés ou déclarés. Le temps gagné ou l'impact financier renseigné par un utilisateur reste identifié comme une déclaration, tandis que les métriques issues d'un fournisseur sont conservées avec leur provenance. Aucun résultat futur n'est garanti.",
   ],
 ];
 
