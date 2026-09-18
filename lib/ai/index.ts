@@ -269,6 +269,11 @@ Faire progresser une décision métier avec le minimum d'informations réellemen
     ? context.automations.some((automation) => automation.name.toLowerCase() === recommendedTemplate.title.toLowerCase())
     : false;
   const matchedTemplateId = alreadyInstalled ? undefined : recommendedTemplate?.id;
+  const matchedTemplateSource = matchedTemplateId
+    ? explicitTemplateId
+      ? "explicit_request" as const
+      : "assistant_recommendation" as const
+    : undefined;
 
-  return { reply, matchedTemplateId };
+  return { reply, matchedTemplateId, matchedTemplateSource };
 }
