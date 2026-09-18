@@ -198,7 +198,13 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
                         <div className="min-w-0 flex-1">
                           <div className="flex flex-wrap items-center gap-2">
                             <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
-                              {actionIndex === 0 ? "Prochaine étape utile" : "Autre recommandation automatisable"}
+                              {action.automationReadiness
+                                ? actionIndex === 0
+                                  ? "Automatisation proposée"
+                                  : "Autre piste d'automatisation"
+                                : actionIndex === 0
+                                  ? "Prochaine étape utile"
+                                  : "Autre recommandation"}
                             </p>
                             {action.automationReadiness === "ready" && (
                               <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Automatisable maintenant</span>
@@ -207,7 +213,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
                               <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">Prérequis à compléter</span>
                             )}
                             {action.automationReadiness === "not_executable" && (
-                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">À traiter manuellement pour l'instant</span>
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">Préparation uniquement · exécution non disponible</span>
                             )}
                           </div>
                           {action.description && (
