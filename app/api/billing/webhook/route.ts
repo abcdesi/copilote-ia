@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
-import { verifyStripeWebhook } from "@/lib/billing/stripe";
+import { identifyStripeSubscriptionPrice, verifyStripeWebhook } from "@/lib/billing/stripe";
 import { getCreditPack } from "@/lib/billing/credit-packs";
 import { getUsagePeriodForCompany } from "@/lib/billing/usage-policy";
 import { track } from "@/lib/analytics/track";
@@ -25,6 +25,17 @@ function numberValue(value: unknown) {
 function metadata(object: Record<string, unknown>) {
   const value = object.metadata;
   return value && typeof value === "object" ? (value as Record<string, unknown>) : {};
+}
+
+
+function recurringPriceId(object: Record<string, unknown>) {
+  const items = object.items;
+  if (!items || typeof items !== "object") return null;
+  const data = (items as Record<string, unknown>).data;
+  if (!Array.isArray(data) || data.length === 0 || typeof data[0] !== "object" || !data[0]) return null;
+  const price = (data[0] as Record<string, unknown>).price;
+  if (!price || typeof price !== "object") return null;
+  return stringValue((price as Record<string, unknown>).id);
 }
 
 function recurringInterval(object: Record<string, unknown>) {
@@ -59,17 +70,26 @@ async function upsertSubscriptionFromObject(
 ) {
   const meta = metadata(object);
   const companyId = stringValue(meta.companyId) ?? fallback?.companyId ?? null;
-  const plan = stringValue(meta.plan) ?? fallback?.plan ?? null;
-  const billingCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
-  const customerId = stringValue(object.customer) ?? fallback?.customerId ?? null;
-  const stripeSubId = stringValue(object.subscription) ?? stringValue(object.id);
-  const status = subscriptionStatus(object);
-  const periodStart = numberValue(object.current_period_start);
-  const periodEnd = numberValue(object.current_period_end);
-  const interval = recurringInterval(object) ?? (billingCycle === "annual" ? "year" : billingCycle === "monthly" ? "month" : null);
-  if (!companyId || !plan) return;
+  if (!companyId) return;
 
   const existing = await prisma.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } });
+  const priceId = recurringPriceId(object);
+  const mappedPrice = identifyStripeSubscriptionPrice(priceId);
+  const isSubscriptionObject = stringValue(object.object) === "subscription";
+  const fallbackPlan = stringValue(meta.plan) ?? fallback?.plan ?? existing?.plan ?? null;
+  const fallbackCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
+  const plan = mappedPrice?.plan ?? fallbackPlan;
+  const billingCycle = mappedPrice?.billingCycle ?? fallbackCycle;
+  if (!plan) return;
+
+  const customerId = stringValue(object.customer) ?? fallback?.customerId ?? existing?.stripeCustomerId ?? null;
+  const stripeSubId = stringValue(object.subscription) ?? stringValue(object.id);
+  const status = isSubscriptionObject && priceId && !mappedPrice ? "configuration_error" : subscriptionStatus(object);
+  const periodStart = numberValue(object.current_period_start);
+  const periodEnd = numberValue(object.current_period_end);
+  const interval = mappedPrice
+    ? mappedPrice.billingCycle === "annual" ? "year" : "month"
+    : recurringInterval(object) ?? (billingCycle === "annual" ? "year" : billingCycle === "monthly" ? "month" : null);
   const previousStatus = existing?.status ?? null;
   const data = {
     plan,
@@ -89,7 +109,7 @@ async function upsertSubscriptionFromObject(
   if (!wasEntitled && isEntitled) {
     await track(EVENTS.SUBSCRIPTION_STARTED, {
       companyId,
-      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status },
+      metadata: { plan, provider: "stripe", billingInterval: data.billingInterval, status, priceId },
     });
   } else if (wasEntitled && !isEntitled) {
     await track(EVENTS.SUBSCRIPTION_CANCELLED, {
