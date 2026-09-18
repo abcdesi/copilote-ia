@@ -1,6 +1,7 @@
 import { AlertTriangle, CheckCircle2, Database, Network, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { getBusinessGraphContext } from "@/lib/business-graph";
+import { prisma } from "@/lib/db/client";
 import { rebuildBusinessGraphAction } from "@/lib/business-graph/actions";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -54,7 +55,15 @@ export default async function ContextPage() {
   const access = await getCurrentCompanyAccess();
   const company = access.company;
   const canRebuild = hasCompanyPermission(access.role, "edit_company");
-  const graph = await getBusinessGraphContext(company.id);
+  const [graph, weeklyRefreshEvent] = await Promise.all([
+    getBusinessGraphContext(company.id),
+    prisma.event.findFirst({
+      where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true, metadata: true },
+    }),
+  ]);
+  const weeklyRefresh = parseWeeklyRefresh(weeklyRefreshEvent?.metadata ?? null);
   const entityById = new Map(graph.entities.map((entity) => [entity.id, entity]));
   const visibleFacts = graph.facts.slice(0, 8);
 
@@ -100,6 +109,31 @@ export default async function ContextPage() {
             <Metric label="Sources fraîches" value={String(graph.summary.freshSourceCount)} icon={CheckCircle2} />
           </div>
         </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <h2 className="font-semibold">Rafraîchissement hebdomadaire</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              Pilotzia resynchronise les sources autorisées, reconstruit le contexte géré et réévalue les opportunités déterministes sans déclencher d'IA payante par défaut.
+            </p>
+          </div>
+          <Badge tone={weeklyRefreshEvent ? "success" : "neutral"}>
+            {weeklyRefreshEvent ? "Actif" : "Premier refresh à venir"}
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-3 sm:grid-cols-4">
+          <Metric label="Dernier refresh" value={weeklyRefreshEvent ? formatDate(weeklyRefreshEvent.createdAt.toISOString()) : "À venir"} icon={RefreshCw} />
+          <Metric label="Sources synchronisées" value={String(weeklyRefresh?.providerSyncs?.length ?? 0)} icon={Network} />
+          <Metric label="IA déclenchée" value={weeklyRefresh?.aiTriggered ? "Oui" : "Non"} icon={Sparkles} />
+          <Metric label="Coût IA du refresh" value={weeklyRefresh?.aiVariableCostEur ? `${weeklyRefresh.aiVariableCostEur.toFixed(2)} €` : "0,00 €"} icon={ShieldCheck} />
+        </div>
+        {weeklyRefresh?.providerErrors?.length ? (
+          <p className="mt-3 rounded-xl bg-warning/10 p-3 text-xs leading-5 text-warning">
+            Certaines sources n'ont pas pu être rafraîchies : {weeklyRefresh.providerErrors.map((item) => item.split(":")[0]).join(", ")}. Les données existantes sont conservées avec leur date de dernière observation.
+          </p>
+        ) : null}
       </section>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -242,4 +276,29 @@ function factSourceLabel(provider: string, sourceRef: string | null, provenanceJ
     return "Pilotzia dérivé";
   }
   return provider;
+}
+
+function parseWeeklyRefresh(value: string | null): {
+  providerSyncs?: string[];
+  providerErrors?: string[];
+  aiTriggered?: boolean;
+  aiVariableCostEur?: number;
+} | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(value) as {
+      providerSyncs?: unknown;
+      providerErrors?: unknown;
+      aiTriggered?: unknown;
+      aiVariableCostEur?: unknown;
+    };
+    return {
+      providerSyncs: Array.isArray(parsed.providerSyncs) ? parsed.providerSyncs.filter((item): item is string => typeof item === "string") : [],
+      providerErrors: Array.isArray(parsed.providerErrors) ? parsed.providerErrors.filter((item): item is string => typeof item === "string") : [],
+      aiTriggered: parsed.aiTriggered === true,
+      aiVariableCostEur: typeof parsed.aiVariableCostEur === "number" ? parsed.aiVariableCostEur : 0,
+    };
+  } catch {
+    return null;
+  }
 }
