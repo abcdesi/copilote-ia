@@ -171,11 +171,11 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ reply, retryable: true, creditsRefunded: true }, { status: 503 });
   }
 
-  const { reply, matchedTemplateId } = chatResult;
+  const { reply, matchedTemplateId, matchedTemplateSource } = chatResult;
   await createAssistantMessage(company.id, conversation.id, reply);
 
   const opportunity = matchedTemplateId
-    ? await createOpportunityFromChatMatch(company.id, matchedTemplateId)
+    ? await createOpportunityFromChatMatch(company.id, matchedTemplateId, matchedTemplateSource)
     : null;
 
   const automationCapability = opportunity && matchedTemplateId
@@ -198,6 +198,9 @@ export async function POST(req: NextRequest) {
         destination: action.href,
         requiresConfirmation: Boolean(action.requiresConfirmation),
         actorRole: role,
+        templateId: matchedTemplateId ?? null,
+        templateSource: matchedTemplateSource ?? null,
+        automationReadiness: action.automationReadiness ?? null,
       },
     });
   }
@@ -205,7 +208,11 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ reply, action });
 }
 
-async function createOpportunityFromChatMatch(companyId: string, templateId: string) {
+async function createOpportunityFromChatMatch(
+  companyId: string,
+  templateId: string,
+  source?: "explicit_request" | "assistant_recommendation"
+) {
   const existing = await prisma.opportunity.findFirst({ where: { companyId, templateId } });
   if (existing?.status === "rejected" || existing?.status === "installed") return null;
   if (existing) return existing;
@@ -229,7 +236,13 @@ async function createOpportunityFromChatMatch(companyId: string, templateId: str
     },
   });
 
-  await track(EVENTS.AUTOMATION_OPPORTUNITY_DETECTED, { companyId, metadata: { source: "chat", templateId } });
+  await track(EVENTS.AUTOMATION_OPPORTUNITY_DETECTED, {
+    companyId,
+    metadata: {
+      source: source === "assistant_recommendation" ? "copilot_recommendation" : "copilot_explicit_request",
+      templateId,
+    },
+  });
   return opportunity;
 }
 
