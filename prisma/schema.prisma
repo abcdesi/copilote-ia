@@ -298,6 +298,9 @@ model Automation {
   riskLevel              String       @default("low")
   cadenceDays            Int?
   maxSendsPerContact     Int?
+  scheduleStartHour      Int          @default(10)
+  scheduleEndHour        Int          @default(18)
+  scheduleDays           String       @default("Mon,Tue,Wed,Thu,Fri,Sat")
   replyToEmail           String?
   approvedConfigHash     String?
   lastApprovedAt         DateTime?
