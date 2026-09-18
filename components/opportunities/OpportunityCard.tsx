@@ -49,8 +49,11 @@ export function OpportunityCard({ opportunity, highlight = false }: { opportunit
         </div>
       </div>
 
-      <div className="mt-4 flex items-center justify-between">
-        <span className="text-xs text-muted-foreground">{IMPACT_LABELS[opportunity.impactLevel]}</span>
+      <div className="mt-4 flex items-center justify-between gap-3">
+        <div>
+          <span className="text-xs text-muted-foreground">{IMPACT_LABELS[opportunity.impactLevel]}</span>
+          {isReal && <p className="mt-1 text-[11px] font-medium text-accent">Inclus avec Action / Scale · usage selon crédits</p>}
+        </div>
         <Button href={`/app/opportunities/${opportunity.id}`} size="sm">
           Examiner
         </Button>
