@@ -2,7 +2,7 @@
 
 import { FormEvent, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
-import { Bot, Send, Sparkles } from "lucide-react";
+import { ArrowRight, Bot } from "lucide-react";
 
 export function CopilotBar() {
   const pathname = usePathname();
@@ -32,27 +32,18 @@ export function CopilotBar() {
         <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
           <Bot size={17} />
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <Sparkles size={13} className="shrink-0 text-accent" />
-            <input
-              value={prompt}
-              onChange={(event) => setPrompt(event.target.value)}
-              aria-label="Poser une question au Copilote"
-              placeholder="Demandez à Pilotzia ce qui mérite votre attention…"
-              className="w-full bg-transparent text-sm outline-none placeholder:text-muted-foreground"
-            />
-          </div>
-          <p className="mt-0.5 truncate pl-5 text-xs text-muted-foreground">
-            La réponse s'ouvrira dans le Copilote, sans remplir la page actuelle.
-          </p>
-        </div>
+        <input
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          aria-label="Poser une question au Copilote"
+          placeholder="Demandez à Pilotzia ce qui mérite votre attention…"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+        />
         <button
           type="submit"
-          aria-label={prompt.trim() ? "Envoyer au Copilote" : "Ouvrir le Copilote"}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground transition-opacity hover:opacity-90"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-accent transition-opacity hover:opacity-75"
         >
-          <Send size={14} />
+          Continuer à lire dans Copilote <ArrowRight size={14} />
         </button>
       </form>
     </div>
