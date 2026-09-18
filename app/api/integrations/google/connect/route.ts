@@ -11,7 +11,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.redirect(new URL("/app/tools?google=config-error", req.nextUrl.origin));
     }
 
-    const mode = req.nextUrl.searchParams.get("mode") === "action" ? "action" : "observe";
+    const requestedMode = req.nextUrl.searchParams.get("mode");
+    const mode = requestedMode === "action" ? "action" : requestedMode === "marketing" ? "marketing" : "observe";
     return NextResponse.redirect(buildGoogleAuthorizationUrl(access.company.id, mode));
   } catch (error) {
     if (error instanceof Error && error.message === "COMPANY_PERMISSION_DENIED") {

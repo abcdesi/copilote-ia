@@ -17,31 +17,66 @@ function callbackErrorCode(error: unknown) {
   return "callback-error";
 }
 
+function destinationForState(state: string | null) {
+  if (!state) return "/app/tools";
+  try {
+    return verifyGoogleState(state).mode === "marketing" ? "/app/marketing" : "/app/tools";
+  } catch {
+    return "/app/tools";
+  }
+}
+
 export async function GET(req: NextRequest) {
   const code = req.nextUrl.searchParams.get("code");
   const state = req.nextUrl.searchParams.get("state");
+  const destination = destinationForState(state);
   const oauthError = req.nextUrl.searchParams.get("error");
   if (oauthError) {
     const status = oauthError === "access_denied" ? "cancelled" : "provider-error";
-    return NextResponse.redirect(`${appUrl()}/app/tools?google=${status}`);
+    return NextResponse.redirect(`${appUrl()}${destination}?google=${status}`);
   }
   if (!code || !state) {
-    return NextResponse.redirect(`${appUrl()}/app/tools?google=invalid-response`);
+    return NextResponse.redirect(`${appUrl()}${destination}?google=invalid-response`);
   }
 
   try {
     const access = await getCurrentCompanyAccess();
     if (!hasCompanyPermission(access.role, "manage_integrations")) {
-      return NextResponse.redirect(`${appUrl()}/app/tools?google=permission-denied`);
+      return NextResponse.redirect(`${appUrl()}${destination}?google=permission-denied`);
     }
 
     const verified = verifyGoogleState(state);
     if (verified.companyId !== access.company.id) {
-      return NextResponse.redirect(`${appUrl()}/app/tools?google=forbidden`);
+      return NextResponse.redirect(`${appUrl()}${destination}?google=forbidden`);
     }
 
     const tokens = await exchangeGoogleCode(code);
     await upsertGoogleConnection(access.company.id, tokens);
+
+    if (verified.mode === "marketing") {
+      await prisma.$transaction([
+        prisma.companyTool.upsert({
+          where: { companyId_name: { companyId: access.company.id, name: "Google Analytics 4" } },
+          create: { companyId: access.company.id, name: "Google Analytics 4", detected: false },
+          update: {},
+        }),
+        prisma.companyTool.upsert({
+          where: { companyId_name: { companyId: access.company.id, name: "Google Ads" } },
+          create: { companyId: access.company.id, name: "Google Ads", detected: false },
+          update: {},
+        }),
+        prisma.event.create({
+          data: {
+            userId: access.session.user.id,
+            companyId: access.company.id,
+            type: "INTEGRATION_CONNECTED",
+            metadata: JSON.stringify({ provider: "google", authorizationMode: "marketing" }),
+          },
+        }),
+      ]);
+      return NextResponse.redirect(`${appUrl()}/app/marketing?google=marketing-authorized`);
+    }
+
     await prisma.$transaction([
       prisma.companyTool.upsert({
         where: { companyId_name: { companyId: access.company.id, name: "Gmail" } },
@@ -65,13 +100,15 @@ export async function GET(req: NextRequest) {
 
     try {
       await syncGoogleOperationalSnapshot(access.company.id, access.session.user.id, "oauth_callback");
-      return NextResponse.redirect(`${appUrl()}/app/tools?google=${verified.mode === "action" ? "actions-authorized" : "connected"}`);
+      return NextResponse.redirect(
+        `${appUrl()}/app/tools?google=${verified.mode === "action" ? "actions-authorized" : "connected"}`
+      );
     } catch (syncError) {
       console.error("Google first sync failed after OAuth", syncError);
       return NextResponse.redirect(`${appUrl()}/app/tools?google=connected-sync-error`);
     }
   } catch (error) {
     console.error("Google OAuth callback failed", error);
-    return NextResponse.redirect(`${appUrl()}/app/tools?google=${callbackErrorCode(error)}`);
+    return NextResponse.redirect(`${appUrl()}${destination}?google=${callbackErrorCode(error)}`);
   }
 }

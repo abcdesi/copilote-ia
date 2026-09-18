@@ -3,6 +3,8 @@ import { prisma } from "@/lib/db/client";
 import { runMockDiagnostic } from "@/lib/ai/mock-engine";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
 import { syncGoogleOperationalSnapshot } from "@/lib/integrations/observe";
+import { GOOGLE_SCOPES, parseStoredGoogleScopes } from "@/lib/integrations/google";
+import { getGoogleMarketingState, syncGoogleMarketingSnapshot } from "@/lib/integrations/google-marketing";
 
 const WEEKLY_REFRESH_MIN_INTERVAL_MS = (6 * 24 + 23) * 60 * 60 * 1000;
 const WEEKLY_REFRESH_IN_PROGRESS_TTL_MS = 2 * 60 * 60 * 1000;
@@ -243,17 +245,39 @@ export async function runWeeklyBusinessRefresh(companyId: string) {
   try {
     const connections = await prisma.integrationConnection.findMany({
       where: { companyId, status: "connected" },
-      select: { provider: true, lastSyncedAt: true },
+      select: { provider: true, lastSyncedAt: true, scopes: true, settingsJson: true },
     });
 
     const google = connections.find((connection) => connection.provider === "google");
     if (google) {
-      try {
-        await syncGoogleOperationalSnapshot(companyId, null, "scheduled");
-        (summary.providerSyncs as string[]).push("google");
-      } catch (error) {
-        const message = error instanceof Error ? error.message.slice(0, 240) : "Erreur Google";
-        (summary.providerErrors as string[]).push("google:" + message);
+      const granted = parseStoredGoogleScopes(google.scopes);
+      const workspaceScopes = GOOGLE_SCOPES.filter((scope) => scope.includes("gmail.") || scope.includes("calendar."));
+      const workspaceAuthorized = workspaceScopes.every((scope) => granted.includes(scope));
+
+      if (workspaceAuthorized) {
+        try {
+          await syncGoogleOperationalSnapshot(companyId, null, "scheduled");
+          (summary.providerSyncs as string[]).push("google_workspace");
+        } catch (error) {
+          const message = error instanceof Error ? error.message.slice(0, 240) : "Erreur Google Workspace";
+          (summary.providerErrors as string[]).push("google_workspace:" + message);
+        }
+      }
+
+      const marketing = await getGoogleMarketingState(companyId);
+      const marketingConfigured =
+        (marketing.analyticsAuthorized && Boolean(marketing.settings.ga4PropertyId)) ||
+        (marketing.adsAuthorized &&
+          marketing.adsServerConfigured &&
+          Boolean(marketing.settings.googleAdsCustomerId));
+      if (marketingConfigured) {
+        try {
+          await syncGoogleMarketingSnapshot(companyId, null, "scheduled");
+          (summary.providerSyncs as string[]).push("google_marketing");
+        } catch (error) {
+          const message = error instanceof Error ? error.message.slice(0, 240) : "Erreur Google Marketing";
+          (summary.providerErrors as string[]).push("google_marketing:" + message);
+        }
       }
     }
 
