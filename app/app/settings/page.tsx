@@ -116,7 +116,7 @@ export default async function SettingsPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Choisissez jusqu'où Pilotzia doit aller pour vous</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Core aide à décider. Action aide aussi à exécuter. Scale ajoute une profondeur d'audit et de pilotage supérieure.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Core aide à décider. Action ouvre le moteur d'exécution ; les automatisations sont ensuite achetées séparément au prix affiché. Scale ajoute une profondeur d'audit et de pilotage supérieure.</p>
           </div>
           {hasStripeCustomer && canManageBilling && (
             <form method="post" action="/api/billing/portal">
@@ -179,7 +179,9 @@ export default async function SettingsPage() {
             );
           })}
         </div>
-        <p className="mt-4 text-xs leading-5 text-muted-foreground">Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel.</p>
+        <p className="mt-4 text-xs leading-5 text-muted-foreground">
+          Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel. Les automatisations exécutables sont des achats uniques séparés : leur prix est affiché avant validation et leur usage courant consomme ensuite les crédits du plan.
+        </p>
       </section>
 
       {usage.paid && canManageBilling && (
