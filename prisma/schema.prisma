@@ -490,10 +490,14 @@ model Purchase {
   amountEur     Float
   status        String      @default("pending")
   provider      String      @default("stripe")
-  providerRef   String?
+  providerRef   String?     @unique
+  paymentUrl    String?
+  paidAt        DateTime?
   createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
 
-  @@index([companyId])
+  @@unique([companyId, opportunityId])
+  @@index([companyId, status])
 }
 
 model CreditPurchase {
