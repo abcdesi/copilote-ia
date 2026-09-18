@@ -119,7 +119,11 @@ export default async function MarketingPage({
       return {
         connection: null,
         scopes: [] as string[],
-        settings: {},
+        settings: {
+          ga4PropertyId: undefined,
+          googleAdsCustomerId: undefined,
+          googleAdsLoginCustomerId: undefined,
+        },
         analyticsAuthorized: false,
         adsAuthorized: false,
         adsServerConfigured: Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()),

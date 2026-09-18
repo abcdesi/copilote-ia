@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { normalizeCompanySize } from "../lib/companies/company-size";
 import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { canApproveRisk, hasCompanyPermission } from "../lib/companies/access";
@@ -102,6 +103,22 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testCopilotTopBarHandoff() {
+  const source = readFileSync("components/dashboard/CopilotBar.tsx", "utf-8");
+  assert.ok(
+    !source.includes('fetch("/api/chat"'),
+    "La barre haute ne doit jamais appeler le chat ni injecter une réponse longue dans la page courante."
+  );
+  assert.ok(
+    source.includes("pilotzia:copilot-draft"),
+    "La barre haute doit transmettre le prompt au Copilote complet."
+  );
+  assert.ok(
+    source.includes("Continuer à lire dans Copilote"),
+    "La barre haute doit conserver le lien explicite vers le Copilote."
+  );
+}
+
 function testCopilotRecommendationActions() {
   const ids = mentionedAutomationTemplateIds(
     "Je regarderais d'abord ces trois zones, dans cet ordre : 1. **Onboarding automatique des nouveaux clients** — priorité haute. 2. **Réponses automatiques aux questions fréquentes** — priorité moyenne. 3. **Synchronisation CRM et facturation** — priorité moyenne."
@@ -166,6 +183,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testCopilotTopBarHandoff();
   testCopilotRecommendationActions();
   testTerritoriesAndCopilotAutomationProposals();
   testSolopreneur();
