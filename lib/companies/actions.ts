@@ -9,8 +9,13 @@ import { syncBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import type { KnowledgeSectionKey } from "@/lib/companies/knowledge-model";
+import { normalizeTimeZone } from "@/lib/timezone";
 
 const optionalText = (max = 4000) => z.string().max(max).nullable().optional();
+const optionalTimezone = z.preprocess(
+  (value) => (value === "" || value == null ? null : String(value).trim()),
+  z.string().max(120).nullable().optional().refine((value) => value == null || normalizeTimeZone(value) != null, "Fuseau horaire invalide.")
+);
 const optionalEmployeeCount = z.preprocess(
   (value) => (value === "" || value == null ? null : value),
   z.coerce.number().int().positive().nullable().optional()
@@ -23,6 +28,7 @@ const schema = z.object({
   phone: optionalText(40),
   industry: optionalText(120),
   country: optionalText(80),
+  timezone: optionalTimezone,
   sizeRange: optionalText(20),
   employeeCount: optionalEmployeeCount,
   objectives: optionalText(),
@@ -47,7 +53,7 @@ const SECTION_FIELDS: Record<KnowledgeSectionKey, ProfileField[]> = {
   objectives: ["objectives"],
   painPoints: ["painPoints"],
   applications: [],
-  local: ["address", "phone", "country", "localContext"],
+  local: ["address", "phone", "country", "timezone", "localContext"],
   finance: ["financeContext"],
   accounting: ["accountingContext"],
   sales: ["salesContext"],
@@ -63,6 +69,7 @@ const FIELD_SECTION: Record<keyof CompanyUpdate, KnowledgeSectionKey> = {
   phone: "local",
   industry: "activity",
   country: "local",
+  timezone: "local",
   sizeRange: "team",
   employeeCount: "team",
   objectives: "objectives",
@@ -169,6 +176,7 @@ export async function updateCompanyAction(formData: FormData) {
     phone: value(formData, "phone"),
     industry: value(formData, "industry"),
     country: value(formData, "country"),
+    timezone: value(formData, "timezone"),
     sizeRange: value(formData, "sizeRange"),
     employeeCount: String(formData.get("employeeCount") ?? "").trim(),
     objectives: value(formData, "objectives"),
