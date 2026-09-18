@@ -266,7 +266,7 @@ export default async function ToolsPage({
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
                         <span className="text-sm font-semibold">{tool.name}</span>
-                        {tool.detected && <Badge tone="accent">Détecté</Badge>}
+                        <Badge tone="accent">Renseigné</Badge>
                         {isReallyConnected && <Badge tone="success">API active</Badge>}
                       </div>
                       <div className="mt-2 flex items-center gap-1.5 text-xs text-muted-foreground">
