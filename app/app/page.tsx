@@ -55,13 +55,9 @@ export default async function DashboardHomePage() {
     orange: countable.filter((a) => a.health === "orange").length,
     red: countable.filter((a) => a.health === "red").length,
   };
-  const uptimeWeight = countable.length
-    ? countable.reduce((s, a) => s + (a.health === "green" ? 1 : a.health === "orange" ? 0.5 : 0), 0) / countable.length
-    : 1;
-
   const topOpportunity = opportunities[0];
   const moreOpportunities = opportunities.slice(1, 3);
-  const firstName = access.session.user.name?.trim().split(/\s+/)[0] || "bonjour";
+  const firstName = access.session.user.name?.trim().split(/\s+/)[0] || access.session.user.email?.split("@")[0] || company.name;
   const rhythmReminders = getBusinessRhythmReminders(company);
 
   const attentionCount = healthCounts.orange + healthCounts.red;
@@ -92,7 +88,7 @@ export default async function DashboardHomePage() {
   if (googleSnapshot && googleSnapshot.unreadInboxLast7Days > 0) {
     briefItems.push({
       tone: "accent",
-      text: `${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
+      text: `${googleSnapshot.unreadInboxIsEstimate ? "Environ " : ""}${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
       href: "/app/tools",
     });
   }
@@ -201,7 +197,7 @@ export default async function DashboardHomePage() {
 
       {googleSnapshot && (
         <div className="grid gap-3 sm:grid-cols-3">
-          <MiniOperationalStat label="Emails non lus · 7 jours" value={String(googleSnapshot.unreadInboxLast7Days)} />
+          <MiniOperationalStat label="Emails non lus · 7 jours" value={`${googleSnapshot.unreadInboxIsEstimate ? "~" : ""}${googleSnapshot.unreadInboxLast7Days}`} />
           <MiniOperationalStat label="Événements · 7 jours" value={String(googleSnapshot.upcomingEventsNext7Days)} />
           <MiniOperationalStat label="Observation Google" value="Synchronisée" />
         </div>
