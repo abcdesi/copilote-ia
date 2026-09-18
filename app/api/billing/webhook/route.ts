@@ -260,6 +260,7 @@ async function handleAutomationInvoice(object: Record<string, unknown>, eventTyp
       select: { id: true, opportunityId: true, status: true, providerRef: true, paymentUrl: true },
     });
     if (!purchase) return;
+    if (purchase.providerRef && purchase.providerRef !== invoiceId) return;
     if (purchase.status === status && purchase.providerRef === invoiceId && purchase.paymentUrl === hostedInvoiceUrl) return;
 
     await tx.purchase.update({
