@@ -9,22 +9,9 @@ import { Input, Label, Textarea } from "@/components/ui/Input";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { APP_NAME } from "@/lib/config";
 import { cn } from "@/lib/utils/cn";
+import { BUSINESS_TERRITORY_GROUPS } from "@/lib/companies/territories";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
-const FRANCE_OVERSEAS_OPTIONS = [
-  "Martinique",
-  "Guadeloupe",
-  "Guyane",
-  "La Réunion",
-  "Mayotte",
-  "Saint-Martin",
-  "Saint-Barthélemy",
-  "Saint-Pierre-et-Miquelon",
-  "Polynésie française",
-  "Nouvelle-Calédonie",
-  "Wallis-et-Futuna",
-];
-
 const STEPS = [
   { title: "Votre entreprise", subtitle: "Le minimum utile pour calibrer les premières priorités." },
   { title: "Vos outils", subtitle: "Renseignez ce que vous utilisez déjà. Rien n'est connecté sans votre accord." },
@@ -133,15 +120,13 @@ export function OnboardingWizard({
                     className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
                   >
                     <option value="" disabled>Sélectionner votre territoire</option>
-                    <optgroup label="France">
-                      <option value="France métropolitaine">France métropolitaine</option>
-                    </optgroup>
-                    <optgroup label="France — Outre-mer">
-                      {FRANCE_OVERSEAS_OPTIONS.map((country) => <option key={country} value={country}>{country}</option>)}
-                    </optgroup>
-                    <optgroup label="Autre">
-                      <option value="Autre">Autre territoire</option>
-                    </optgroup>
+                    {BUSINESS_TERRITORY_GROUPS.map((group) => (
+                      <optgroup key={group.label} label={group.label}>
+                        {group.options.map((territory) => (
+                          <option key={territory} value={territory}>{territory}</option>
+                        ))}
+                      </optgroup>
+                    ))}
                   </select>
                 </div>
                 <div className="space-y-1.5">
