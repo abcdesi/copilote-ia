@@ -1,22 +1,22 @@
 export const BUSINESS_TERRITORY_GROUPS = [
   {
-    label: "France",
+    label: "France métropolitaine",
     options: ["France métropolitaine"],
   },
   {
-    label: "Antilles & Guyane",
+    label: "Outre-mer — Antilles & Guyane",
     options: ["Martinique", "Guadeloupe", "Guyane", "Saint-Martin", "Saint-Barthélemy"],
   },
   {
-    label: "Océan Indien",
+    label: "Outre-mer — Océan Indien",
     options: ["La Réunion", "Mayotte"],
   },
   {
-    label: "Autres territoires français",
+    label: "Outre-mer — Pacifique & Saint-Pierre-et-Miquelon",
     options: ["Saint-Pierre-et-Miquelon", "Polynésie française", "Nouvelle-Calédonie", "Wallis-et-Futuna"],
   },
   {
-    label: "Hors zone de lancement",
+    label: "Autre pays / territoire",
     options: ["Autre territoire / pays"],
   },
 ] as const;
