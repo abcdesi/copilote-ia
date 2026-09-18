@@ -42,11 +42,12 @@ export function OnboardingWizard({
 }) {
   const [step, setStep] = useState(0);
   const [name, setName] = useState("");
+  const [country, setCountry] = useState("");
   const [selectedTools, setSelectedTools] = useState<string[]>(prefill?.detectedTools ?? []);
   const [navLocked, setNavLocked] = useState(false);
 
   const isLast = step === STEPS.length - 1;
-  const canAdvance = step === 0 ? name.trim().length > 0 : true;
+  const canAdvance = step === 0 ? name.trim().length > 0 && country.length > 0 : true;
 
   function lockNav() {
     setNavLocked(true);
@@ -128,7 +129,8 @@ export function OnboardingWizard({
                   <select
                     id="country"
                     name="country"
-                    defaultValue=""
+                    value={country}
+                    onChange={(event) => setCountry(event.target.value)}
                     required
                     className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
                   >
