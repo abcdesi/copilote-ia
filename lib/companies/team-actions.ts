@@ -142,6 +142,93 @@ export async function removeTeamMemberAction(formData: FormData) {
   revalidatePath("/app/team");
 }
 
+
+const transferOwnershipSchema = z.object({
+  membershipId: z.string().min(1),
+  confirmation: z.string().trim().min(1),
+});
+
+export async function transferCompanyOwnershipAction(formData: FormData) {
+  const access = await getCurrentCompanyAccess();
+  if (access.role !== "owner") teamError("forbidden");
+
+  const parsed = transferOwnershipSchema.safeParse({
+    membershipId: formData.get("membershipId"),
+    confirmation: formData.get("confirmation"),
+  });
+  if (!parsed.success || parsed.data.confirmation !== access.company.name) teamError("ownership_confirmation");
+
+  try {
+    await prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${access.company.id} FOR UPDATE`;
+
+        const company = await tx.company.findUnique({
+          where: { id: access.company.id },
+          select: { id: true, userId: true, name: true },
+        });
+        if (!company || company.userId !== access.session.user.id) throw new Error("OWNERSHIP_CHANGED");
+
+        const [currentOwner, target] = await Promise.all([
+          tx.companyMembership.findUnique({
+            where: { companyId_userId: { companyId: access.company.id, userId: access.session.user.id } },
+          }),
+          tx.companyMembership.findFirst({
+            where: {
+              id: parsed.data.membershipId,
+              companyId: access.company.id,
+              status: "active",
+              userId: { not: access.session.user.id },
+            },
+            include: { user: { select: { id: true, email: true, name: true } } },
+          }),
+        ]);
+        if (!currentOwner || currentOwner.role !== "owner") throw new Error("OWNERSHIP_CHANGED");
+        if (!target) throw new Error("MEMBER_NOT_FOUND");
+
+        await tx.company.update({
+          where: { id: company.id },
+          data: { userId: target.userId },
+        });
+        await tx.companyMembership.update({
+          where: { id: currentOwner.id },
+          data: { role: "admin" },
+        });
+        await tx.companyMembership.update({
+          where: { id: target.id },
+          data: { role: "owner" },
+        });
+        await tx.event.create({
+          data: {
+            companyId: company.id,
+            userId: access.session.user.id,
+            type: "TEAM_OWNERSHIP_TRANSFERRED",
+            metadata: JSON.stringify({
+              previousOwnerUserId: access.session.user.id,
+              previousOwnerEmail: access.session.user.email,
+              nextOwnerUserId: target.userId,
+              nextOwnerEmail: target.user.email,
+              nextOwnerName: target.user.name,
+              previousOwnerNextRole: "admin",
+              transferredAt: new Date().toISOString(),
+            }),
+          },
+        });
+      },
+      { isolationLevel: "Serializable", timeout: 10_000 }
+    );
+  } catch (error) {
+    const code = error instanceof Error ? error.message : "OWNERSHIP_TRANSFER_FAILED";
+    if (code === "MEMBER_NOT_FOUND") teamError("member_not_found");
+    if (code === "OWNERSHIP_CHANGED") teamError("ownership_changed");
+    console.error("Ownership transfer failed", error);
+    teamError("ownership_transfer_failed");
+  }
+
+  revalidatePath("/app/team");
+  redirect("/app/team?ownership=transferred");
+}
+
 export async function acceptTeamInvitationAction(formData: FormData) {
   const session = await requireSession();
   const token = String(formData.get("token") ?? "");
