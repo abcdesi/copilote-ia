@@ -46,8 +46,9 @@ model Company {
   salesContext      String?
   hrContext         String?
   operationsContext String?
-  automationScore   Int      @default(0)
-  additionalSeats   Int      @default(0)
+  automationScore                 Int      @default(0)
+  additionalSeats                 Int      @default(0)
+  automationPurchaseMonthlyCapEur Float    @default(250)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
