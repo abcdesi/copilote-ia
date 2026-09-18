@@ -52,6 +52,9 @@ export function automationConfigHash(input: {
   approvalMode: string;
   cadenceDays: number | null;
   maxSendsPerContact: number | null;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  scheduleDays: string;
   replyToEmail: string | null;
 }) {
   return createHash("sha256")
@@ -63,6 +66,9 @@ export function automationConfigHash(input: {
         approvalMode: input.approvalMode,
         cadenceDays: input.cadenceDays,
         maxSendsPerContact: input.maxSendsPerContact,
+        scheduleStartHour: input.scheduleStartHour,
+        scheduleEndHour: input.scheduleEndHour,
+        scheduleDays: input.scheduleDays,
         replyToEmail: input.replyToEmail,
       })
     )
