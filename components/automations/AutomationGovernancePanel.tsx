@@ -100,6 +100,7 @@ export function AutomationGovernancePanel({
             </select>
             <p className="text-[11px] leading-4 text-muted-foreground">
               Le mode autonome reste limité à cette configuration exacte ; un changement redemande une validation.
+              Les passages automatiques sont actuellement exécutés les jours ouvrés ; un lancement manuel reste possible selon votre rôle.
             </p>
           </div>
           <div className="space-y-1.5">
