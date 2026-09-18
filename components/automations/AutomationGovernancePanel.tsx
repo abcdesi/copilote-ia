@@ -91,12 +91,13 @@ export function AutomationGovernancePanel({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6">
         <Info label="Mode" value={MODE_LABELS[approvalMode] ?? approvalMode} />
         <Info label="Cadence" value={cadenceDays ? `Tous les ${cadenceDays} jours` : "Selon le déclencheur"} />
         <Info label="Créneau local" value={`${String(scheduleStartHour).padStart(2, "0")}:00–${String(scheduleEndHour).padStart(2, "0")}:00`} />
         <Info label="Jours" value={selectedDayLabels || "Aucun"} />
         <Info label="Maximum / contact" value={`${maxSendsPerContact} envoi${maxSendsPerContact > 1 ? "s" : ""}`} />
+        <Info label="Risque" value={riskLevel} />
       </div>
 
       {canConfigure ? (
