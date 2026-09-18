@@ -10,6 +10,7 @@ export interface ChatViewMessage {
   role: "user" | "assistant";
   content: string;
   action?: CopilotAction | null;
+  actions?: CopilotAction[];
 }
 
 interface CopilotAction {
@@ -111,6 +112,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
           role: "assistant",
           content: res.ok ? data.reply : "Une erreur est survenue.",
           action: res.ok ? data.action ?? null : null,
+          actions: res.ok && Array.isArray(data.actions) ? data.actions : [],
         },
       ]);
     } catch {
@@ -185,39 +187,45 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
                 {m.role === "assistant" ? <RichMessage content={m.content} /> : m.content}
               </div>
 
-              {m.role === "assistant" && m.action && (
-                <div className="rounded-2xl border border-accent/20 bg-accent-soft p-4 text-left">
-                  <div className="flex items-start gap-3">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-accent">
-                      <ShieldCheck size={16} />
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Prochaine étape utile</p>
-                        {m.action.automationReadiness === "ready" && (
-                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Automatisable maintenant</span>
-                        )}
-                        {m.action.automationReadiness === "configuration_required" && (
-                          <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">Prérequis à compléter</span>
-                        )}
-                        {m.action.automationReadiness === "not_executable" && (
-                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">À traiter manuellement pour l'instant</span>
-                        )}
+              {m.role === "assistant" && ((m.actions?.length ?? 0) > 0 || m.action) && (
+                <div className="space-y-2">
+                  {(m.actions?.length ? m.actions : m.action ? [m.action] : []).map((action, actionIndex) => (
+                    <div key={action.href + "-" + actionIndex} className="rounded-2xl border border-accent/20 bg-accent-soft p-4 text-left">
+                      <div className="flex items-start gap-3">
+                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-card text-accent">
+                          <ShieldCheck size={16} />
+                        </div>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">
+                              {actionIndex === 0 ? "Prochaine étape utile" : "Autre recommandation automatisable"}
+                            </p>
+                            {action.automationReadiness === "ready" && (
+                              <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Automatisable maintenant</span>
+                            )}
+                            {action.automationReadiness === "configuration_required" && (
+                              <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">Prérequis à compléter</span>
+                            )}
+                            {action.automationReadiness === "not_executable" && (
+                              <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">À traiter manuellement pour l'instant</span>
+                            )}
+                          </div>
+                          {action.description && (
+                            <p className="mt-1 text-sm leading-5 text-foreground/75">{action.description}</p>
+                          )}
+                          {action.requiresConfirmation && (
+                            <p className="mt-2 text-xs text-muted-foreground">Aucune activation n'est effectuée sans votre validation.</p>
+                          )}
+                          <Link
+                            href={action.href}
+                            className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+                          >
+                            {action.label} <ArrowRight size={14} />
+                          </Link>
+                        </div>
                       </div>
-                      {m.action.description && (
-                        <p className="mt-1 text-sm leading-5 text-foreground/75">{m.action.description}</p>
-                      )}
-                      {m.action.requiresConfirmation && (
-                        <p className="mt-2 text-xs text-muted-foreground">Aucune activation n'est effectuée sans votre validation.</p>
-                      )}
-                      <Link
-                        href={m.action.href}
-                        className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
-                      >
-                        {m.action.label} <ArrowRight size={14} />
-                      </Link>
                     </div>
-                  </div>
+                  ))}
                 </div>
               )}
             </div>
