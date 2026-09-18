@@ -18,6 +18,7 @@ interface CopilotAction {
   href: string;
   description?: string;
   requiresConfirmation?: boolean;
+  automationReadiness?: "ready" | "configuration_required" | "not_executable";
 }
 
 const STARTERS = [
@@ -188,7 +189,18 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
                       <ShieldCheck size={16} />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Prochaine étape utile</p>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <p className="text-xs font-semibold uppercase tracking-[0.14em] text-accent">Prochaine étape utile</p>
+                        {m.action.automationReadiness === "ready" && (
+                          <span className="rounded-full bg-success/10 px-2 py-0.5 text-[10px] font-semibold text-success">Automatisable maintenant</span>
+                        )}
+                        {m.action.automationReadiness === "configuration_required" && (
+                          <span className="rounded-full bg-warning/10 px-2 py-0.5 text-[10px] font-semibold text-warning">Prérequis à compléter</span>
+                        )}
+                        {m.action.automationReadiness === "not_executable" && (
+                          <span className="rounded-full bg-muted px-2 py-0.5 text-[10px] font-semibold text-muted-foreground">À traiter manuellement pour l'instant</span>
+                        )}
+                      </div>
                       {m.action.description && (
                         <p className="mt-1 text-sm leading-5 text-foreground/75">{m.action.description}</p>
                       )}
