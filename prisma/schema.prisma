@@ -32,6 +32,7 @@ model Company {
   phone             String?
   industry          String?
   country           String?
+  timezone          String?
   sizeRange         String?
   employeeCount     Int?
   objectives        String?
