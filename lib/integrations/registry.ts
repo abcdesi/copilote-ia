@@ -32,7 +32,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     permissionMode: "read_action_confirm",
     permissionLabel: "Lecture + actions avec confirmation",
     sensitiveActions: ["publier un message", "modifier un message"],
-    mvpPriority: "now",
+    mvpPriority: "next",
   },
   {
     name: "Notion",
@@ -40,7 +40,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     permissionMode: "read_action_confirm",
     permissionLabel: "Lecture + actions avec confirmation",
     sensitiveActions: ["modifier ou supprimer une page"],
-    mvpPriority: "now",
+    mvpPriority: "next",
   },
   {
     name: "HubSpot",
@@ -48,7 +48,7 @@ const DEFINITIONS: IntegrationDefinition[] = [
     permissionMode: "read_action_confirm",
     permissionLabel: "Lecture + actions avec confirmation",
     sensitiveActions: ["modifier un contact", "changer une étape du pipeline", "envoyer une communication"],
-    mvpPriority: "now",
+    mvpPriority: "next",
   },
   {
     name: "Stripe",
