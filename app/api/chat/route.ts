@@ -210,20 +210,26 @@ export async function POST(req: NextRequest) {
     ])
   ).slice(0, 3);
 
-  const automationActions: CopilotAction[] = [];
+  const automationActionEntries: Array<{
+    action: CopilotAction;
+    templateId: string;
+    templateSource: "explicit_request" | "assistant_recommendation";
+  }> = [];
+
   for (const templateId of recommendedTemplateIds) {
-    const source =
-      templateId === matchedTemplateId
+    const templateSource =
+      templateId === matchedTemplateId && matchedTemplateSource
         ? matchedTemplateSource
         : ("assistant_recommendation" as const);
-    const opportunity = await createOpportunityFromChatMatch(company.id, templateId, source);
+    const opportunity = await createOpportunityFromChatMatch(company.id, templateId, templateSource);
     if (!opportunity) continue;
 
     const capability = await getAutomationCapability(company.id, role, templateId, opportunity.id);
     const action = buildSafeAction(parsed.data.message, opportunity.id, templateId, capability);
-    if (action) automationActions.push(action);
+    if (action) automationActionEntries.push({ action, templateId, templateSource });
   }
 
+  const automationActions = automationActionEntries.map((entry) => entry.action);
   const fallbackAction =
     automationActions[0] ??
     buildSafeAction(parsed.data.message, null, null, null);
@@ -234,30 +240,36 @@ export async function POST(req: NextRequest) {
         ? [fallbackAction]
         : [];
 
-  for (const action of actions) {
-    const actionTemplateId =
-      recommendedTemplateIds.find((templateId) => {
-        const opportunity = getTemplateById(templateId);
-        return opportunity ? action.label.includes("Automatiser") || action.href.includes("/app/opportunities/") : false;
-      }) ?? matchedTemplateId ?? null;
-
+  if (automationActionEntries.length > 0) {
+    for (const entry of automationActionEntries) {
+      await track(EVENTS.RECOMMENDATION_SHOWN, {
+        companyId: company.id,
+        userId: session.user.id,
+        metadata: {
+          source: "copilot",
+          actionKind: entry.action.kind,
+          destination: entry.action.href,
+          requiresConfirmation: Boolean(entry.action.requiresConfirmation),
+          actorRole: role,
+          templateId: entry.templateId,
+          templateSource: entry.templateSource,
+          automationReadiness: entry.action.automationReadiness ?? null,
+        },
+      });
+    }
+  } else if (fallbackAction) {
     await track(EVENTS.RECOMMENDATION_SHOWN, {
       companyId: company.id,
       userId: session.user.id,
       metadata: {
         source: "copilot",
-        actionKind: action.kind,
-        destination: action.href,
-        requiresConfirmation: Boolean(action.requiresConfirmation),
+        actionKind: fallbackAction.kind,
+        destination: fallbackAction.href,
+        requiresConfirmation: Boolean(fallbackAction.requiresConfirmation),
         actorRole: role,
-        templateId: actionTemplateId,
-        templateSource:
-          actionTemplateId && actionTemplateId === matchedTemplateId
-            ? matchedTemplateSource ?? null
-            : actionTemplateId
-              ? "assistant_recommendation"
-              : null,
-        automationReadiness: action.automationReadiness ?? null,
+        templateId: null,
+        templateSource: null,
+        automationReadiness: fallbackAction.automationReadiness ?? null,
       },
     });
   }
