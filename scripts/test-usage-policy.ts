@@ -18,7 +18,8 @@ async function createCompany(label: string) {
   return { user, company };
 }
 
-async function cleanup(userId: string) {
+async function cleanup(userId: string, companyId: string) {
+  await prisma.company.delete({ where: { id: companyId } }).catch(() => undefined);
   await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
 }
 
@@ -65,7 +66,7 @@ async function testConcurrentReservations() {
     assert.equal(afterRefund.creditsUsed, 4500, "Un remboursement concurrent ne doit être appliqué qu'une fois.");
     assert.equal(afterRefund.reservedCostEur, 45);
   } finally {
-    await cleanup(user.id);
+    await cleanup(user.id, company.id);
   }
 }
 
@@ -86,7 +87,7 @@ async function testInactiveSubscriptionCannotRestartTrial() {
     const trial = await prisma.event.findFirst({ where: { companyId: company.id, type: "TRIAL_STARTED" } });
     assert.equal(trial, null, "Un ancien abonnement non actif ne doit jamais recréer un essai.");
   } finally {
-    await cleanup(user.id);
+    await cleanup(user.id, company.id);
   }
 }
 
