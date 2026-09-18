@@ -50,11 +50,11 @@ const FAQ = [
   ],
   [
     "Que se passe-t-il si j'atteins ma limite ?",
-    "Pilotzia conserve votre espace, votre contexte et votre historique. Pendant l'essai, vous pouvez activer un abonnement. Sur un abonnement, vous pouvez passer à une offre supérieure si votre entreprise a besoin de davantage de capacité mensuelle.",
+    "Pilotzia conserve votre espace, votre contexte et votre historique. Pendant l'essai, vous pouvez activer un abonnement. Sur un abonnement, Pilotzia vous alerte avant la limite et vous permet soit d'acheter un pack de crédits supplémentaires, soit de passer à l'offre supérieure.",
   ],
   [
     "Quels sont les plans ?",
-    "Core à 49 €/mois approfondit le contexte, le pilotage et les recommandations. Action à 99 €/mois ajoute l'exécution contrôlée, les automatisations, le monitoring et le suivi ROI. Scale à 249 €/mois vise l'audit avancé, l'intelligence financière, les analyses croisées et les usages d'équipe plus importants.",
+    "Core à 79 €/mois approfondit le contexte, le pilotage et les recommandations. Action à 179 €/mois ajoute l'exécution contrôlée, les automatisations, le monitoring et le suivi ROI. Scale à 399 €/mois vise l'audit avancé, l'intelligence financière, les analyses croisées et les usages d'équipe plus importants. Des tarifs annuels et des packs de crédits supplémentaires sont affichés avant achat.",
   ],
   [
     "Pilotzia peut-il analyser un bilan ou un compte de résultat ?",
@@ -66,7 +66,7 @@ const FAQ = [
   ],
   [
     "Puis-je supprimer mes données ?",
-    "Oui. Pilotzia doit permettre l'exercice de vos droits sur les données personnelles et la suppression du compte selon les obligations légales et les durées de conservation applicables.",
+    "Oui. Vous pouvez demander l'accès, l'export ou l'effacement des données personnelles concernées via l'assistance Pilotzia. La demande est traitée selon les obligations légales et les durées de conservation applicables ; les éléments devant être conservés pour la facturation, la sécurité ou la preuve ne sont pas supprimés avant l'expiration de leur durée légale.",
   ],
   [
     "Pilotzia revend-il mes données ?",
