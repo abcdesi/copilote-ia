@@ -4,6 +4,9 @@ import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { canApproveRisk, hasCompanyPermission } from "../lib/companies/access";
 import { KNOWN_TOOLS } from "../lib/automations/types";
 import { getIntegrationDefinition } from "../lib/integrations/registry";
+import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
+import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
+import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
 
 function testDemandingExecutive() {
   assert.equal(canApproveRisk("owner", "critical"), true, "Le propriétaire doit pouvoir valider le risque critique.");
@@ -25,6 +28,25 @@ function testSixtyEmployeeCompany() {
   assert.equal(hasCompanyPermission("operator", "configure_automations"), false);
   assert.equal(hasCompanyPermission("viewer", "view"), true);
   assert.equal(hasCompanyPermission("viewer", "operate_automations"), false);
+}
+
+function testCopilotRecommendationGovernance() {
+  const recommended = findRecommendedTemplateMatch(
+    "Je recommande de commencer par automatiser la relance des prospects silencieux.",
+    AUTOMATION_CATALOG,
+    ["Gmail"]
+  );
+  assert.equal(recommended?.id, "relance-prospects");
+
+  const mereMention = findRecommendedTemplateMatch(
+    "Vous utilisez Gmail et vous avez des prospects à suivre.",
+    AUTOMATION_CATALOG,
+    ["Gmail"]
+  );
+  assert.equal(mereMention, undefined, "Une simple mention ne doit pas créer une automatisation.");
+
+  assert.equal(isRealExecutionTemplate("relance-prospects"), true);
+  assert.equal(isRealExecutionTemplate("reporting-hebdo"), false);
 }
 
 function testMarketingExpert() {
@@ -49,6 +71,7 @@ function main() {
   testSixtyEmployeeCompany();
   testMarketingExpert();
   testSolopreneur();
+  testCopilotRecommendationGovernance();
   console.log("Four-profile product acceptance tests: OK");
 }
 
