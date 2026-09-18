@@ -1,5 +1,5 @@
 import { Upload } from "lucide-react";
-import { addProspectAction, importProspectsAction } from "@/lib/companies/prospect-actions";
+import { addProspectAction, importProspectsAction, setProspectOutcomeAction } from "@/lib/companies/prospect-actions";
 import { updateMessageTemplateAction } from "@/lib/companies/automation-message-actions";
 import { setProspectStatusAction } from "@/lib/companies/automation-governance-actions";
 import { Input, Label, Textarea } from "@/components/ui/Input";
@@ -19,6 +19,15 @@ export interface ProspectData {
   nextEligibleAt: Date | null;
   eligible: boolean;
 }
+
+const OUTCOME_LABELS: Record<string, string> = {
+  no_response: "Toujours sans réponse",
+  replied: "Réponse obtenue",
+  meeting_booked: "Rendez-vous obtenu",
+  won: "Opportunité gagnée",
+  lost: "Opportunité perdue",
+  excluded_by_user: "Exclu manuellement",
+};
 
 function eligibilityLabel(prospect: ProspectData, maxSendsPerContact: number) {
   if (prospect.status !== "active") return { label: "Exclu", tone: "neutral" as const };
@@ -94,17 +103,34 @@ export function ProspectsPanel({
                             ? ` Prochaine éligibilité : ${new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short" }).format(prospect.nextEligibleAt)}.`
                             : ""}
                         </p>
-                        {prospect.lastOutcome && <p>Dernier résultat mémorisé : {prospect.lastOutcome}</p>}
+                        {prospect.lastOutcome && <p>Dernier résultat mémorisé : {OUTCOME_LABELS[prospect.lastOutcome] ?? prospect.lastOutcome}</p>}
                       </div>
                     </div>
                     {canManageContacts && (
-                      <form action={setProspectStatusAction}>
-                        <input type="hidden" name="prospectId" value={prospect.id} />
-                        <input type="hidden" name="status" value={prospect.status === "active" ? "excluded" : "active"} />
-                        <Button type="submit" size="sm" variant="outline">
-                          {prospect.status === "active" ? "Exclure" : "Réactiver"}
-                        </Button>
-                      </form>
+                      <div className="flex flex-col gap-2 sm:items-end">
+                        <form action={setProspectOutcomeAction} className="flex items-center gap-2">
+                          <input type="hidden" name="prospectId" value={prospect.id} />
+                          <select
+                            name="outcome"
+                            defaultValue={prospect.lastOutcome && OUTCOME_LABELS[prospect.lastOutcome] ? prospect.lastOutcome : "no_response"}
+                            className="h-9 rounded-lg border border-border bg-background px-2 text-xs"
+                          >
+                            <option value="no_response">Toujours sans réponse</option>
+                            <option value="replied">Réponse obtenue</option>
+                            <option value="meeting_booked">Rendez-vous obtenu</option>
+                            <option value="won">Opportunité gagnée</option>
+                            <option value="lost">Opportunité perdue</option>
+                          </select>
+                          <Button type="submit" size="sm" variant="outline">Mémoriser</Button>
+                        </form>
+                        <form action={setProspectStatusAction}>
+                          <input type="hidden" name="prospectId" value={prospect.id} />
+                          <input type="hidden" name="status" value={prospect.status === "active" ? "excluded" : "active"} />
+                          <button className="text-xs font-semibold text-muted-foreground hover:text-foreground">
+                            {prospect.status === "active" ? "Exclure des prochaines relances" : "Réactiver explicitement"}
+                          </button>
+                        </form>
+                      </div>
                     )}
                   </div>
                 </li>
