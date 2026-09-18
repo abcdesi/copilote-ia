@@ -241,16 +241,26 @@ async function handleAutomationInvoice(object: Record<string, unknown>, eventTyp
 
   const paid = eventType === "invoice.paid";
   const failed = eventType === "invoice.payment_failed";
+  const actionRequired = eventType === "invoice.payment_action_required";
   const voided = eventType === "invoice.voided";
-  const status = paid ? "paid" : failed ? "payment_failed" : voided ? "void" : "pending";
+  const status = paid
+    ? "paid"
+    : failed
+      ? "payment_failed"
+      : actionRequired
+        ? "payment_action_required"
+        : voided
+          ? "void"
+          : "pending";
   const hostedInvoiceUrl = stringValue(object.hosted_invoice_url);
 
   await prisma.$transaction(async (tx) => {
     const purchase = await tx.purchase.findFirst({
       where: { id: purchaseId, companyId },
-      select: { id: true, opportunityId: true, status: true },
+      select: { id: true, opportunityId: true, status: true, providerRef: true, paymentUrl: true },
     });
     if (!purchase) return;
+    if (purchase.status === status && purchase.providerRef === invoiceId && purchase.paymentUrl === hostedInvoiceUrl) return;
 
     await tx.purchase.update({
       where: { id: purchase.id },
@@ -269,7 +279,9 @@ async function handleAutomationInvoice(object: Record<string, unknown>, eventTyp
           ? "AUTOMATION_PURCHASE_PAID"
           : failed
             ? "AUTOMATION_PURCHASE_PAYMENT_FAILED"
-            : voided
+            : actionRequired
+              ? "AUTOMATION_PURCHASE_ACTION_REQUIRED"
+              : voided
               ? "AUTOMATION_PURCHASE_VOIDED"
               : "AUTOMATION_PURCHASE_UPDATED",
         metadata: JSON.stringify({
@@ -325,6 +337,7 @@ export async function POST(req: NextRequest) {
   if (
     event.type === "invoice.paid" ||
     event.type === "invoice.payment_failed" ||
+    event.type === "invoice.payment_action_required" ||
     event.type === "invoice.voided"
   ) {
     await handleAutomationInvoice(object, event.type);
