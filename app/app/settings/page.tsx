@@ -1,5 +1,4 @@
-import { auth } from "@/lib/auth";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatEur } from "@/lib/format";
@@ -20,8 +19,10 @@ function formatDate(value: Date | null) {
 }
 
 export default async function SettingsPage() {
-  const session = await auth();
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const session = access.session;
+  const company = access.company;
+  const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
   const subscription = company.subscriptions[0];
   const currentPlan = subscription?.plan ?? "free";
   const hasStripeCustomer = Boolean(subscription?.stripeCustomerId);
@@ -107,13 +108,19 @@ export default async function SettingsPage() {
         </div>
       )}
 
+      {!canManageBilling && (
+        <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Vous pouvez consulter l'abonnement et l'usage de l'entreprise, mais seul le Propriétaire peut modifier l'offre, acheter des crédits ou ouvrir le portail de facturation.
+        </div>
+      )}
+
       <section id="plans" className="scroll-mt-24">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Choisissez jusqu'où Pilotzia doit aller pour vous</h2>
             <p className="mt-1 text-sm text-muted-foreground">Core aide à décider. Action aide aussi à exécuter. Scale ajoute une profondeur d'audit et de pilotage supérieure.</p>
           </div>
-          {hasStripeCustomer && (
+          {hasStripeCustomer && canManageBilling && (
             <form method="post" action="/api/billing/portal">
               <Button type="submit" size="sm" variant="outline">Gérer ou modifier mon abonnement</Button>
             </form>
@@ -147,7 +154,7 @@ export default async function SettingsPage() {
                   <li>✓ {plan.monthlyCredits.toLocaleString("fr-FR")} crédits d'usage intelligent / mois</li>
                 </ul>
 
-                {!active && !usage.paid && (
+                {!active && !usage.paid && canManageBilling && (
                   <div className="mt-5 grid gap-2">
                     {monthlyReady ? (
                       <form method="post" action="/api/billing/checkout">
@@ -166,7 +173,7 @@ export default async function SettingsPage() {
                   </div>
                 )}
 
-                {!active && usage.paid && (
+                {!active && usage.paid && canManageBilling && (
                   <form method="post" action="/api/billing/portal" className="mt-5">
                     <Button type="submit" size="sm" variant="outline" className="w-full">Changer d'offre</Button>
                   </form>
@@ -178,7 +185,7 @@ export default async function SettingsPage() {
         <p className="mt-4 text-xs leading-5 text-muted-foreground">Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel.</p>
       </section>
 
-      {usage.paid && (
+      {usage.paid && canManageBilling && (
         <section id="credits" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
