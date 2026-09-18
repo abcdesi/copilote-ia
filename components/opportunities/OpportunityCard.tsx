@@ -1,7 +1,7 @@
 import { Flame, Zap } from "lucide-react";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
-import { IMPACT_LABELS, COMPLEXITY_SHORT_LABELS, formatHours } from "@/lib/format";
+import { IMPACT_LABELS, COMPLEXITY_SHORT_LABELS, formatEur, formatHours } from "@/lib/format";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 
 export interface OpportunityCardData {
@@ -13,6 +13,7 @@ export interface OpportunityCardData {
   impactLevel: string;
   complexity: string;
   estimatedHoursPerMonth: number;
+  priceEur: number;
 }
 
 export function OpportunityCard({ opportunity, highlight = false }: { opportunity: OpportunityCardData; highlight?: boolean }) {
@@ -52,7 +53,7 @@ export function OpportunityCard({ opportunity, highlight = false }: { opportunit
       <div className="mt-4 flex items-center justify-between gap-3">
         <div>
           <span className="text-xs text-muted-foreground">{IMPACT_LABELS[opportunity.impactLevel]}</span>
-          {isReal && <p className="mt-1 text-[11px] font-medium text-accent">Inclus avec Action / Scale · usage selon crédits</p>}
+          {isReal && <p className="mt-1 text-[11px] font-medium text-accent">{formatEur(opportunity.priceEur)} HT · achat unique</p>}
         </div>
         <Button href={`/app/opportunities/${opportunity.id}`} size="sm">
           Examiner
