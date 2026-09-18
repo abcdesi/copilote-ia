@@ -137,7 +137,7 @@ export async function GET(req: NextRequest) {
 
   // Rafraîchissement hebdomadaire lissé : on ne traite qu'un petit lot d'entreprises
   // arrivées à échéance à chaque passage. La fonction elle-même est idempotente sur 6 jours.
-  const weeklyCutoff = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const weeklyCutoff = new Date(now.getTime() - (6 * 24 + 23) * 60 * 60 * 1000);
   const weeklyCompanies = await prisma.company.findMany({
     where: {
       events: {
