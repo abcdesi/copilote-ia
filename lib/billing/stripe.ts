@@ -212,6 +212,7 @@ export async function createAutomationInvoicePurchase(input: {
   title: string;
   amountEur: number;
   stripeCustomerId: string;
+  billingAttempt: number;
 }) {
   const invoiceBody = new URLSearchParams();
   invoiceBody.set("customer", input.stripeCustomerId);
@@ -229,7 +230,7 @@ export async function createAutomationInvoicePurchase(input: {
   }
 
   const invoice = await stripePost<StripeInvoice>("/invoices", invoiceBody, {
-    idempotencyKey: `pilotzia-automation-invoice-${input.purchaseId}`,
+    idempotencyKey: `pilotzia-automation-invoice-${input.purchaseId}-a${input.billingAttempt}`,
   });
 
   const itemBody = new URLSearchParams();
@@ -242,13 +243,13 @@ export async function createAutomationInvoicePurchase(input: {
   itemBody.set("metadata[purchaseId]", input.purchaseId);
   itemBody.set("metadata[opportunityId]", input.opportunityId);
   await stripePost("/invoiceitems", itemBody, {
-    idempotencyKey: `pilotzia-automation-item-${input.purchaseId}`,
+    idempotencyKey: `pilotzia-automation-item-${input.purchaseId}-a${input.billingAttempt}`,
   });
 
   const finalized = await stripePost<StripeInvoice>(
     `/invoices/${encodeURIComponent(invoice.id)}/finalize`,
     new URLSearchParams({ auto_advance: "false" }),
-    { idempotencyKey: `pilotzia-automation-finalize-${input.purchaseId}` }
+    { idempotencyKey: `pilotzia-automation-finalize-${input.purchaseId}-a${input.billingAttempt}` }
   );
 
   let latest = finalized;
@@ -258,7 +259,7 @@ export async function createAutomationInvoicePurchase(input: {
       latest = await stripePost<StripeInvoice>(
         `/invoices/${encodeURIComponent(invoice.id)}/pay`,
         new URLSearchParams(),
-        { idempotencyKey: `pilotzia-automation-pay-${input.purchaseId}` }
+        { idempotencyKey: `pilotzia-automation-pay-${input.purchaseId}-a${input.billingAttempt}` }
       );
     } catch (error) {
       paymentError = error instanceof Error ? error.message.slice(0, 400) : "Paiement à confirmer.";
