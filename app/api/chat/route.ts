@@ -7,6 +7,7 @@ import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
 import { inferConversationIntent } from "@/lib/ai/expert-response-policy";
 import { getTemplateById } from "@/lib/automations/catalog";
+import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 import { HOURLY_RATE_EUR } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
@@ -174,7 +175,7 @@ export async function POST(req: NextRequest) {
     ? await createOpportunityFromChatMatch(company.id, matchedTemplateId)
     : null;
 
-  const action = buildSafeAction(parsed.data.message, opportunity?.id ?? null);
+  const action = buildSafeAction(parsed.data.message, opportunity?.id ?? null, matchedTemplateId ?? null);
 
   if (action) {
     await track(EVENTS.RECOMMENDATION_SHOWN, {
@@ -220,14 +221,17 @@ async function createOpportunityFromChatMatch(companyId: string, templateId: str
   return opportunity;
 }
 
-function buildSafeAction(message: string, opportunityId: string | null): CopilotAction | null {
+function buildSafeAction(message: string, opportunityId: string | null, templateId?: string | null): CopilotAction | null {
   if (opportunityId) {
+    const executable = Boolean(templateId && isRealExecutionTemplate(templateId));
     return {
       kind: "navigate",
-      label: "Voir la recommandation",
+      label: executable ? "Automatiser cette recommandation" : "Voir la recommandation",
       href: `/app/opportunities/${opportunityId}`,
-      description: "Vérifiez le fonctionnement, l'impact estimé et les étapes avant toute activation.",
-      requiresConfirmation: true,
+      description: executable
+        ? "Cette recommandation correspond à un workflow réellement pris en charge. Vous verrez l'aperçu, les destinataires, les permissions et la configuration avant toute activation."
+        : "Cette recommandation est pertinente, mais Pilotzia ne la présente pas comme exécutable tant que son connecteur ou workflow réel n'est pas prêt.",
+      requiresConfirmation: executable,
     };
   }
 
