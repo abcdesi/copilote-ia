@@ -6,11 +6,9 @@ import { KNOWN_TOOLS } from "../lib/automations/types";
 import { getIntegrationDefinition } from "../lib/integrations/registry";
 import { BUSINESS_TERRITORY_GROUPS, BUSINESS_TERRITORIES } from "../lib/companies/territories";
 import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
-import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
 import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
-import { BUSINESS_TERRITORIES } from "../lib/companies/territories";
 
 function testDemandingExecutive() {
   assert.equal(canApproveRisk("owner", "critical"), true, "Le propriétaire doit pouvoir valider le risque critique.");
@@ -103,8 +101,8 @@ function testTerritoriesAndCopilotAutomationProposals() {
     assert.ok(BUSINESS_TERRITORIES.includes(territory as (typeof BUSINESS_TERRITORIES)[number]), `${territory} doit être sélectionnable individuellement à l'inscription.`);
   }
   assert.ok(
-    BUSINESS_TERRITORY_GROUPS.some((group) => group.label === "Outre-mer — Antilles & Guyane"),
-    "Les Antilles et la Guyane doivent être regroupées sous un libellé Outre-mer clair."
+    BUSINESS_TERRITORY_GROUPS.some((group) => group.label === "Outre-mer français"),
+    "Les territoires ultramarins doivent être regroupés sous un libellé Outre-mer français clair."
   );
 
   const prospectMatches = mentionedAutomationTemplateIds(
@@ -139,6 +137,7 @@ function main() {
   testSixtyEmployeeCompany();
   testMarketingExpert();
   testCopilotRecommendationActions();
+  testTerritoriesAndCopilotAutomationProposals();
   testSolopreneur();
   testCopilotRecommendationGovernance();
   console.log("Four-profile product acceptance tests: OK");

@@ -60,6 +60,21 @@ function recommendationScore(reply: string, template: AutomationTemplate) {
   return score;
 }
 
+function firstExplicitMentionPosition(reply: string, template: AutomationTemplate) {
+  const normalizedReply = normalizeRecommendationText(reply);
+  const title = normalizeRecommendationText(template.title);
+  const titleIndex = title ? normalizedReply.indexOf(title) : -1;
+  if (titleIndex >= 0) return titleIndex;
+
+  const phrasePositions = template.keywords
+    .map((keyword) => normalizeRecommendationText(keyword))
+    .filter((keyword) => keyword.includes(" ") && keyword.length >= 6)
+    .map((keyword) => normalizedReply.indexOf(keyword))
+    .filter((position) => position >= 0);
+
+  return phrasePositions.length > 0 ? Math.min(...phrasePositions) : Number.MAX_SAFE_INTEGER;
+}
+
 export function mentionedAutomationTemplateIds(reply: string) {
   const normalizedReply = normalizeRecommendationText(reply);
   if (!normalizedReply) return [];
@@ -71,9 +86,13 @@ export function mentionedAutomationTemplateIds(reply: string) {
   if (!recommendationSignal) return [];
 
   return AUTOMATION_CATALOG
-    .map((template) => ({ id: template.id, score: recommendationScore(reply, template) }))
+    .map((template) => ({
+      id: template.id,
+      score: recommendationScore(reply, template),
+      position: firstExplicitMentionPosition(reply, template),
+    }))
     .filter((candidate) => candidate.score >= 6)
-    .sort((a, b) => b.score - a.score)
+    .sort((a, b) => a.position - b.position || b.score - a.score)
     .slice(0, 3)
     .map((candidate) => candidate.id);
 }

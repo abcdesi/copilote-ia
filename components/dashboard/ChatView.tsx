@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, History, Loader2, Send, ShieldCheck, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -80,21 +80,14 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const sendingRef = useRef(false);
 
-  useEffect(() => {
-    const pending = window.sessionStorage.getItem("pilotzia:copilot-draft");
-    if (!pending) return;
-    window.sessionStorage.removeItem("pilotzia:copilot-draft");
-    const timer = window.setTimeout(() => {
-      setInput(pending);
-      inputRef.current?.focus();
-    }, 0);
-    return () => window.clearTimeout(timer);
-  }, []);
+  const send = useCallback(async (text: string) => {
+    const trimmed = text.trim();
+    if (!trimmed || sendingRef.current) return;
 
-  async function send(text: string) {
-    if (!text.trim() || loading) return;
-    const userMsg: ChatViewMessage = { id: crypto.randomUUID(), role: "user", content: text };
+    sendingRef.current = true;
+    const userMsg: ChatViewMessage = { id: crypto.randomUUID(), role: "user", content: trimmed };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
     setLoading(true);
@@ -102,7 +95,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: text }),
+        body: JSON.stringify({ message: trimmed }),
       });
       const data = await res.json();
       setMessages((prev) => [
@@ -118,10 +111,18 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
     } catch {
       setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: "assistant", content: "Une erreur est survenue." }]);
     } finally {
+      sendingRef.current = false;
       setLoading(false);
       setTimeout(() => bottomRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
     }
-  }
+  }, []);
+
+  useEffect(() => {
+    const pending = window.sessionStorage.getItem("pilotzia:copilot-draft");
+    if (!pending) return;
+    window.sessionStorage.removeItem("pilotzia:copilot-draft");
+    void send(pending);
+  }, [send]);
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault();

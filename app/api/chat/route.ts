@@ -196,6 +196,22 @@ export async function POST(req: NextRequest) {
     const opportunity = await createOpportunityFromChatMatch(company.id, templateId, templateSource);
     if (!opportunity) continue;
 
+    await prisma.event.create({
+      data: {
+        companyId: company.id,
+        userId: session.user.id,
+        type: "COPILOT_AUTOMATION_LINKED",
+        metadata: JSON.stringify({
+          conversationId: conversation.id,
+          assistantMessageId: assistantMessage.id,
+          opportunityId: opportunity.id,
+          templateId,
+          templateSource,
+          actorRole: role,
+        }),
+      },
+    });
+
     const capability = await getAutomationCapability(company.id, role, templateId, opportunity.id);
     const action = buildSafeAction(parsed.data.message, opportunity.id, templateId, capability);
     if (action) automationActionEntries.push({ action, templateId, templateSource });
@@ -352,13 +368,7 @@ function buildSafeAction(
     const template = templateId ? getTemplateById(templateId) : null;
     return {
       kind: "navigate",
-      label: automatable
-        ? template
-          ? `Automatiser : ${template.title}`
-          : "Automatiser cette recommandation"
-        : template
-          ? `Préparer l'automatisation : ${template.title}`
-          : "Préparer cette automatisation",
+      label: automatable ? "Préparer l'automatisation" : "Voir l'automatisation proposée",
       href: `/app/opportunities/${opportunityId}`,
       description:
         readiness === "ready"

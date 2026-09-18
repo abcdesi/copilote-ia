@@ -20,11 +20,20 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const canConfigure = hasCompanyPermission(access.role, "configure_automations");
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
 
-  const [opportunity, entitlements, purchase] = await Promise.all([
+  const [opportunity, entitlements, purchase, copilotProvenance] = await Promise.all([
     prisma.opportunity.findFirst({ where: { id, companyId: company.id } }),
     getCompanyEntitlements(company.id),
     prisma.purchase.findUnique({
       where: { companyId_opportunityId: { companyId: company.id, opportunityId: id } },
+    }),
+    prisma.event.findFirst({
+      where: {
+        companyId: company.id,
+        type: "COPILOT_AUTOMATION_LINKED",
+        metadata: { contains: `"opportunityId":"${id}"` },
+      },
+      orderBy: { createdAt: "desc" },
+      select: { createdAt: true },
     }),
   ]);
   if (!opportunity) notFound();
@@ -56,6 +65,11 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         </div>
         <h1 className="mt-3 text-2xl font-semibold tracking-tight">{opportunity.title}</h1>
         <p className="mt-2 text-muted-foreground">{template?.businessGoal ?? opportunity.description}</p>
+        {copilotProvenance && (
+          <p className="mt-2 text-xs text-muted-foreground">
+            Origine : recommandation du Copilote. La chaîne recommandation → opportunité → automatisation reste tracée avant toute activation.
+          </p>
+        )}
       </div>
 
       <div
