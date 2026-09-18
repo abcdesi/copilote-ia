@@ -82,3 +82,11 @@ export function findConfidentTemplateMatch(message: string, templates: Automatio
 
   return hasEnoughEvidence && clearlyAhead ? best.template : undefined;
 }
+
+const RECOMMENDATION_SIGNAL =
+  /\b(je (?:commencerais|prioriserais|recommande|traiterais)|priorit[eé]|prochaine étape|prochaine etape|pilotzia (?:peut|doit)|il faut|devrait|automatis)\b/i;
+
+export function findRecommendedTemplateMatch(message: string, templates: AutomationTemplate[], tools: string[]) {
+  if (!RECOMMENDATION_SIGNAL.test(message) || isCorrectionRequest(message)) return undefined;
+  return findConfidentTemplateMatch(message, templates, tools);
+}
