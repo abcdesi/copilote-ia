@@ -77,8 +77,10 @@ async function upsertSubscriptionFromObject(
 
   const priceId = recurringPriceId(object);
   const mappedPrice = identifyStripeSubscriptionPrice(priceId);
+  const metadataPlan = stringValue(meta.plan);
+  const hasKnownMetadataPlan = metadataPlan === "starter" || metadataPlan === "pro" || metadataPlan === "business";
   const isSubscriptionObject = stringValue(object.object) === "subscription";
-  const objectStatus = isSubscriptionObject && priceId && !mappedPrice
+  const objectStatus = isSubscriptionObject && priceId && !mappedPrice && !hasKnownMetadataPlan
     ? "configuration_error"
     : subscriptionStatus(object);
   const periodStart = numberValue(object.current_period_start);
@@ -106,7 +108,7 @@ async function upsertSubscriptionFromObject(
         return { applied: false as const, reason: "duplicate_event" as const };
       }
 
-      const fallbackPlan = stringValue(meta.plan) ?? fallback?.plan ?? latest?.plan ?? null;
+      const fallbackPlan = hasKnownMetadataPlan ? metadataPlan : fallback?.plan ?? latest?.plan ?? null;
       const fallbackCycle = stringValue(meta.billingCycle) ?? fallback?.billingCycle ?? null;
       const plan = mappedPrice?.plan ?? fallbackPlan;
       if (!plan) return { applied: false as const, reason: "missing_plan" as const };
