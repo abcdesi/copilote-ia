@@ -16,7 +16,9 @@
     "db:seed": "tsx prisma/seed.ts",
     "test:operations": "tsx scripts/test-automation-scheduling.ts && tsx scripts/test-weekly-refresh.ts",
     "test:profiles": "tsx scripts/test-four-profiles.ts",
-    "test:team": "tsx scripts/test-team-governance.ts"
+    "test:team": "tsx scripts/test-team-governance.ts",
+    "test:profiles:runtime": "tsx scripts/test-four-profiles-runtime.ts",
+    "audit:production": "node scripts/check-production-audit.mjs"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",

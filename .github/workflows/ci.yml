@@ -27,6 +27,9 @@ jobs:
     env:
       DATABASE_URL: postgresql://pilotzia:pilotzia@localhost:5432/pilotzia
       AUTH_SECRET: ci-only-not-for-production
+      AUTH_TRUST_HOST: "true"
+      APP_URL: http://127.0.0.1:3000
+      E2E_BASE_URL: http://127.0.0.1:3000
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        run: npm run audit:production
 
       - name: Apply database migrations
         run: npm run db:migrate
@@ -69,3 +72,29 @@ jobs:
 
       - name: Build
         run: npm run build
+
+      - name: Four-profile authenticated runtime smoke tests
+        run: |
+          npm run start -- -p 3000 > /tmp/pilotzia-next.log 2>&1 &
+          SERVER_PID=$!
+          trap 'kill $SERVER_PID' EXIT
+
+          READY=0
+          for i in {1..45}; do
+            if curl -fsS http://127.0.0.1:3000/login > /dev/null; then
+              READY=1
+              break
+            fi
+            sleep 1
+          done
+
+          if [ "$READY" -ne 1 ]; then
+            echo "Pilotzia server did not become ready"
+            cat /tmp/pilotzia-next.log
+            exit 1
+          fi
+
+          npm run test:profiles:runtime || {
+            cat /tmp/pilotzia-next.log
+            exit 1
+          }

@@ -6,6 +6,7 @@ import { getBusinessGraphSummary, rebuildBusinessGraph } from "@/lib/business-gr
 import { extractBusinessRhythms } from "@/lib/business-graph/rhythms";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { getCompanyContextHistory } from "@/lib/companies/history";
+import { deriveMarketingKpis, getLatestMarketingKpiSnapshot } from "@/lib/marketing/kpis";
 
 function parseJsonValue(value: string | null) {
   if (!value) return null;
@@ -20,7 +21,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
   const graphExists = (await prisma.businessEntity.count({ where: { companyId } })) > 0;
   if (!graphExists) await rebuildBusinessGraph(companyId);
 
-  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage, contextHistory] = await Promise.all([
+  const [company, automations, opportunities, connections, observations, businessGraph, graphFacts, knowledgeCoverage, contextHistory, marketingSnapshot] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({
@@ -62,6 +63,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     }),
     getCompanyKnowledgeCoverage(companyId),
     getCompanyContextHistory(companyId, 160),
+    getLatestMarketingKpiSnapshot(companyId),
   ]);
 
   opportunities.sort(
@@ -78,6 +80,17 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
     confidence: 0.82,
     observedAt: revision.effectiveAt,
   }));
+
+  const marketingEvidence = marketingSnapshot
+    ? [{
+        subject: company.name,
+        predicate: "marketing_kpi_snapshot",
+        value: { ...marketingSnapshot, derived: deriveMarketingKpis(marketingSnapshot) },
+        source: "user-reported-marketing",
+        confidence: 0.9,
+        observedAt: marketingSnapshot.observedAt,
+      }]
+    : [];
 
   return {
     companyId: company.id,
@@ -160,6 +173,7 @@ export async function buildChatContext(companyId: string): Promise<ChatContext> 
         observedAt: fact.observedAt.toISOString(),
       })),
       ...historicalEvidence,
+      ...marketingEvidence,
     ],
     automations: automations.map((a) => ({
       name: a.name,
