@@ -7,6 +7,7 @@ import {
   removeTeamMemberAction,
   revokeTeamInvitationAction,
   updateTeamMemberRoleAction,
+  transferCompanyOwnershipAction,
 } from "@/lib/companies/team-actions";
 
 const ERROR_MESSAGES: Record<string, string> = {
@@ -21,6 +22,9 @@ const ERROR_MESSAGES: Record<string, string> = {
   invitation_not_found: "Cette invitation n'est plus active.",
   invalid_member: "Membre invalide.",
   member_not_found: "Ce membre n'est plus actif.",
+  ownership_confirmation: "Saisissez exactement le nom de l'entreprise pour confirmer le transfert de propriété.",
+  ownership_changed: "La propriété de l'entreprise a changé. Rechargez la page avant de réessayer.",
+  ownership_transfer_failed: "Le transfert de propriété n'a pas pu être effectué.",
 };
 
 const ROLE_DESCRIPTIONS = {
@@ -33,7 +37,7 @@ const ROLE_DESCRIPTIONS = {
 export default async function TeamPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; invited?: string }>;
+  searchParams: Promise<{ error?: string; invited?: string; ownership?: string }>;
 }) {
   const access = await getCurrentCompanyAccess();
   const overview = await getTeamOverview(access.company.id);
@@ -59,6 +63,7 @@ export default async function TeamPage({
 
       {params.error && <div className="rounded-xl border border-danger/30 bg-danger-soft p-4 text-sm text-danger">{ERROR_MESSAGES[params.error] ?? "Une erreur est survenue."}</div>}
       {params.invited === "1" && <div className="rounded-xl border border-accent/25 bg-accent-soft p-4 text-sm text-accent">Invitation envoyée et siège réservé jusqu'à son expiration.</div>}
+      {params.ownership === "transferred" && <div className="rounded-xl border border-success/25 bg-success/10 p-4 text-sm text-success">La propriété de l'entreprise a été transférée. Votre compte conserve un rôle Administrateur.</div>}
 
       {canManage && (
         <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
@@ -128,6 +133,36 @@ export default async function TeamPage({
           })}
         </div>
       </section>
+
+      {access.role === "owner" && overview.members.some((member) => member.userId !== access.session.user.id) && (
+        <section className="rounded-2xl border border-danger/20 bg-card p-5 sm:p-6">
+          <h2 className="font-semibold">Transférer la propriété</h2>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">
+            Cette action transfère la gouvernance, la facturation et les validations à un autre membre actif. Votre compte devient Administrateur et l'opération reste tracée.
+          </p>
+          <form action={transferCompanyOwnershipAction} className="mt-4 grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+            <select name="membershipId" required defaultValue="" className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent">
+              <option value="" disabled>Choisir le nouveau propriétaire</option>
+              {overview.members
+                .filter((member) => member.userId !== access.session.user.id)
+                .map((member) => (
+                  <option key={member.id} value={member.id}>
+                    {member.user.name || member.user.email} · {COMPANY_ROLE_LABELS[normalizeCompanyRole(member.role)]}
+                  </option>
+                ))}
+            </select>
+            <input
+              name="confirmation"
+              required
+              placeholder={`Tapez exactement : ${access.company.name}`}
+              className="h-10 rounded-xl border border-border bg-background px-3 text-sm outline-none focus:border-accent"
+            />
+            <button className="h-10 rounded-xl border border-danger/30 px-4 text-sm font-semibold text-danger">
+              Transférer
+            </button>
+          </form>
+        </section>
+      )}
 
       {overview.invitations.length > 0 && (
         <section className="rounded-2xl border border-border bg-card p-5 sm:p-6">
