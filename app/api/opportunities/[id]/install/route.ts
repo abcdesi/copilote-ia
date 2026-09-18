@@ -19,7 +19,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (!entitlements.canExecute) {
       return NextResponse.json(
         {
-          error: "L'exécution réelle des automatisations est incluse à partir de l'offre Action.",
+          error: "Une offre Action ou Scale active est requise pour exécuter une automatisation achetée.",
           upgradeRequired: true,
           href: "/app/settings",
         },
@@ -37,6 +37,22 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       return NextResponse.json(
         { error: "Cette automatisation est déjà installée.", automationId: installed?.id ?? null },
         { status: 409 }
+      );
+    }
+
+    const purchase = await prisma.purchase.findUnique({
+      where: { companyId_opportunityId: { companyId: company.id, opportunityId: opportunity.id } },
+      select: { id: true, status: true, amountEur: true, paymentUrl: true },
+    });
+    if (!purchase || purchase.status !== "paid") {
+      return NextResponse.json(
+        {
+          error: "Cette automatisation doit être achetée avant installation.",
+          purchaseRequired: true,
+          amountEur: opportunity.priceEur,
+          paymentUrl: purchase?.paymentUrl ?? null,
+        },
+        { status: 402 }
       );
     }
 
@@ -154,6 +170,8 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           actorUserId: access.session.user.id,
           actorRole: access.role,
           requiresInitialApproval: true,
+          purchaseId: purchase.id,
+          purchaseAmountEur: purchase.amountEur,
         },
       });
 
