@@ -6,6 +6,9 @@ import { cn } from "@/lib/utils/cn";
 import { getUsageStatus } from "@/lib/billing/usage-policy";
 import { PAID_PLAN_KEYS, PLAN_DEFINITIONS, type BillingCycle } from "@/lib/billing/plans";
 import { CREDIT_PACKS, creditPackStripeReady } from "@/lib/billing/credit-packs";
+import { prisma } from "@/lib/db/client";
+import { updateAutomationPurchaseCapAction } from "@/lib/billing/settings-actions";
+import { Input, Label } from "@/components/ui/Input";
 
 function stripeReady(_plan: "starter" | "pro" | "business", _billingCycle: BillingCycle) {
   return Boolean(process.env.STRIPE_SECRET_KEY);
@@ -25,6 +28,17 @@ export default async function SettingsPage() {
   const currentPlan = subscription?.plan ?? "free";
   const hasStripeCustomer = Boolean(subscription?.stripeCustomerId);
   const usage = await getUsageStatus(company.id);
+  const now = new Date();
+  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const automationPurchases = await prisma.purchase.aggregate({
+    where: {
+      companyId: company.id,
+      createdAt: { gte: monthStart },
+      status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
+    },
+    _sum: { amountEur: true },
+  });
+  const automationPurchaseCommittedEur = automationPurchases._sum.amountEur ?? 0;
   const creditPct = usage.creditsLimit > 0 ? Math.min(100, Math.round((usage.creditsUsed / usage.creditsLimit) * 100)) : 100;
 
   return (
@@ -183,6 +197,40 @@ export default async function SettingsPage() {
           Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel. Les automatisations exécutables sont des achats uniques séparés : leur prix est affiché avant validation et leur usage courant consomme ensuite les crédits du plan.
         </p>
       </section>
+
+      {canManageBilling && (
+        <section id="automation-purchases" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <h2 className="font-semibold">Budget d'achat des automatisations</h2>
+              <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
+                Les automatisations exécutables sont achetées séparément de l'abonnement. Ce plafond dur empêche Pilotzia d'engager plus que le montant autorisé sur un même mois, même en cas de double clic ou de demandes rapprochées.
+              </p>
+            </div>
+            <Badge tone={automationPurchaseCommittedEur >= company.automationPurchaseMonthlyCapEur ? "warning" : "neutral"}>
+              {formatEur(automationPurchaseCommittedEur)} / {formatEur(company.automationPurchaseMonthlyCapEur)} engagés
+            </Badge>
+          </div>
+          <form action={updateAutomationPurchaseCapAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <div className="w-full max-w-xs space-y-1.5">
+              <Label htmlFor="monthlyCapEur">Plafond mensuel HT</Label>
+              <Input
+                id="monthlyCapEur"
+                name="monthlyCapEur"
+                type="number"
+                min={0}
+                max={5000}
+                step={10}
+                defaultValue={company.automationPurchaseMonthlyCapEur}
+              />
+            </div>
+            <Button type="submit" size="sm" variant="outline">Enregistrer le plafond</Button>
+          </form>
+          <p className="mt-3 text-xs leading-5 text-muted-foreground">
+            0 € bloque tout nouvel achat. Le plafond ne déclenche aucun achat automatiquement : chaque automatisation doit toujours être validée manuellement par le Propriétaire. Une facture Stripe déjà initiée reste comptée jusqu'à paiement ou annulation.
+          </p>
+        </section>
+      )}
 
       {usage.paid && canManageBilling && (
         <section id="credits" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
