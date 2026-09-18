@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../lib/db/client";
 import { runWeeklyBusinessRefresh } from "../lib/intelligence/weekly-refresh";
+import { getCompanyEntitlements } from "../lib/billing/entitlements";
 
 async function main() {
   const suffix = randomUUID();
@@ -38,6 +39,9 @@ async function main() {
         billingInterval: "month",
       },
     });
+    await prisma.company.update({ where: { id: company.id }, data: { additionalSeats: 4 } });
+    const entitlements = await getCompanyEntitlements(company.id);
+    assert.equal(entitlements.seatLimit, 14, "Scale doit additionner les sièges approuvés aux 10 sièges inclus.");
 
     const first = await runWeeklyBusinessRefresh(company.id);
     assert.equal(first.ok, true);
