@@ -7,6 +7,8 @@ export interface ExecutionPlanContact {
   name: string;
   email: string;
   contactCount: number;
+  status: string;
+  lastOutcome: string | null;
   lastContactedAt: Date | null;
   nextEligibleAt: Date | null;
   eligible: boolean;
@@ -67,6 +69,8 @@ export async function buildAutomationExecutionPlan(input: {
       name: prospect.name,
       email: prospect.email,
       contactCount: prospect.contactCount,
+      status: prospect.status,
+      lastOutcome: prospect.lastOutcome,
       lastContactedAt: prospect.lastContactedAt,
       nextEligibleAt,
       eligible,
