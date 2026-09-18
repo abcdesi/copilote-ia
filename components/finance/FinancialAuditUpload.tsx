@@ -240,7 +240,7 @@ export function FinancialAuditUpload() {
                         <p className="mt-2 text-xs text-muted-foreground">Cette décision, votre identité, votre rôle, la date et la justification seront conservés dans le journal d'audit.</p>
                         <button
                           type="button"
-                          disabled={status === "loading" || overrideReason.trim().length < overrideMinLength}
+                          disabled={overrideReason.trim().length < overrideMinLength}
                           onClick={() => void runAnalysis({ overrideIdentity: true })}
                           className="mt-3 rounded-xl border border-danger/30 px-4 py-2 text-xs font-semibold text-danger disabled:cursor-not-allowed disabled:opacity-50"
                         >
