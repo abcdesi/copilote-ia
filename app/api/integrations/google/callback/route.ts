@@ -45,12 +45,12 @@ export async function GET(req: NextRequest) {
     await prisma.$transaction([
       prisma.companyTool.upsert({
         where: { companyId_name: { companyId: access.company.id, name: "Gmail" } },
-        create: { companyId: access.company.id, name: "Gmail", detected: true },
+        create: { companyId: access.company.id, name: "Gmail", detected: false },
         update: {},
       }),
       prisma.companyTool.upsert({
         where: { companyId_name: { companyId: access.company.id, name: "Google Calendar" } },
-        create: { companyId: access.company.id, name: "Google Calendar", detected: true },
+        create: { companyId: access.company.id, name: "Google Calendar", detected: false },
         update: {},
       }),
       prisma.event.create({
