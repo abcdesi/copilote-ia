@@ -128,6 +128,9 @@ export default async function AutomationDetailPage({ params }: { params: Promise
           approvalMode={automation.approvalMode}
           cadenceDays={plan.cadenceDays}
           maxSendsPerContact={plan.maxSendsPerContact}
+          scheduleStartHour={automation.scheduleStartHour}
+          scheduleEndHour={automation.scheduleEndHour}
+          scheduleDays={automation.scheduleDays}
           replyToEmail={automation.replyToEmail}
           riskLevel={automation.riskLevel}
           approved={Boolean(automation.approvedConfigHash)}
