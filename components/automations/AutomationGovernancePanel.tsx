@@ -11,11 +11,24 @@ const MODE_LABELS: Record<string, string> = {
   first_then_auto: "Autonome après la première validation",
 };
 
+const DAY_OPTIONS = [
+  ["Mon", "Lun"],
+  ["Tue", "Mar"],
+  ["Wed", "Mer"],
+  ["Thu", "Jeu"],
+  ["Fri", "Ven"],
+  ["Sat", "Sam"],
+  ["Sun", "Dim"],
+] as const;
+
 export function AutomationGovernancePanel({
   automationId,
   approvalMode,
   cadenceDays,
   maxSendsPerContact,
+  scheduleStartHour,
+  scheduleEndHour,
+  scheduleDays,
   replyToEmail,
   riskLevel,
   approved,
@@ -33,6 +46,9 @@ export function AutomationGovernancePanel({
   approvalMode: string;
   cadenceDays: number | null;
   maxSendsPerContact: number;
+  scheduleStartHour: number;
+  scheduleEndHour: number;
+  scheduleDays: string;
   replyToEmail: string | null;
   riskLevel: string;
   approved: boolean;
@@ -54,6 +70,8 @@ export function AutomationGovernancePanel({
   const date = lastApprovedAt
     ? new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(lastApprovedAt)
     : null;
+  const selectedDays = new Set(scheduleDays.split(",").filter(Boolean));
+  const selectedDayLabels = DAY_OPTIONS.filter(([value]) => selectedDays.has(value)).map(([, label]) => label).join(", ");
 
   return (
     <section className="rounded-2xl border border-border bg-card p-6">
@@ -73,11 +91,12 @@ export function AutomationGovernancePanel({
         </span>
       </div>
 
-      <div className="mt-5 grid gap-3 sm:grid-cols-4">
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
         <Info label="Mode" value={MODE_LABELS[approvalMode] ?? approvalMode} />
         <Info label="Cadence" value={cadenceDays ? `Tous les ${cadenceDays} jours` : "Selon le déclencheur"} />
+        <Info label="Créneau local" value={`${String(scheduleStartHour).padStart(2, "0")}:00–${String(scheduleEndHour).padStart(2, "0")}:00`} />
+        <Info label="Jours" value={selectedDayLabels || "Aucun"} />
         <Info label="Maximum / contact" value={`${maxSendsPerContact} envoi${maxSendsPerContact > 1 ? "s" : ""}`} />
-        <Info label="Risque" value={riskLevel} />
       </div>
 
       {canConfigure ? (
@@ -100,7 +119,7 @@ export function AutomationGovernancePanel({
             </select>
             <p className="text-[11px] leading-4 text-muted-foreground">
               Le mode autonome reste limité à cette configuration exacte ; un changement redemande une validation.
-              Les passages automatiques commencent à partir de 10:00 dans le fuseau horaire de l’entreprise, du lundi au samedi. Une seule exécution planifiée aboutie est autorisée par jour local ; les échecs techniques peuvent être retentés dans la journée.
+              Le créneau ci-dessous est interprété dans le fuseau horaire de l'entreprise.
             </p>
           </div>
           <div className="space-y-1.5">
@@ -110,6 +129,28 @@ export function AutomationGovernancePanel({
           <div className="space-y-1.5">
             <Label htmlFor="maxSendsPerContact">Nombre maximal de relances par contact</Label>
             <Input id="maxSendsPerContact" name="maxSendsPerContact" type="number" min={1} max={20} defaultValue={maxSendsPerContact} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="scheduleStartHour">Début du créneau local</Label>
+            <Input id="scheduleStartHour" name="scheduleStartHour" type="number" min={0} max={23} defaultValue={scheduleStartHour} required />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="scheduleEndHour">Fin du créneau local</Label>
+            <Input id="scheduleEndHour" name="scheduleEndHour" type="number" min={1} max={24} defaultValue={scheduleEndHour} required />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Jours autorisés</Label>
+            <div className="flex flex-wrap gap-2">
+              {DAY_OPTIONS.map(([value, label]) => (
+                <label key={value} className="cursor-pointer">
+                  <input type="checkbox" name="scheduleDays" value={value} defaultChecked={selectedDays.has(value)} className="peer sr-only" />
+                  <span className="inline-flex rounded-lg border border-border px-3 py-2 text-xs text-muted-foreground transition-colors peer-checked:border-accent peer-checked:bg-accent-soft peer-checked:text-accent">
+                    {label}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="text-[11px] leading-4 text-muted-foreground">Par défaut : lundi à samedi, 10h00–18h00. Une seule exécution planifiée aboutie par jour local.</p>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="replyToEmail">Adresse de réponse</Label>
