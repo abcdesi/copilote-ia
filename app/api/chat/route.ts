@@ -179,7 +179,7 @@ export async function POST(req: NextRequest) {
     : null;
 
   const automationCapability = opportunity && matchedTemplateId
-    ? await getAutomationCapability(company.id, role, matchedTemplateId)
+    ? await getAutomationCapability(company.id, role, matchedTemplateId, opportunity.id)
     : null;
   const action = buildSafeAction(
     parsed.data.message,
@@ -250,7 +250,8 @@ async function createOpportunityFromChatMatch(
 async function getAutomationCapability(
   companyId: string,
   role: Parameters<typeof hasCompanyPermission>[0],
-  templateId: string
+  templateId: string,
+  opportunityId: string
 ) {
   if (!isRealExecutionTemplate(templateId)) {
     return { readiness: "not_executable" as const, blockers: ["workflow réel non disponible"] };
@@ -261,8 +262,22 @@ async function getAutomationCapability(
     blockers.push("validation d'un Propriétaire ou Administrateur");
   }
 
-  const entitlements = await getCompanyEntitlements(companyId);
+  const [entitlements, purchase] = await Promise.all([
+    getCompanyEntitlements(companyId),
+    prisma.purchase.findUnique({
+      where: { companyId_opportunityId: { companyId, opportunityId } },
+      select: { status: true },
+    }),
+  ]);
   if (!entitlements.canExecute) blockers.push("offre Action ou Scale requise");
+  if (purchase?.status !== "paid") {
+    const template = getTemplateById(templateId);
+    blockers.push(
+      hasCompanyPermission(role, "manage_billing")
+        ? `achat unique de l'automatisation requis${template ? ` (${template.priceEur} € HT)` : ""}`
+        : "achat de l'automatisation par le Propriétaire requis"
+    );
+  }
   if (!isN8nConfigured()) blockers.push("moteur d'exécution à configurer");
 
   return blockers.length === 0
@@ -288,7 +303,7 @@ function buildSafeAction(
       href: `/app/opportunities/${opportunityId}`,
       description:
         readiness === "ready"
-          ? "Pilotzia sait exécuter ce workflow. Vous verrez l'aperçu, les destinataires, les permissions et la configuration avant toute activation."
+          ? "Pilotzia sait exécuter ce workflow. La page suivante affiche le prix d'achat unique, les destinataires, les permissions et la configuration avant toute activation."
           : readiness === "configuration_required"
             ? `Cette recommandation est automatisable après prérequis : ${capability?.blockers.join(" · ") || "configuration à compléter"}. Aucune activation n'est effectuée automatiquement.`
             : "Cette recommandation reste utile, mais Pilotzia ne la présente pas comme automatisable tant que son workflow réel n'est pas pris en charge.",
