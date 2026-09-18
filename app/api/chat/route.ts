@@ -201,7 +201,7 @@ export async function POST(req: NextRequest) {
   }
 
   const { reply, matchedTemplateId, matchedTemplateSource } = chatResult;
-  await createAssistantMessage(company.id, conversation.id, reply);
+  const assistantMessage = await createAssistantMessage(company.id, conversation.id, reply);
 
   const recommendedTemplateIds = Array.from(
     new Set([
@@ -239,6 +239,13 @@ export async function POST(req: NextRequest) {
       : fallbackAction
         ? [fallbackAction]
         : [];
+
+  if (actions.length > 0) {
+    await prisma.chatMessage.update({
+      where: { id: assistantMessage.id },
+      data: { actionsJson: JSON.stringify(actions) },
+    });
+  }
 
   if (automationActionEntries.length > 0) {
     for (const entry of automationActionEntries) {
