@@ -16,6 +16,9 @@ const settingsSchema = z.object({
     z.coerce.number().int().min(1).max(180).nullable()
   ),
   maxSendsPerContact: z.coerce.number().int().min(1).max(20),
+  scheduleStartHour: z.coerce.number().int().min(0).max(23),
+  scheduleEndHour: z.coerce.number().int().min(1).max(24),
+  scheduleDays: z.array(z.enum(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"])).min(1).max(7),
   replyToEmail: z.preprocess((value) => String(value ?? "").trim() || null, z.string().email().nullable()),
 });
 
@@ -35,6 +38,9 @@ export async function updateAutomationGovernanceAction(formData: FormData) {
     approvalMode: formData.get("approvalMode"),
     cadenceDays: formData.get("cadenceDays"),
     maxSendsPerContact: formData.get("maxSendsPerContact"),
+    scheduleStartHour: formData.get("scheduleStartHour"),
+    scheduleEndHour: formData.get("scheduleEndHour"),
+    scheduleDays: formData.getAll("scheduleDays").map(String),
     replyToEmail: formData.get("replyToEmail"),
   });
   if (!parsed.success) return;
