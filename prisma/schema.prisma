@@ -493,6 +493,7 @@ model Purchase {
   provider      String      @default("stripe")
   providerRef   String?     @unique
   paymentUrl    String?
+  billingAttempt Int        @default(0)
   paidAt        DateTime?
   createdAt     DateTime    @default(now())
   updatedAt     DateTime    @updatedAt
