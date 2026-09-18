@@ -20,6 +20,25 @@ WHERE "id" IN (
   WHERE ranked.rn > 1
 );
 
+-- Legacy provider references should also not block the new uniqueness guarantee.
+-- If an old reference was duplicated, keep it on the oldest row and detach the others.
+UPDATE "Purchase"
+SET "providerRef" = NULL
+WHERE "id" IN (
+  SELECT "id"
+  FROM (
+    SELECT
+      "id",
+      ROW_NUMBER() OVER (
+        PARTITION BY "providerRef"
+        ORDER BY "createdAt" ASC
+      ) AS rn
+    FROM "Purchase"
+    WHERE "providerRef" IS NOT NULL
+  ) ranked
+  WHERE ranked.rn > 1
+);
+
 CREATE UNIQUE INDEX "Purchase_providerRef_key"
   ON "Purchase"("providerRef");
 
