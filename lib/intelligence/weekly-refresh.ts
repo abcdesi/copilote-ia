@@ -4,7 +4,8 @@ import { runMockDiagnostic } from "@/lib/ai/mock-engine";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
 import { syncGoogleOperationalSnapshot } from "@/lib/integrations/observe";
 
-const WEEKLY_REFRESH_MIN_INTERVAL_MS = 6 * 24 * 60 * 60 * 1000;
+const WEEKLY_REFRESH_MIN_INTERVAL_MS = (6 * 24 + 23) * 60 * 60 * 1000;
+const WEEKLY_REFRESH_IN_PROGRESS_TTL_MS = 2 * 60 * 60 * 1000;
 const WEEKLY_REFRESH_LOOKBACK_MS = 7 * 24 * 60 * 60 * 1000;
 
 function json(value: unknown) {
@@ -135,17 +136,31 @@ export async function runWeeklyBusinessRefresh(companyId: string) {
   const lock = await prisma.$transaction(
     async (tx) => {
       await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${companyId} FOR UPDATE`;
-      const latest = await tx.event.findFirst({
-        where: {
-          companyId,
-          type: "WEEKLY_REFRESH_COMPLETED",
-          createdAt: { gte: new Date(now.getTime() - WEEKLY_REFRESH_MIN_INTERVAL_MS) },
-        },
-        orderBy: { createdAt: "desc" },
-        select: { id: true, createdAt: true },
-      });
+      const [latest, inProgress] = await Promise.all([
+        tx.event.findFirst({
+          where: {
+            companyId,
+            type: "WEEKLY_REFRESH_COMPLETED",
+            createdAt: { gte: new Date(now.getTime() - WEEKLY_REFRESH_MIN_INTERVAL_MS) },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, createdAt: true },
+        }),
+        tx.event.findFirst({
+          where: {
+            companyId,
+            type: "WEEKLY_REFRESH_STARTED",
+            createdAt: { gte: new Date(now.getTime() - WEEKLY_REFRESH_IN_PROGRESS_TTL_MS) },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { id: true, createdAt: true },
+        }),
+      ]);
       if (latest) {
-        return { allowed: false as const, lastCompletedAt: latest.createdAt };
+        return { allowed: false as const, reason: "already_fresh" as const, lastCompletedAt: latest.createdAt };
+      }
+      if (inProgress) {
+        return { allowed: false as const, reason: "refresh_in_progress" as const, lastCompletedAt: null };
       }
 
       await tx.event.create({
@@ -168,7 +183,7 @@ export async function runWeeklyBusinessRefresh(companyId: string) {
     return {
       ok: true as const,
       skipped: true as const,
-      reason: "already_fresh",
+      reason: lock.reason,
       lastCompletedAt: lock.lastCompletedAt,
     };
   }
