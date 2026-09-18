@@ -84,8 +84,11 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
     const pending = window.sessionStorage.getItem("pilotzia:copilot-draft");
     if (!pending) return;
     window.sessionStorage.removeItem("pilotzia:copilot-draft");
-    setInput(pending);
-    window.setTimeout(() => inputRef.current?.focus(), 0);
+    const timer = window.setTimeout(() => {
+      setInput(pending);
+      inputRef.current?.focus();
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, []);
 
   async function send(text: string) {
