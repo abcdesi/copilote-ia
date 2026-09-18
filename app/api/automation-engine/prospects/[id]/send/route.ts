@@ -51,6 +51,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     approvalMode: automation.approvalMode,
     cadenceDays: plan.cadenceDays,
     maxSendsPerContact: plan.maxSendsPerContact,
+    scheduleStartHour: automation.scheduleStartHour,
+    scheduleEndHour: automation.scheduleEndHour,
+    scheduleDays: automation.scheduleDays,
     replyToEmail: automation.replyToEmail,
   });
   if (!automation.approvedConfigHash || automation.approvedConfigHash !== currentHash) {
