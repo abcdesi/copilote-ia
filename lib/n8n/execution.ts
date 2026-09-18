@@ -138,7 +138,38 @@ export async function triggerAutomation(
   if (source === "manual" && !actor) {
     return { ok: false as const, error: "Auteur de l'exécution manuelle manquant." };
   }
+
+  const runActor = actorForRun(actor);
+
   if (plan.eligibleContacts.length === 0) {
+    const now = new Date();
+    const run = await prisma.automationRun.create({
+      data: {
+        automationId: fresh.id,
+        status: "success",
+        source,
+        itemsProcessed: 0,
+        startedAt: now,
+        finishedAt: now,
+        ...runActor,
+        metadata: JSON.stringify({
+          templateId,
+          skipped: true,
+          reason: "no_eligible_contacts",
+          messageVersion: fresh.messageVersion,
+          configHash: currentHash,
+          charged: false,
+        }),
+      },
+    });
+    await prisma.automationAuditEvent.create({
+      data: {
+        automationId: fresh.id,
+        ...runActor,
+        eventType: "execution_skipped",
+        detailsJson: JSON.stringify({ runId: run.id, source, reason: "no_eligible_contacts" }),
+      },
+    });
     return {
       ok: true as const,
       result: { relancedCount: 0, errorCount: 0, skipped: true, reason: "no_eligible_contacts" },
@@ -171,7 +202,6 @@ export async function triggerAutomation(
   }
 
   const startedAt = new Date();
-  const runActor = actorForRun(actor);
   const run = await prisma.automationRun.create({
     data: {
       automationId: fresh.id,
