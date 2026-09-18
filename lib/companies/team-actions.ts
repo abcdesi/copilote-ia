@@ -7,7 +7,7 @@ import { z } from "zod";
 import { prisma } from "@/lib/db/client";
 import { ACTIVE_COMPANY_COOKIE, getCurrentCompanyAccess, hasCompanyPermission, normalizeCompanyRole } from "@/lib/companies/access";
 import { requireSession } from "@/lib/companies/current";
-import { acceptInvitationForUser, createCompanyInvitation, INVITABLE_ROLES } from "@/lib/companies/team";
+import { acceptInvitationForUser, createCompanyInvitation, INVITABLE_ROLES, transferCompanyOwnership } from "@/lib/companies/team";
 
 const inviteSchema = z.object({
   email: z.string().trim().email().transform((value) => value.toLowerCase()),
@@ -159,64 +159,12 @@ export async function transferCompanyOwnershipAction(formData: FormData) {
   if (!parsed.success || parsed.data.confirmation !== access.company.name) teamError("ownership_confirmation");
 
   try {
-    await prisma.$transaction(
-      async (tx) => {
-        await tx.$queryRaw`SELECT id FROM "Company" WHERE id = ${access.company.id} FOR UPDATE`;
-
-        const company = await tx.company.findUnique({
-          where: { id: access.company.id },
-          select: { id: true, userId: true, name: true },
-        });
-        if (!company || company.userId !== access.session.user.id) throw new Error("OWNERSHIP_CHANGED");
-
-        const [currentOwner, target] = await Promise.all([
-          tx.companyMembership.findUnique({
-            where: { companyId_userId: { companyId: access.company.id, userId: access.session.user.id } },
-          }),
-          tx.companyMembership.findFirst({
-            where: {
-              id: parsed.data.membershipId,
-              companyId: access.company.id,
-              status: "active",
-              userId: { not: access.session.user.id },
-            },
-            include: { user: { select: { id: true, email: true, name: true } } },
-          }),
-        ]);
-        if (!currentOwner || currentOwner.role !== "owner") throw new Error("OWNERSHIP_CHANGED");
-        if (!target) throw new Error("MEMBER_NOT_FOUND");
-
-        await tx.company.update({
-          where: { id: company.id },
-          data: { userId: target.userId },
-        });
-        await tx.companyMembership.update({
-          where: { id: currentOwner.id },
-          data: { role: "admin" },
-        });
-        await tx.companyMembership.update({
-          where: { id: target.id },
-          data: { role: "owner" },
-        });
-        await tx.event.create({
-          data: {
-            companyId: company.id,
-            userId: access.session.user.id,
-            type: "TEAM_OWNERSHIP_TRANSFERRED",
-            metadata: JSON.stringify({
-              previousOwnerUserId: access.session.user.id,
-              previousOwnerEmail: access.session.user.email,
-              nextOwnerUserId: target.userId,
-              nextOwnerEmail: target.user.email,
-              nextOwnerName: target.user.name,
-              previousOwnerNextRole: "admin",
-              transferredAt: new Date().toISOString(),
-            }),
-          },
-        });
-      },
-      { isolationLevel: "Serializable", timeout: 10_000 }
-    );
+    await transferCompanyOwnership({
+      companyId: access.company.id,
+      currentOwnerUserId: access.session.user.id,
+      currentOwnerEmail: access.session.user.email,
+      targetMembershipId: parsed.data.membershipId,
+    });
   } catch (error) {
     const code = error instanceof Error ? error.message : "OWNERSHIP_TRANSFER_FAILED";
     if (code === "MEMBER_NOT_FOUND") teamError("member_not_found");
