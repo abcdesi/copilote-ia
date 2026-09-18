@@ -44,7 +44,7 @@ jobs:
         run: npm ci
 
       - name: Production dependency audit
-        run: npm audit --omit=dev --audit-level=high
+        run: npm run audit:production
 
       - name: Apply database migrations
         run: npm run db:migrate
