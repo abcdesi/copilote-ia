@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { ArrowRight, Loader2, Zap } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 
-export function RunNowButton({ automationId }: { automationId: string }) {
+export function RunNowButton({ automationId, canRun }: { automationId: string; canRun: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -46,10 +46,10 @@ export function RunNowButton({ automationId }: { automationId: string }) {
             Cette automatisation peut s'exécuter automatiquement. Vous pouvez aussi la lancer maintenant ; Pilotzia applique les permissions et la capacité incluses dans votre offre.
           </p>
         </div>
-        <Button size="sm" onClick={run} disabled={loading}>
+        {canRun ? <Button size="sm" onClick={run} disabled={loading}>
           {loading ? <Loader2 size={16} className="animate-spin" /> : <Zap size={16} />}
           Lancer maintenant
-        </Button>
+        </Button> : <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">Votre rôle ne permet pas cette exécution</span>}
       </div>
       {message && (
         <div className="mt-3 flex flex-wrap items-center gap-3">
