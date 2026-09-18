@@ -6,7 +6,7 @@ import { buildChatContext } from "@/lib/companies/context";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { runChat } from "@/lib/ai";
 import { inferConversationIntent } from "@/lib/ai/expert-response-policy";
-import { getTemplateById } from "@/lib/automations/catalog";
+import { AUTOMATION_CATALOG, getTemplateById } from "@/lib/automations/catalog";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 import { isN8nConfigured } from "@/lib/n8n/client";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
@@ -24,6 +24,35 @@ export interface CopilotAction {
   description?: string;
   requiresConfirmation?: boolean;
   automationReadiness?: "ready" | "configuration_required" | "not_executable";
+}
+
+function normalizeRecommendationText(value: string) {
+  return value
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function mentionedAutomationTemplateIds(reply: string) {
+  const normalizedReply = normalizeRecommendationText(reply);
+  if (!normalizedReply) return [];
+
+  const recommendationSignal =
+    /\b(recommande|recommandation|priorit|commencerais|regarderais|traiterais|conseille|suggere|devriez|il faut|mettre en place|automatis)/.test(
+      normalizedReply
+    );
+  if (!recommendationSignal) return [];
+
+  return AUTOMATION_CATALOG
+    .filter((template) => {
+      const title = normalizeRecommendationText(template.title);
+      return title.length >= 8 && normalizedReply.includes(title);
+    })
+    .slice(0, 3)
+    .map((template) => template.id);
 }
 
 function isSmartRequest(message: string) {
@@ -174,21 +203,44 @@ export async function POST(req: NextRequest) {
   const { reply, matchedTemplateId, matchedTemplateSource } = chatResult;
   await createAssistantMessage(company.id, conversation.id, reply);
 
-  const opportunity = matchedTemplateId
-    ? await createOpportunityFromChatMatch(company.id, matchedTemplateId, matchedTemplateSource)
-    : null;
+  const recommendedTemplateIds = Array.from(
+    new Set([
+      ...(matchedTemplateId ? [matchedTemplateId] : []),
+      ...mentionedAutomationTemplateIds(reply),
+    ])
+  ).slice(0, 3);
 
-  const automationCapability = opportunity && matchedTemplateId
-    ? await getAutomationCapability(company.id, role, matchedTemplateId, opportunity.id)
-    : null;
-  const action = buildSafeAction(
-    parsed.data.message,
-    opportunity?.id ?? null,
-    matchedTemplateId ?? null,
-    automationCapability
-  );
+  const automationActions: CopilotAction[] = [];
+  for (const templateId of recommendedTemplateIds) {
+    const source =
+      templateId === matchedTemplateId
+        ? matchedTemplateSource
+        : ("assistant_recommendation" as const);
+    const opportunity = await createOpportunityFromChatMatch(company.id, templateId, source);
+    if (!opportunity) continue;
 
-  if (action) {
+    const capability = await getAutomationCapability(company.id, role, templateId, opportunity.id);
+    const action = buildSafeAction(parsed.data.message, opportunity.id, templateId, capability);
+    if (action) automationActions.push(action);
+  }
+
+  const fallbackAction =
+    automationActions[0] ??
+    buildSafeAction(parsed.data.message, null, null, null);
+  const actions =
+    automationActions.length > 0
+      ? automationActions
+      : fallbackAction
+        ? [fallbackAction]
+        : [];
+
+  for (const action of actions) {
+    const actionTemplateId =
+      recommendedTemplateIds.find((templateId) => {
+        const opportunity = getTemplateById(templateId);
+        return opportunity ? action.label.includes("Automatiser") || action.href.includes("/app/opportunities/") : false;
+      }) ?? matchedTemplateId ?? null;
+
     await track(EVENTS.RECOMMENDATION_SHOWN, {
       companyId: company.id,
       userId: session.user.id,
@@ -198,14 +250,23 @@ export async function POST(req: NextRequest) {
         destination: action.href,
         requiresConfirmation: Boolean(action.requiresConfirmation),
         actorRole: role,
-        templateId: matchedTemplateId ?? null,
-        templateSource: matchedTemplateSource ?? null,
+        templateId: actionTemplateId,
+        templateSource:
+          actionTemplateId && actionTemplateId === matchedTemplateId
+            ? matchedTemplateSource ?? null
+            : actionTemplateId
+              ? "assistant_recommendation"
+              : null,
         automationReadiness: action.automationReadiness ?? null,
       },
     });
   }
 
-  return NextResponse.json({ reply, action });
+  return NextResponse.json({
+    reply,
+    action: fallbackAction,
+    actions,
+  });
 }
 
 async function createOpportunityFromChatMatch(
