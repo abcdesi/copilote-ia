@@ -45,7 +45,7 @@ export async function completeOnboardingAction(formData: FormData) {
   try {
     company = await prisma.$transaction(
       async (tx) => {
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${userId}))`;
+        await tx.$queryRaw`SELECT id FROM "User" WHERE id = ${userId} FOR UPDATE`;
         const [existingMembership, existingOwnedCompany] = await Promise.all([
           tx.companyMembership.findFirst({ where: { userId, status: "active" }, select: { companyId: true } }),
           tx.company.findFirst({ where: { userId }, select: { id: true } }),
