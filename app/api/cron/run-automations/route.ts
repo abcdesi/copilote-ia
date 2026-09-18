@@ -72,13 +72,20 @@ export async function GET(req: NextRequest) {
       templateId: true,
       n8nWorkflowId: true,
       errorCount: true,
+      scheduleStartHour: true,
+      scheduleEndHour: true,
+      scheduleDays: true,
       company: { select: { timezone: true } },
     },
   });
 
   const results: Array<Record<string, unknown>> = [];
   for (const automation of automations) {
-    const schedule = automationScheduleState(now, automation.company.timezone);
+    const schedule = automationScheduleState(now, automation.company.timezone, {
+      startHour: automation.scheduleStartHour,
+      endHour: automation.scheduleEndHour,
+      days: automation.scheduleDays,
+    });
     if (!schedule.eligible || !schedule.timeZone || !schedule.dateKey) {
       results.push({
         automationId: automation.id,
