@@ -25,7 +25,7 @@ model User {
 model Company {
   id                String   @id @default(cuid())
   userId            String
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user              User     @relation(fields: [userId], references: [id], onDelete: Restrict)
   name              String
   siret             String?
   address           String?
@@ -447,6 +447,8 @@ model Subscription {
   billingInterval    String?
   stripeCustomerId   String?
   stripeSubId        String?
+  providerEventId    String?
+  providerEventCreatedAt DateTime?
   createdAt          DateTime @default(now())
 
   @@index([companyId])
