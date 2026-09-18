@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db/client";
 import { triggerAutomation } from "@/lib/n8n/execution";
 import { runDataRetentionMaintenance } from "@/lib/maintenance/retention";
+import { runWeeklyBusinessRefresh } from "@/lib/intelligence/weekly-refresh";
 import {
   automationScheduleState,
   localDateKey,
@@ -129,6 +130,52 @@ export async function GET(req: NextRequest) {
     });
   }
 
+  // Rafraîchissement hebdomadaire lissé : on ne traite qu'un petit lot d'entreprises
+  // arrivées à échéance à chaque passage. La fonction elle-même est idempotente sur 6 jours.
+  const weeklyCutoff = new Date(now.getTime() - 6 * 24 * 60 * 60 * 1000);
+  const weeklyCompanies = await prisma.company.findMany({
+    where: {
+      events: {
+        none: {
+          type: "WEEKLY_REFRESH_COMPLETED",
+          createdAt: { gte: weeklyCutoff },
+        },
+      },
+      OR: [
+        {
+          subscriptions: {
+            some: {
+              plan: { not: "free" },
+              status: { in: ["active", "trialing"] },
+            },
+          },
+        },
+        {
+          events: {
+            some: {
+              type: "TRIAL_STARTED",
+              createdAt: { gte: new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000) },
+            },
+          },
+        },
+      ],
+    },
+    select: { id: true },
+    orderBy: { updatedAt: "asc" },
+    take: 10,
+  });
+
+  const weeklyRefresh = [];
+  for (const company of weeklyCompanies) {
+    const refresh = await runWeeklyBusinessRefresh(company.id);
+    weeklyRefresh.push({
+      companyId: company.id,
+      ok: refresh.ok,
+      skipped: refresh.skipped,
+      reason: "reason" in refresh ? refresh.reason : undefined,
+    });
+  }
+
   // Le scheduler principal tourne fréquemment pour respecter les fuseaux horaires.
   // La maintenance de rétention reste volontairement quotidienne.
   const retention = now.getUTCHours() === 3
@@ -143,6 +190,11 @@ export async function GET(req: NextRequest) {
     evaluated: automations.length,
     triggered: results.filter((item) => !item.skipped).length,
     results,
+    weeklyRefresh: {
+      evaluated: weeklyCompanies.length,
+      refreshed: weeklyRefresh.filter((item) => item.ok && !item.skipped).length,
+      results: weeklyRefresh,
+    },
     retention: retention === undefined ? { skipped: true } : retention ? { ok: true } : { ok: false },
   });
 }
