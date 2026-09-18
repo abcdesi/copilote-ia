@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Brain, CheckCircle2, Database, Route, Sparkles, Target } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage, type KnowledgeGuidanceStep } from "@/lib/companies/knowledge-coverage";
 import { buildCompanyProfileSummary } from "@/lib/companies/profile-summary";
 import { updateCompanyAction } from "@/lib/companies/actions";
@@ -13,7 +13,9 @@ import { Badge } from "@/components/ui/Badge";
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 
 export default async function CompanyPage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const canEditCompany = hasCompanyPermission(access.role, "edit_company");
   const coverage = await getCompanyKnowledgeCoverage(company.id);
   const profileSummary = buildCompanyProfileSummary(company);
 
@@ -145,7 +147,14 @@ export default async function CompanyPage() {
         </div>
       </div>
 
+      {!canEditCompany && (
+        <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Votre rôle <strong className="text-foreground">{access.role}</strong> permet de consulter le contexte, mais pas de le modifier. Un Propriétaire ou Administrateur peut mettre ces informations à jour.
+        </div>
+      )}
+
       <form action={updateCompanyAction} className="space-y-6">
+        <fieldset disabled={!canEditCompany} className="contents">
         <section className="rounded-2xl border border-border bg-card p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Fondations</p>
@@ -294,6 +303,8 @@ export default async function CompanyPage() {
           </div>
         </section>
 
+        </fieldset>
+
         <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Sparkles size={18} className="shrink-0 text-accent" />
@@ -301,7 +312,7 @@ export default async function CompanyPage() {
               Chaque information utile enregistrée enrichit le contexte du copilote et le Business Graph.
             </p>
           </div>
-          <Button type="submit">Enregistrer et améliorer mes recommandations</Button>
+          <Button type="submit" disabled={!canEditCompany}>{canEditCompany ? "Enregistrer et améliorer mes recommandations" : "Modification réservée aux administrateurs"}</Button>
         </div>
       </form>
 
