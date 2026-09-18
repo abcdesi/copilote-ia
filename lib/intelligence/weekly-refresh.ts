@@ -51,7 +51,7 @@ async function refreshDeterministicOpportunities(companyId: string) {
     where: { id: companyId },
     include: { tools: { select: { name: true } } },
   });
-  if (!company) return { created: 0, updated: 0, automationScore: 0 };
+  if (!company) return { created: 0, updated: 0, stale: 0, automationScore: 0, activeTemplateIds: [] as string[] };
 
   const input = [
     company.painPoints,
@@ -68,13 +68,37 @@ async function refreshDeterministicOpportunities(companyId: string) {
     .trim() || company.name;
 
   const diagnostic = runMockDiagnostic(input, company.tools.map((tool) => tool.name));
-  const existing = await prisma.opportunity.findMany({
-    where: { companyId },
-    orderBy: { createdAt: "desc" },
-  });
+  const [existing, previousRefresh] = await Promise.all([
+    prisma.opportunity.findMany({
+      where: { companyId },
+      orderBy: { createdAt: "desc" },
+    }),
+    prisma.event.findFirst({
+      where: { companyId, type: "WEEKLY_REFRESH_COMPLETED" },
+      orderBy: { createdAt: "desc" },
+      select: { metadata: true },
+    }),
+  ]);
+
+  const activeTemplateIds = diagnostic.opportunities.map((opportunity) => opportunity.templateId);
+  let previousActiveTemplateIds: string[] = [];
+  if (previousRefresh?.metadata) {
+    try {
+      const parsed = JSON.parse(previousRefresh.metadata) as {
+        deterministicOpportunityRefresh?: { activeTemplateIds?: unknown };
+      };
+      const previous = parsed.deterministicOpportunityRefresh?.activeTemplateIds;
+      if (Array.isArray(previous)) {
+        previousActiveTemplateIds = previous.filter((item): item is string => typeof item === "string");
+      }
+    } catch {
+      previousActiveTemplateIds = [];
+    }
+  }
 
   let created = 0;
   let updated = 0;
+  let stale = 0;
 
   await prisma.$transaction(async (tx) => {
     for (const opportunity of diagnostic.opportunities) {
@@ -100,8 +124,9 @@ async function refreshDeterministicOpportunities(companyId: string) {
       }
 
       // Une décision humaine passée reste la source de vérité : un refresh ne réactive
-      // jamais silencieusement une opportunité installée ou rejetée.
-      if (!["detected", "viewed"].includes(current.status)) continue;
+      // jamais silencieusement une opportunité installée ou rejetée. Une opportunité
+      // uniquement devenue obsolète peut, elle, redevenir active si le contexte la soutient.
+      if (!["detected", "viewed", "stale"].includes(current.status)) continue;
 
       const next = {
         title: opportunity.title,
@@ -113,10 +138,27 @@ async function refreshDeterministicOpportunities(companyId: string) {
         estimatedValueEur: opportunity.estimatedValueEur,
         priceEur: opportunity.priceEur,
       };
-      if (!opportunityChanged(current, next)) continue;
+      const shouldReactivate = current.status === "stale";
+      if (!opportunityChanged(current, next) && !shouldReactivate) continue;
 
-      await tx.opportunity.update({ where: { id: current.id }, data: next });
+      await tx.opportunity.update({
+        where: { id: current.id },
+        data: { ...next, ...(shouldReactivate ? { status: "detected" } : {}) },
+      });
       updated += 1;
+    }
+
+    const currentActiveSet = new Set(activeTemplateIds);
+    const previouslyManagedSet = new Set(previousActiveTemplateIds);
+    const toStale = existing.filter(
+      (item) =>
+        ["detected", "viewed"].includes(item.status) &&
+        previouslyManagedSet.has(item.templateId) &&
+        !currentActiveSet.has(item.templateId)
+    );
+    for (const opportunity of toStale) {
+      await tx.opportunity.update({ where: { id: opportunity.id }, data: { status: "stale" } });
+      stale += 1;
     }
 
     if (company.automationScore !== diagnostic.automationScore) {
@@ -127,7 +169,7 @@ async function refreshDeterministicOpportunities(companyId: string) {
     }
   });
 
-  return { created, updated, automationScore: diagnostic.automationScore };
+  return { created, updated, stale, automationScore: diagnostic.automationScore, activeTemplateIds };
 }
 
 export async function runWeeklyBusinessRefresh(companyId: string) {
