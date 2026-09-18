@@ -9,6 +9,7 @@ import { CompanyProfileSummary } from "@/components/knowledge/CompanyProfileSumm
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { BUSINESS_TERRITORY_GROUPS, isKnownBusinessTerritory } from "@/lib/companies/territories";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 
@@ -167,6 +168,24 @@ export default async function CompanyPage() {
               <Input id="name" name="name" defaultValue={company.name} required />
             </div>
 
+            <div id="company-details" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="siret">SIRET</Label>
+                <Input id="siret" name="siret" defaultValue={company.siret ?? ""} placeholder="Ex. 98238554400019" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">Téléphone professionnel</Label>
+                <Input id="phone" name="phone" type="tel" defaultValue={company.phone ?? ""} placeholder="Ex. +33 1 23 45 67 89" />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="address">Adresse de l'entreprise</Label>
+                <Input id="address" name="address" defaultValue={company.address ?? ""} placeholder="N°, voie, code postal, ville" />
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground md:col-span-2">
+                Ces informations peuvent être utilisées dans les messages professionnels avec les variables prévues par Pilotzia.
+              </p>
+            </div>
+
             <div id="activity" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
               <div className="space-y-1.5">
                 <Label htmlFor="industry">Activité / secteur</Label>
@@ -212,8 +231,25 @@ export default async function CompanyPage() {
 
             <div id="local" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="country">Pays / zone principale</Label>
-                <Input id="country" name="country" defaultValue={company.country ?? ""} placeholder="Ex. France, Martinique, Belgique…" />
+                <Label htmlFor="country">Territoire principal</Label>
+                <select
+                  id="country"
+                  name="country"
+                  defaultValue={company.country ?? ""}
+                  className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+                >
+                  <option value="">Non renseigné</option>
+                  {company.country && !isKnownBusinessTerritory(company.country) && (
+                    <option value={company.country}>{company.country}</option>
+                  )}
+                  {BUSINESS_TERRITORY_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((territory) => (
+                        <option key={territory} value={territory}>{territory}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5">
                 <Label htmlFor="timezone">Fuseau horaire opérationnel</Label>
@@ -255,7 +291,7 @@ export default async function CompanyPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-card p-6">
+        <section id="business-context" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Domaines métier</p>
             <h2 className="mt-1 text-lg font-semibold">Donnez au copilote la profondeur d'un vrai comité de direction</h2>
