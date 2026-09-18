@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, ReactNode, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, History, Loader2, Send, ShieldCheck, User } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -77,6 +77,15 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const pending = window.sessionStorage.getItem("pilotzia:copilot-draft");
+    if (!pending) return;
+    window.sessionStorage.removeItem("pilotzia:copilot-draft");
+    setInput(pending);
+    window.setTimeout(() => inputRef.current?.focus(), 0);
+  }, []);
 
   async function send(text: string) {
     if (!text.trim() || loading) return;
@@ -211,6 +220,7 @@ export function ChatView({ initialMessages, companyName }: { initialMessages: Ch
       <form onSubmit={handleSubmit} className="border-t border-border py-4">
         <div className="flex items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 shadow-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
           <input
+            ref={inputRef}
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Posez une question de direction, d'opérations ou de croissance…"
