@@ -16,6 +16,28 @@ export const GOOGLE_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
 ];
 
+export type GoogleConfigurationStatus = { configured: boolean; missing: string[] };
+
+export function getGoogleConfigurationStatus(): GoogleConfigurationStatus {
+  const missing: string[] = [];
+  if (!process.env.GOOGLE_CLIENT_ID) missing.push("GOOGLE_CLIENT_ID");
+  if (!process.env.GOOGLE_CLIENT_SECRET) missing.push("GOOGLE_CLIENT_SECRET");
+  if (!process.env.APP_URL) missing.push("APP_URL");
+  if (!process.env.OAUTH_STATE_SECRET && !process.env.AUTH_SECRET) missing.push("OAUTH_STATE_SECRET/AUTH_SECRET");
+
+  const encryptionKey = process.env.ENCRYPTION_KEY;
+  if (!encryptionKey) missing.push("ENCRYPTION_KEY");
+  else {
+    try {
+      if (Buffer.from(encryptionKey, "base64").length !== 32) missing.push("ENCRYPTION_KEY(32_bytes)");
+    } catch {
+      missing.push("ENCRYPTION_KEY(base64)");
+    }
+  }
+
+  return { configured: missing.length === 0, missing };
+}
+
 function env(name: "GOOGLE_CLIENT_ID" | "GOOGLE_CLIENT_SECRET" | "APP_URL") {
   const value = process.env[name];
   if (!value) throw new Error(`${name} manquante.`);
@@ -54,6 +76,9 @@ export function googleRedirectUri() {
 }
 
 export function buildGoogleAuthorizationUrl(companyId: string) {
+  const configuration = getGoogleConfigurationStatus();
+  if (!configuration.configured) throw new Error(`Configuration Google incomplète: ${configuration.missing.join(", ")}`);
+
   const url = new URL(GOOGLE_AUTH_URL);
   url.searchParams.set("client_id", env("GOOGLE_CLIENT_ID"));
   url.searchParams.set("redirect_uri", googleRedirectUri());
