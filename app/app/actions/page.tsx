@@ -141,22 +141,34 @@ function PendingActionCard({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            {canExecute ? (
+            {planAllowsExecution && canApprove ? (
               <form method="post" action={`/api/actions/${action.id}/execute`}>
                 <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
                   <CheckCircle2 size={15} /> Confirmer et exécuter
                 </button>
               </form>
+            ) : !planAllowsExecution ? (
+              canManageBilling ? (
+                <Button href="/app/settings" size="sm">
+                  Débloquer l'exécution <ArrowRight size={15} />
+                </Button>
+              ) : (
+                <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">
+                  Abonnement à faire évoluer par le Propriétaire
+                </span>
+              )
             ) : (
-              <Button href="/app/settings" size="sm">
-                Débloquer l'exécution <ArrowRight size={15} />
-              </Button>
+              <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">
+                Votre rôle ne peut pas approuver ce niveau de risque
+              </span>
             )}
-            <form method="post" action={`/api/actions/${action.id}/reject`}>
-              <button className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
-                <XCircle size={15} /> Refuser
-              </button>
-            </form>
+            {canReject && (
+              <form method="post" action={`/api/actions/${action.id}/reject`}>
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                  <XCircle size={15} /> Refuser
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>
