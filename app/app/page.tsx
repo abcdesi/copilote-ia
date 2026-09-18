@@ -12,7 +12,7 @@ import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
 import { PilotziaFeed } from "@/components/dashboard/PilotziaFeed";
 import { TrialJourney } from "@/components/dashboard/TrialJourney";
-import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
+import { IMPACT_RANK, formatEur, formatHours, relativeTime } from "@/lib/format";
 
 export default async function DashboardHomePage() {
   const access = await getCurrentCompanyAccess();
