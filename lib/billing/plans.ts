@@ -87,7 +87,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
       "Audit avancé et intelligence financière",
       "Analyses croisées et recommandations de direction fondées sur vos données",
       "Volumes, gouvernance et usages équipe supérieurs",
-      "10 utilisateurs avec rôles et journal d'audit",
+      "10 utilisateurs inclus, sièges supplémentaires activables sur demande",
     ],
   },
 };
