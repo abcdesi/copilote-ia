@@ -227,10 +227,28 @@ export default function HomePage() {
         <section className="border-t border-border">
           <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
             <div className="mx-auto max-w-3xl text-center">
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">Ce qui est vérifiable</p>
+              <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Pilotzia sépare la promesse, l'exécution et le résultat</h2>
+              <p className="mt-3 text-muted-foreground">
+                Une automatisation n'est pas considérée comme utile parce qu'elle a simplement “tourné”. Pilotzia conserve la preuve de ce qui a été autorisé, exécuté et réellement constaté.
+              </p>
+            </div>
+            <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              <ProofCard title="Avant" body="Destinataires, message, cadence, permissions et coût sont visibles avant validation." />
+              <ProofCard title="Pendant" body="Chaque exécution garde son auteur, son horaire, son fournisseur et son statut." />
+              <ProofCard title="Après" body="Réponses, rendez-vous et résultats déclarés restent distincts du simple envoi." />
+              <ProofCard title="Dans le temps" body="Le contexte est rafraîchi chaque semaine et les résultats servent à ajuster les priorités." />
+            </div>
+          </div>
+        </section>
+
+        <section className="border-t border-border">
+          <div className="mx-auto max-w-5xl px-6 py-16 sm:py-20">
+            <div className="mx-auto max-w-3xl text-center">
               <p className="text-xs font-semibold uppercase tracking-[0.18em] text-accent">La différence</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight sm:text-3xl">Plus Pilotzia connaît votre entreprise, plus il devient précis — sans inventer ce qu&apos;il ne sait pas</h2>
               <p className="mt-3 text-muted-foreground">
-                La qualité du conseil progresse avec le contexte. Les données d&apos;autres entreprises ne deviennent utiles qu&apos;à travers des benchmarks suffisamment agrégés et anonymisés.
+                La qualité du conseil progresse avec votre propre contexte. Pilotzia distingue ce qui est renseigné, observé, calculé ou estimé et montre la provenance avant de proposer une action.
               </p>
             </div>
             <div className="mt-10 grid gap-4 lg:grid-cols-3">
@@ -400,7 +418,7 @@ export default function HomePage() {
 
       <footer className="border-t border-border py-8">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 px-6 text-xs text-muted-foreground sm:flex-row sm:items-center sm:justify-between">
-          <p>© {new Date().getFullYear()} {APP_NAME}. Les estimations de temps, valeur et ROI sont indicatives.</p>
+          <p>© {new Date().getFullYear()} {APP_NAME}. Les estimations restent explicitement séparées des résultats observés ou déclarés.</p>
           <nav className="flex flex-wrap gap-x-4 gap-y-2">
             <Link href="/faq">FAQ</Link>
             <Link href="/cgv">CGV</Link>
@@ -424,6 +442,15 @@ function Feature({ icon: Icon, title, body }: { icon: typeof Eye; title: string;
   );
 }
 
+function ProofCard({ title, body }: { title: string; body: string }) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-5">
+      <p className="text-sm font-semibold">{title}</p>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{body}</p>
+    </div>
+  );
+}
+
 function PermissionCard({ title, body }: { title: string; body: string }) {
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -432,3 +459,4 @@ function PermissionCard({ title, body }: { title: string; body: string }) {
     </div>
   );
 }
+
