@@ -84,17 +84,13 @@ export function findConfidentTemplateMatch(message: string, templates: Automatio
 }
 
 const RECOMMENDATION_SIGNAL =
-  /\b(je (?:commencerais|prioriserais|recommande|traiterais)|priorit[eé]|prochaine étape|prochaine etape|pilotzia (?:peut|doit)|il faut|devrait|automatis)\b/i;
+  /\b(je (?:commencerais|prioriserais|recommande|traiterais|conseille|suggère|suggere)|je vous (?:recommande|conseille|suggère|suggere)|vous devriez|priorit[eé]|prochaine étape|prochaine etape|recommandation|solution recommandée|solution recommandee|pilotzia (?:peut|doit)|il faut|devrait|mettez? en place|automatis)\b/i;
 
 export function findRecommendedTemplateMatch(message: string, templates: AutomationTemplate[], tools: string[]) {
   if (!RECOMMENDATION_SIGNAL.test(message) || isCorrectionRequest(message)) return undefined;
 
-  const viable = templates
-    .map((template) => ({ template, ...scoreTemplateIntent(message, template, tools) }))
-    .filter((candidate) => candidate.strongMatches >= 2 || candidate.keywordScore >= 2.5);
-
-  // Une réponse qui recommande plusieurs processus ne doit jamais laisser Pilotzia
-  // choisir silencieusement lequel automatiser.
-  if (viable.length !== 1) return undefined;
+  // Le matcher principal impose déjà assez de preuve et un écart clair avec le second
+  // candidat. On ne bloque donc plus une bonne recommandation uniquement parce que
+  // plusieurs templates dépassent le seuil minimal.
   return findConfidentTemplateMatch(message, templates, tools);
 }
