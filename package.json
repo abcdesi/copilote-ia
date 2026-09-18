@@ -9,11 +9,14 @@
     "lint": "eslint",
     "test:knowledge": "tsx scripts/test-company-knowledge.ts && tsx scripts/test-context-intelligence.ts",
     "test:persistence": "tsx scripts/test-company-persistence.ts && tsx scripts/test-company-history.ts",
-    "test:billing": "tsx scripts/test-billing-economics.ts",
+    "test:billing": "tsx scripts/test-billing-economics.ts && tsx scripts/test-usage-policy.ts && tsx scripts/test-automation-purchases.ts",
     "postinstall": "prisma generate",
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "test:operations": "tsx scripts/test-automation-scheduling.ts && tsx scripts/test-weekly-refresh.ts",
+    "test:profiles": "tsx scripts/test-four-profiles.ts",
+    "test:team": "tsx scripts/test-team-governance.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
@@ -28,7 +31,6 @@
     "lucide-react": "^1.44.0",
     "next": "16.3.4",
     "next-auth": "^5.0.0-beta.32",
-    "prisma": "6.19.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "tailwind-merge": "^3.6.0",
@@ -43,7 +45,8 @@
     "eslint-config-next": "16.3.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.13",
-    "typescript": "^5"
+    "typescript": "^5",
+    "prisma": "6.19.3"
   },
   "allowScripts": {
     "unrs-resolver@1.12.2": true,

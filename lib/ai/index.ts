@@ -7,7 +7,7 @@ import { HOURLY_RATE_EUR, KNOWN_TOOLS } from "@/lib/automations/types";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import { assessAdviceMaturity, maturityInstruction } from "./advice-maturity";
-import { findConfidentTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
+import { findConfidentTemplateMatch, findRecommendedTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
 import {
   compactExpertEvidence,
   expertOperatingDoctrine,
@@ -259,9 +259,21 @@ Faire progresser une décision métier avec le minimum d'informations réellemen
     companyId: context.companyId,
   });
 
-  const matchedTemplateId = isExplicitAutomationRequest(lastUserMessage)
+  const explicitTemplateId = isExplicitAutomationRequest(lastUserMessage)
     ? matchCatalogTemplate(lastUserMessage, context.tools)
     : undefined;
+  const recommendedTemplate = explicitTemplateId
+    ? AUTOMATION_CATALOG.find((template) => template.id === explicitTemplateId)
+    : findRecommendedTemplateMatch(reply, AUTOMATION_CATALOG, context.tools);
+  const alreadyInstalled = recommendedTemplate
+    ? context.automations.some((automation) => automation.name.toLowerCase() === recommendedTemplate.title.toLowerCase())
+    : false;
+  const matchedTemplateId = alreadyInstalled ? undefined : recommendedTemplate?.id;
+  const matchedTemplateSource = matchedTemplateId
+    ? explicitTemplateId
+      ? "explicit_request" as const
+      : "assistant_recommendation" as const
+    : undefined;
 
-  return { reply, matchedTemplateId };
+  return { reply, matchedTemplateId, matchedTemplateSource };
 }

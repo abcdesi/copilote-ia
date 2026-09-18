@@ -9,6 +9,7 @@ import { buildCompanyProfileSummary } from "../lib/companies/profile-summary";
 async function main() {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   let userId: string | null = null;
+  let companyId: string | null = null;
 
   try {
     const user = await prisma.user.create({
@@ -50,6 +51,8 @@ async function main() {
       },
       include: { tools: true },
     });
+
+    companyId = company.id;
 
     await rebuildBusinessGraph(company.id);
     await syncBusinessRhythms(company.id);
@@ -162,9 +165,8 @@ async function main() {
     console.log("✓ Une évolution RH remplace le contexte et supprime une ancienne récurrence devenue fausse");
     console.log(`✓ Score après saisie complète sans connexion : ${coverage.overall}%`);
   } finally {
-    if (userId) {
-      await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
-    }
+    if (companyId) await prisma.company.delete({ where: { id: companyId } }).catch(() => undefined);
+    if (userId) await prisma.user.delete({ where: { id: userId } }).catch(() => undefined);
     await prisma.$disconnect();
   }
 }

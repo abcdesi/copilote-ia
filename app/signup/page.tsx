@@ -14,19 +14,26 @@ export const metadata: Metadata = {
 };
 
 const ERROR_MESSAGES: Record<string, string> = {
-  invalid: "Merci de vérifier les informations saisies (mot de passe : 8 caractères minimum et acceptation des conditions requise).",
+  invalid: "Merci de vérifier les informations saisies (mot de passe : 12 caractères minimum et acceptation des conditions requise).",
   exists: "Un compte existe déjà avec cet email. Connectez-vous plutôt.",
 };
+
+function safeNext(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/onboarding";
+  return value;
+}
 
 export default async function SignupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string }>;
 }) {
+  const params = await searchParams;
+  const next = safeNext(params.next);
   const session = await auth();
-  if (session) redirect("/app");
+  if (session) redirect(next === "/onboarding" ? "/app" : next);
 
-  const { error } = await searchParams;
+  const loginHref = next === "/onboarding" ? "/login" : `/login?next=${encodeURIComponent(next)}`;
 
   return (
     <AuthCard
@@ -35,7 +42,7 @@ export default async function SignupPage({
       footer={
         <>
           Déjà un compte ?{" "}
-          <Link href="/login" className="font-medium text-accent">Se connecter</Link>
+          <Link href={loginHref} className="font-medium text-accent">Se connecter</Link>
         </>
       }
     >
@@ -45,7 +52,8 @@ export default async function SignupPage({
         <p className="flex gap-2"><Check size={14} className="mt-0.5 shrink-0 text-accent" /> Votre contexte et votre historique restent disponibles après l'essai.</p>
       </div>
       <form action={signupAction} className="space-y-4">
-        {error && <p className="text-sm text-danger">{ERROR_MESSAGES[error] ?? "Une erreur est survenue."}</p>}
+        {params.error && <p className="text-sm text-danger">{ERROR_MESSAGES[params.error] ?? "Une erreur est survenue."}</p>}
+        {next !== "/onboarding" && <input type="hidden" name="next" value={next} />}
         <div className="space-y-1.5">
           <Label htmlFor="name">Votre nom</Label>
           <Input id="name" name="name" type="text" required autoComplete="name" placeholder="Camille Martin" />
@@ -56,7 +64,8 @@ export default async function SignupPage({
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="password">Mot de passe</Label>
-          <Input id="password" name="password" type="password" required minLength={8} autoComplete="new-password" placeholder="8 caractères minimum" />
+          <Input id="password" name="password" type="password" required minLength={12} autoComplete="new-password" placeholder="12 caractères minimum" />
+          <p className="text-xs text-muted-foreground">Privilégiez une phrase de passe longue et unique.</p>
         </div>
         <label className="flex items-start gap-2 text-xs leading-5 text-muted-foreground">
           <input name="acceptTerms" value="yes" type="checkbox" required className="mt-1" />

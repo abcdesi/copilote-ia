@@ -1,11 +1,13 @@
 import { prisma } from "@/lib/db/client";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { ChatView } from "@/components/dashboard/ChatView";
+import type { ChatViewMessage } from "@/components/dashboard/ChatView";
 
 export default async function CopilotPage() {
-  const company = await getCurrentCompany();
-  const conversation = await getOrCreateTodayConversation(company.id);
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const conversation = await getOrCreateTodayConversation(company.id, access.session.user.id);
 
   const history = await prisma.chatMessage.findMany({
     where: { conversationId: conversation.id },
@@ -15,7 +17,23 @@ export default async function CopilotPage() {
   return (
     <ChatView
       companyName={company.name}
-      initialMessages={history.map((m) => ({ id: m.id, role: m.role as "user" | "assistant", content: m.content }))}
+      initialMessages={history.map((m) => ({
+        id: m.id,
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        actions: parseActions(m.actionsJson),
+      }))}
     />
   );
+}
+
+
+function parseActions(value: string | null): ChatViewMessage["actions"] {
+  if (!value) return [];
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
 }

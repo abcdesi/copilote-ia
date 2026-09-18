@@ -39,7 +39,7 @@ export default async function FinancePage() {
                 Scale ajoute la profondeur nécessaire aux analyses de direction : lecture de documents financiers, ratios traçables, questions d'audit et priorités reliées aux processus de l'entreprise. Le document brut n'est pas conservé par cette fonctionnalité.
               </p>
               <div className="mt-5">
-                <Button href="/app/settings">Voir Scale à 249 €/mois <ArrowRight size={16} /></Button>
+                <Button href="/app/settings">Voir Scale à 399 €/mois <ArrowRight size={16} /></Button>
               </div>
             </div>
           </div>

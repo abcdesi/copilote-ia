@@ -1,0 +1,4 @@
+ALTER TABLE "Automation"
+  ADD COLUMN "scheduleStartHour" INTEGER NOT NULL DEFAULT 10,
+  ADD COLUMN "scheduleEndHour" INTEGER NOT NULL DEFAULT 18,
+  ADD COLUMN "scheduleDays" TEXT NOT NULL DEFAULT 'Mon,Tue,Wed,Thu,Fri,Sat';

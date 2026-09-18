@@ -12,18 +12,25 @@ export const metadata: Metadata = {
   robots: { index: false, follow: false },
 };
 
+function safeNext(value?: string) {
+  if (!value || !value.startsWith("/") || value.startsWith("//")) return "/app";
+  return value;
+}
+
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; next?: string; reset?: string }>;
 }) {
+  const params = await searchParams;
+  const next = safeNext(params.next);
   const session = await auth().catch((error) => {
     console.error("Unable to read auth session on login page", error);
     return null;
   });
-  if (session) redirect("/app");
+  if (session?.user?.id) redirect(next);
 
-  const { error } = await searchParams;
+  const signupHref = next === "/app" ? "/signup" : `/signup?next=${encodeURIComponent(next)}`;
 
   return (
     <AuthCard
@@ -32,18 +39,23 @@ export default async function LoginPage({
       footer={
         <>
           Pas encore de compte ?{" "}
-          <Link href="/signup" className="font-medium text-accent">Créer un espace gratuit</Link>
+          <Link href={signupHref} className="font-medium text-accent">Créer un espace gratuit</Link>
         </>
       }
     >
       <form action={loginAction} className="space-y-4">
-        {error && <p className="text-sm text-danger">Email ou mot de passe incorrect.</p>}
+        {params.error && <p className="text-sm text-danger">Email ou mot de passe incorrect.</p>}
+        {params.reset === "1" && <p className="rounded-xl border border-accent/25 bg-accent-soft p-3 text-sm text-accent">Mot de passe mis à jour. Reconnectez-vous avec le nouveau mot de passe.</p>}
+        {next !== "/app" && <input type="hidden" name="next" value={next} />}
         <div className="space-y-1.5">
           <Label htmlFor="email">Email</Label>
           <Input id="email" name="email" type="email" required autoComplete="email" placeholder="vous@entreprise.com" />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="password">Mot de passe</Label>
+          <div className="flex items-center justify-between gap-3">
+            <Label htmlFor="password">Mot de passe</Label>
+            <Link href="/forgot-password" className="text-xs font-medium text-accent">Mot de passe oublié ?</Link>
+          </div>
           <Input id="password" name="password" type="password" required autoComplete="current-password" />
         </div>
         <Button type="submit" className="mt-2 w-full">Se connecter</Button>

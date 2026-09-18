@@ -30,7 +30,7 @@ const FAQ = [
   ],
   [
     "Pilotzia utilise-t-il les données d'autres entreprises pour me conseiller ?",
-    "Pilotzia ne doit jamais réinjecter les données privées brutes d'un autre client dans vos réponses. Les apprentissages transverses doivent être limités à des patterns génériques, des ontologies et, lorsque suffisamment de données existent, des benchmarks agrégés et anonymisés avec un seuil minimal de cohorte.",
+    "Pilotzia ne réinjecte pas les données privées brutes d'un autre client dans vos réponses. Les recommandations actuelles s'appuient sur votre propre contexte, les sources que vous avez connectées, des règles métier explicites et des connaissances générales — pas sur un benchmark client présenté comme disponible alors qu'il ne l'est pas encore.",
   ],
   [
     "Pilotzia stocke-t-il le contenu de mes emails ?",
@@ -50,31 +50,39 @@ const FAQ = [
   ],
   [
     "Que se passe-t-il si j'atteins ma limite ?",
-    "Pilotzia conserve votre espace, votre contexte et votre historique. Pendant l'essai, vous pouvez activer un abonnement. Sur un abonnement, vous pouvez passer à une offre supérieure si votre entreprise a besoin de davantage de capacité mensuelle.",
+    "Pilotzia conserve votre espace, votre contexte et votre historique. Pendant l'essai, vous pouvez activer un abonnement. Sur un abonnement, Pilotzia vous alerte avant la limite et vous permet soit d'acheter un pack de crédits supplémentaires, soit de passer à l'offre supérieure.",
   ],
   [
     "Quels sont les plans ?",
-    "Core à 49 €/mois approfondit le contexte, le pilotage et les recommandations. Action à 99 €/mois ajoute l'exécution contrôlée, les automatisations, le monitoring et le suivi ROI. Scale à 249 €/mois vise l'audit avancé, l'intelligence financière, les analyses croisées et les usages d'équipe plus importants.",
+    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et le rafraîchissement hebdomadaire. Action à 179 €/mois ouvre le moteur d'exécution et le suivi des résultats ; les automatisations exécutables sont ensuite achetées séparément au prix affiché. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Les crédits couvrent l'usage courant des fonctions et automatisations, pas leur prix d'achat initial.",
+  ],
+  [
+    "Comment sont facturées les automatisations ?",
+    "Une offre Action ou Scale est nécessaire pour accéder au moteur d'exécution. Chaque automatisation exécutable est ensuite achetée une seule fois au prix affiché. Après le premier abonnement, Pilotzia utilise le compte Stripe déjà associé à l'entreprise afin d'éviter de ressaisir la carte à chaque achat ; une confirmation bancaire supplémentaire peut toutefois être demandée. L'usage courant de l'automatisation consomme ensuite les crédits du plan.",
   ],
   [
     "Pilotzia peut-il analyser un bilan ou un compte de résultat ?",
-    "L'architecture Scale intègre une couche d'intelligence financière capable de calculer des ratios, détecter des alertes et générer des questions d'audit à partir de données financières normalisées. L'ingestion documentaire est déployée progressivement ; Pilotzia doit toujours indiquer la provenance, les données manquantes et le niveau de confiance de ses conclusions.",
+    "Scale permet d'analyser un PDF financier, d'extraire les données structurées, de calculer des ratios déterministes, de signaler les informations manquantes et de produire des priorités. Une extraction trop incertaine n'alimente pas le Business Graph, et un document semblant appartenir à une autre entreprise est bloqué avant intégration sauf validation tracée d'un rôle autorisé.",
   ],
   [
     "Puis-je résilier ?",
-    "Oui. Vous pouvez gérer votre abonnement depuis l'espace de facturation. La résiliation prend effet selon la période de facturation en cours et les conditions précisées dans les CGV.",
+    "Oui. Les offres mensuelles sont sans engagement au-delà de la période déjà payée. Vous pouvez résilier depuis l'espace de facturation ; la résiliation prend effet à la fin de la période en cours, selon les CGV.",
   ],
   [
     "Puis-je supprimer mes données ?",
-    "Oui. Pilotzia doit permettre l'exercice de vos droits sur les données personnelles et la suppression du compte selon les obligations légales et les durées de conservation applicables.",
+    "Oui. Vous pouvez demander l'accès, l'export ou l'effacement des données personnelles concernées via l'assistance Pilotzia. La demande est traitée selon les obligations légales et les durées de conservation applicables ; les éléments devant être conservés pour la facturation, la sécurité ou la preuve ne sont pas supprimés avant l'expiration de leur durée légale.",
   ],
   [
     "Pilotzia revend-il mes données ?",
     "Non. Le modèle produit n'est pas fondé sur la revente de données brutes client. Les données connectées servent à fournir le service, sous réserve des traitements et sous-traitants décrits dans la politique de confidentialité.",
   ],
   [
-    "Le ROI affiché est-il garanti ?",
-    "Non. Les économies de temps, valeurs et ROI affichés sont des estimations destinées à aider à prioriser. Les résultats observés doivent être mesurés séparément et ne constituent jamais une garantie de performance future.",
+    "Comment Pilotzia reste-t-il à jour ?",
+    "Le contexte opérationnel est rafraîchi automatiquement chaque semaine pour les espaces éligibles : sources connectées, Business Graph et opportunités déterministes sont réévalués. Ce refresh est conçu pour coûter 0 € d'IA lorsqu'aucune analyse payante n'est nécessaire ; toute future analyse IA hebdomadaire devra respecter une enveloppe explicite avant exécution.",
+  ],
+  [
+    "Les gains affichés sont-ils garantis ?",
+    "Non. Pilotzia sépare les estimations de potentiel des résultats observés ou déclarés. Le temps gagné ou l'impact financier renseigné par un utilisateur reste identifié comme une déclaration, tandis que les métriques issues d'un fournisseur sont conservées avec leur provenance. Aucun résultat futur n'est garanti.",
   ],
 ];
 

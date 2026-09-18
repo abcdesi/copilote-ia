@@ -1,5 +1,5 @@
 import { ArrowRight, CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { canApproveRisk, getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { Badge } from "@/components/ui/Badge";
@@ -15,7 +15,10 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function ActionsPage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const canReject = hasCompanyPermission(access.role, "operate_automations");
+  const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
   const [actions, entitlements] = await Promise.all([
     prisma.pendingAction.findMany({
       where: { companyId: company.id },
@@ -45,9 +48,11 @@ export default async function ActionsPage() {
             Continuez à l'examiner gratuitement. Quand vous voulez que Pilotzia agisse réellement dans vos outils et suive le résultat, l'offre Action débloque l'exécution contrôlée.
           </p>
           <div className="mt-4">
-            <Button href="/app/settings" size="sm">
-              Voir Action <ArrowRight size={15} />
-            </Button>
+            {canManageBilling ? (
+              <Button href="/app/settings" size="sm">Voir Action <ArrowRight size={15} /></Button>
+            ) : (
+              <p className="text-xs text-muted-foreground">Le Propriétaire peut faire évoluer l’abonnement depuis la facturation.</p>
+            )}
           </div>
         </section>
       )}
@@ -59,7 +64,14 @@ export default async function ActionsPage() {
           </div>
         ) : (
           pending.map((action) => (
-            <PendingActionCard key={action.id} action={action} canExecute={entitlements.canExecute} />
+            <PendingActionCard
+              key={action.id}
+              action={action}
+              planAllowsExecution={entitlements.canExecute}
+              canApprove={canApproveRisk(access.role, action.riskLevel)}
+              canReject={canReject}
+              canManageBilling={canManageBilling}
+            />
           ))
         )}
       </section>
@@ -88,7 +100,10 @@ export default async function ActionsPage() {
 
 function PendingActionCard({
   action,
-  canExecute,
+  planAllowsExecution,
+  canApprove,
+  canReject,
+  canManageBilling,
 }: {
   action: {
     id: string;
@@ -100,7 +115,10 @@ function PendingActionCard({
     createdAt: Date;
     expiresAt: Date | null;
   };
-  canExecute: boolean;
+  planAllowsExecution: boolean;
+  canApprove: boolean;
+  canReject: boolean;
+  canManageBilling: boolean;
 }) {
   const highRisk = action.riskLevel === "high" || action.riskLevel === "critical";
   return (
@@ -123,22 +141,34 @@ function PendingActionCard({
           </div>
 
           <div className="mt-5 flex flex-wrap gap-2">
-            {canExecute ? (
+            {planAllowsExecution && canApprove ? (
               <form method="post" action={`/api/actions/${action.id}/execute`}>
                 <button className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
                   <CheckCircle2 size={15} /> Confirmer et exécuter
                 </button>
               </form>
+            ) : !planAllowsExecution ? (
+              canManageBilling ? (
+                <Button href="/app/settings" size="sm">
+                  Débloquer l'exécution <ArrowRight size={15} />
+                </Button>
+              ) : (
+                <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">
+                  Abonnement à faire évoluer par le Propriétaire
+                </span>
+              )
             ) : (
-              <Button href="/app/settings" size="sm">
-                Débloquer l'exécution <ArrowRight size={15} />
-              </Button>
+              <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">
+                Votre rôle ne peut pas approuver ce niveau de risque
+              </span>
             )}
-            <form method="post" action={`/api/actions/${action.id}/reject`}>
-              <button className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
-                <XCircle size={15} /> Refuser
-              </button>
-            </form>
+            {canReject && (
+              <form method="post" action={`/api/actions/${action.id}/reject`}>
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-4 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                  <XCircle size={15} /> Refuser
+                </button>
+              </form>
+            )}
           </div>
         </div>
       </div>

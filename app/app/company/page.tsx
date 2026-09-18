@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArrowRight, Brain, CheckCircle2, Database, Route, Sparkles, Target } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage, type KnowledgeGuidanceStep } from "@/lib/companies/knowledge-coverage";
 import { buildCompanyProfileSummary } from "@/lib/companies/profile-summary";
 import { updateCompanyAction } from "@/lib/companies/actions";
@@ -9,11 +9,14 @@ import { CompanyProfileSummary } from "@/components/knowledge/CompanyProfileSumm
 import { Input, Label, Textarea } from "@/components/ui/Input";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
+import { BUSINESS_TERRITORY_GROUPS, isKnownBusinessTerritory } from "@/lib/companies/territories";
 
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 
 export default async function CompanyPage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const canEditCompany = hasCompanyPermission(access.role, "edit_company");
   const coverage = await getCompanyKnowledgeCoverage(company.id);
   const profileSummary = buildCompanyProfileSummary(company);
 
@@ -145,7 +148,14 @@ export default async function CompanyPage() {
         </div>
       </div>
 
+      {!canEditCompany && (
+        <div className="rounded-2xl border border-border bg-card p-4 text-sm text-muted-foreground">
+          Votre rôle <strong className="text-foreground">{access.role}</strong> permet de consulter le contexte, mais pas de le modifier. Un Propriétaire ou Administrateur peut mettre ces informations à jour.
+        </div>
+      )}
+
       <form action={updateCompanyAction} className="space-y-6">
+        <fieldset disabled={!canEditCompany} className="contents">
         <section className="rounded-2xl border border-border bg-card p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Fondations</p>
@@ -156,6 +166,24 @@ export default async function CompanyPage() {
             <div className="space-y-1.5">
               <Label htmlFor="name">Nom de l'entreprise</Label>
               <Input id="name" name="name" defaultValue={company.name} required />
+            </div>
+
+            <div id="company-details" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="siret">SIRET</Label>
+                <Input id="siret" name="siret" defaultValue={company.siret ?? ""} placeholder="Ex. 98238554400019" />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="phone">Téléphone professionnel</Label>
+                <Input id="phone" name="phone" type="tel" defaultValue={company.phone ?? ""} placeholder="Ex. +33 1 23 45 67 89" />
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
+                <Label htmlFor="address">Adresse de l'entreprise</Label>
+                <Input id="address" name="address" defaultValue={company.address ?? ""} placeholder="N°, voie, code postal, ville" />
+              </div>
+              <p className="text-xs leading-5 text-muted-foreground md:col-span-2">
+                Ces informations peuvent être utilisées dans les messages professionnels avec les variables prévues par Pilotzia.
+              </p>
             </div>
 
             <div id="activity" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
@@ -203,10 +231,35 @@ export default async function CompanyPage() {
 
             <div id="local" className="grid gap-4 scroll-mt-24 md:grid-cols-2">
               <div className="space-y-1.5">
-                <Label htmlFor="country">Pays / zone principale</Label>
-                <Input id="country" name="country" defaultValue={company.country ?? ""} placeholder="Ex. France, Martinique, Belgique…" />
+                <Label htmlFor="country">Territoire principal</Label>
+                <select
+                  id="country"
+                  name="country"
+                  defaultValue={company.country ?? ""}
+                  className="w-full rounded-xl border border-border bg-card px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-accent/30"
+                >
+                  <option value="">Non renseigné</option>
+                  {company.country && !isKnownBusinessTerritory(company.country) && (
+                    <option value={company.country}>{company.country}</option>
+                  )}
+                  {BUSINESS_TERRITORY_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((territory) => (
+                        <option key={territory} value={territory}>{territory}</option>
+                      ))}
+                    </optgroup>
+                  ))}
+                </select>
               </div>
               <div className="space-y-1.5">
+                <Label htmlFor="timezone">Fuseau horaire opérationnel</Label>
+                <Input id="timezone" name="timezone" defaultValue={company.timezone ?? ""} placeholder="Ex. America/Martinique" />
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Pilotzia le détecte automatiquement une seule fois au premier accès d'un administrateur. Vous pouvez le corriger ici.
+                  Les automatisations planifiées commencent à partir de 10:00 heure locale par défaut, du lundi au samedi.
+                </p>
+              </div>
+              <div className="space-y-1.5 md:col-span-2">
                 <Label htmlFor="localContext">Contexte local utile</Label>
                 <Input id="localContext" name="localContext" defaultValue={company.localContext ?? ""} placeholder="Marché local, saisonnalité, réglementation, langue…" />
               </div>
@@ -238,7 +291,7 @@ export default async function CompanyPage() {
           </div>
         </section>
 
-        <section className="rounded-2xl border border-border bg-card p-6">
+        <section id="business-context" className="scroll-mt-24 rounded-2xl border border-border bg-card p-6">
           <div className="mb-5">
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Domaines métier</p>
             <h2 className="mt-1 text-lg font-semibold">Donnez au copilote la profondeur d'un vrai comité de direction</h2>
@@ -294,6 +347,8 @@ export default async function CompanyPage() {
           </div>
         </section>
 
+        </fieldset>
+
         <div className="sticky bottom-4 z-10 flex flex-col gap-3 rounded-2xl border border-accent/20 bg-background/95 p-4 shadow-lg backdrop-blur sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <Sparkles size={18} className="shrink-0 text-accent" />
@@ -301,7 +356,7 @@ export default async function CompanyPage() {
               Chaque information utile enregistrée enrichit le contexte du copilote et le Business Graph.
             </p>
           </div>
-          <Button type="submit">Enregistrer et améliorer mes recommandations</Button>
+          <Button type="submit" disabled={!canEditCompany}>{canEditCompany ? "Enregistrer et améliorer mes recommandations" : "Modification réservée aux administrateurs"}</Button>
         </div>
       </form>
 

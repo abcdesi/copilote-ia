@@ -22,7 +22,7 @@ async function n8nFetch<T>(path: string, init?: RequestInit): Promise<T> {
   });
   if (!res.ok) {
     const text = await res.text().catch(() => "");
-    throw new Error(`n8n API error ${res.status}: ${text}`);
+    throw new Error(`n8n API error ${res.status}: ${text.slice(0, 500)}`);
   }
   if (res.status === 204) return undefined as T;
   return res.json();
@@ -34,15 +34,33 @@ export interface N8nWorkflow {
   active: boolean;
   nodes: unknown[];
   connections: unknown;
+  settings?: Record<string, unknown>;
 }
 
 export async function listWorkflows() {
   return n8nFetch<{ data: N8nWorkflow[] }>("/workflows");
 }
 
+export async function getWorkflow(id: string) {
+  return n8nFetch<N8nWorkflow>(`/workflows/${id}`);
+}
+
 export async function createWorkflow(input: { name: string; nodes: unknown[]; connections: unknown; settings?: Record<string, unknown> }) {
   return n8nFetch<N8nWorkflow>("/workflows", {
     method: "POST",
+    body: JSON.stringify({ ...input, settings: input.settings ?? {} }),
+  });
+}
+
+export async function updateWorkflow(
+  id: string,
+  input: { name: string; nodes: unknown[]; connections: unknown; settings?: Record<string, unknown> }
+) {
+  // L'API publique n8n utilise PUT pour mettre à jour un workflow. On transmet toujours
+  // settings explicitement afin de respecter le schéma de l'API et de ne pas dépendre
+  // d'un comportement PATCH implicite.
+  return n8nFetch<N8nWorkflow>(`/workflows/${id}?publishIfActive=true`, {
+    method: "PUT",
     body: JSON.stringify({ ...input, settings: input.settings ?? {} }),
   });
 }
@@ -62,7 +80,7 @@ export async function deleteWorkflow(id: string) {
 export interface N8nExecution {
   id: string;
   finished: boolean;
-  status: string; // "success" | "error" | "waiting" | ...
+  status: string;
   startedAt: string;
   stoppedAt: string | null;
 }

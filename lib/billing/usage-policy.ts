@@ -1,19 +1,33 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/db/client";
 import { getPlanDefinition, nextPaidPlan } from "@/lib/billing/plans";
 import { normalizeUsageReservation, usageAlertLevel } from "@/lib/billing/economics";
 
-const TRIAL_DAYS = Number(process.env.PILOTZIA_TRIAL_DAYS || 14);
-const TRIAL_CREDITS = Number(process.env.PILOTZIA_TRIAL_CREDITS || 100);
-const TRIAL_COST_CAP_EUR = Number(process.env.PILOTZIA_TRIAL_COST_CAP_EUR || 3);
+function envAtMost(name: string, fallback: number) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, fallback) : fallback;
+}
 
+function envAtLeast(name: string, fallback: number) {
+  const parsed = Number(process.env[name]);
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.max(parsed, fallback) : fallback;
+}
+
+const TRIAL_DAYS = envAtMost("PILOTZIA_TRIAL_DAYS", 14);
+const TRIAL_CREDITS = envAtMost("PILOTZIA_TRIAL_CREDITS", 100);
+const TRIAL_COST_CAP_EUR = envAtMost("PILOTZIA_TRIAL_COST_CAP_EUR", 3);
+
+// Les réserves peuvent être augmentées par configuration, jamais diminuées sous le
+// plancher testé. Une variable d'environnement erronée ne doit pas sous-estimer le coût.
 export const AI_USAGE_RESERVE_EUR = {
-  fast: Number(process.env.PILOTZIA_AI_FAST_RESERVE_EUR || 0.03),
-  smart: Number(process.env.PILOTZIA_AI_SMART_RESERVE_EUR || 0.08),
+  fast: envAtLeast("PILOTZIA_AI_FAST_RESERVE_EUR", 0.03),
+  smart: envAtLeast("PILOTZIA_AI_SMART_RESERVE_EUR", 0.08),
 } as const;
 
 export type UsageKind = "ai_fast" | "ai_smart" | "diagnostic" | "action" | "automation";
 
 interface UsageMetadata {
+  reservationId?: string;
   kind?: UsageKind;
   credits?: number;
   reservedCostEur?: number;
@@ -27,6 +41,8 @@ type SubscriptionWindow = {
   currentPeriodEnd: Date | null;
   billingInterval: string | null;
 };
+
+type DbClient = Prisma.TransactionClient | typeof prisma;
 
 function safeNumber(value: unknown, fallback: number) {
   const n = Number(value);
@@ -95,50 +111,44 @@ export function paidUsagePeriod(subscription: SubscriptionWindow | null, now = n
   return anchoredMonthlyWindow(subscription.currentPeriodStart, now);
 }
 
-export async function getUsagePeriodForCompany(companyId: string) {
-  const subscription = await prisma.subscription.findFirst({
-    where: { companyId },
-    orderBy: { createdAt: "desc" },
-    select: {
-      plan: true,
-      status: true,
-      currentPeriodStart: true,
-      currentPeriodEnd: true,
-      billingInterval: true,
-    },
-  });
-  return paidUsagePeriod(subscription);
-}
-
-export async function getUsageStatus(companyId: string) {
-  const [subscription, trialStartEvent] = await Promise.all([
-    prisma.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } }),
-    prisma.event.findFirst({ where: { companyId, type: "TRIAL_STARTED" }, orderBy: { createdAt: "asc" } }),
+async function getUsageStatusWithClient(db: DbClient, companyId: string) {
+  const [subscription, trialStartEvent, priorPaidSubscription] = await Promise.all([
+    db.subscription.findFirst({ where: { companyId }, orderBy: { createdAt: "desc" } }),
+    db.event.findFirst({ where: { companyId, type: "TRIAL_STARTED" }, orderBy: { createdAt: "asc" } }),
+    db.subscription.findFirst({ where: { companyId, plan: { not: "free" } }, select: { id: true } }),
   ]);
 
   const paid = isPaidSubscription(subscription);
+  const hasPaidHistory = Boolean(priorPaidSubscription);
+  const subscriptionInactive = !paid && hasPaidHistory;
   const plan = getPlanDefinition(paid ? subscription?.plan : "free");
   const trialStartedAt = trialStartEvent?.createdAt ?? null;
-  const trialEndsAt = trialStartedAt ? new Date(trialStartedAt.getTime() + safeNumber(TRIAL_DAYS, 14) * 86400000) : null;
+  const trialEndsAt = trialStartedAt ? new Date(trialStartedAt.getTime() + TRIAL_DAYS * 86400000) : null;
   const paidPeriod = paidUsagePeriod(subscription);
   const usageWindowStart = paid ? paidPeriod.startsAt : trialStartedAt;
+  const now = new Date();
 
   const [usageEvents, creditPurchases] = await Promise.all([
-    prisma.event.findMany({
+    db.event.findMany({
       where: {
         companyId,
-        type: { in: ["USAGE_RESERVED", "USAGE_REFUNDED"] },
+        OR: [
+          { type: "USAGE_RESERVED" },
+          { type: "USAGE_REFUNDED" },
+          { type: { startsWith: "USAGE_REFUNDED_" } },
+        ],
         ...(usageWindowStart ? { createdAt: { gte: usageWindowStart } } : {}),
       },
       select: { type: true, metadata: true, createdAt: true },
       orderBy: { createdAt: "asc" },
     }),
     paid
-      ? prisma.creditPurchase.findMany({
+      ? db.creditPurchase.findMany({
           where: {
             companyId,
             status: "paid",
-            createdAt: { gte: paidPeriod.startsAt, lt: paidPeriod.endsAt },
+            createdAt: { lt: paidPeriod.endsAt },
+            OR: [{ expiresAt: null }, { expiresAt: { gt: now } }],
           },
           select: { credits: true, costBudgetEur: true },
         })
@@ -149,7 +159,7 @@ export async function getUsageStatus(companyId: string) {
   let reservedCostEur = 0;
   for (const event of usageEvents) {
     const metadata = parseMetadata(event.metadata);
-    const sign = event.type === "USAGE_REFUNDED" ? -1 : 1;
+    const sign = event.type.startsWith("USAGE_REFUNDED") ? -1 : 1;
     creditsUsed += sign * safeNumber(metadata.credits, 0);
     reservedCostEur += sign * safeNumber(metadata.reservedCostEur, 0);
   }
@@ -158,18 +168,20 @@ export async function getUsageStatus(companyId: string) {
 
   const addonCredits = creditPurchases.reduce((sum, purchase) => sum + purchase.credits, 0);
   const addonCostCapEur = creditPurchases.reduce((sum, purchase) => sum + purchase.costBudgetEur, 0);
-  const baseCreditsLimit = paid ? plan.monthlyCredits : safeNumber(TRIAL_CREDITS, 100);
-  const baseCostCapEur = paid ? plan.variableCostCapEur : safeNumber(TRIAL_COST_CAP_EUR, 3);
+  const baseCreditsLimit = paid ? plan.monthlyCredits : subscriptionInactive ? 0 : TRIAL_CREDITS;
+  const baseCostCapEur = paid ? plan.variableCostCapEur : subscriptionInactive ? 0 : TRIAL_COST_CAP_EUR;
   const creditsLimit = baseCreditsLimit + addonCredits;
   const costCapEur = baseCostCapEur + addonCostCapEur;
-  const trialActive = !paid && Boolean(trialEndsAt && trialEndsAt.getTime() > Date.now());
-  const trialExpired = !paid && Boolean(trialEndsAt && !trialActive);
+  const trialActive = !paid && !subscriptionInactive && Boolean(trialEndsAt && trialEndsAt.getTime() > now.getTime());
+  const trialExpired = !paid && !subscriptionInactive && Boolean(trialEndsAt && !trialActive);
   const periodEndsAt = paid ? paidPeriod.endsAt : trialEndsAt;
-  const daysRemaining = periodEndsAt ? Math.max(0, Math.ceil((periodEndsAt.getTime() - Date.now()) / 86400000)) : null;
+  const daysRemaining = periodEndsAt ? Math.max(0, Math.ceil((periodEndsAt.getTime() - now.getTime()) / 86400000)) : null;
   const alertLevel = usageAlertLevel({ creditsUsed, creditsLimit, reservedCostEur, costCapEur });
 
   return {
     paid,
+    hasPaidHistory,
+    subscriptionInactive,
     plan: plan.key,
     planLabel: plan.label,
     nextPlan: nextPaidPlan(plan.key),
@@ -195,6 +207,31 @@ export async function getUsageStatus(companyId: string) {
   };
 }
 
+export async function getUsagePeriodForCompany(companyId: string) {
+  const subscription = await prisma.subscription.findFirst({
+    where: { companyId },
+    orderBy: { createdAt: "desc" },
+    select: {
+      plan: true,
+      status: true,
+      currentPeriodStart: true,
+      currentPeriodEnd: true,
+      billingInterval: true,
+    },
+  });
+  return paidUsagePeriod(subscription);
+}
+
+export async function getUsageStatus(companyId: string) {
+  return getUsageStatusWithClient(prisma, companyId);
+}
+
+async function lockCompanyUsage(tx: Prisma.TransactionClient, companyId: string) {
+  // Verrou transactionnel Postgres partagé par toutes les réservations/remboursements
+  // d'une société. Deux requêtes concurrentes ne peuvent plus dépenser le même solde.
+  await tx.$queryRaw`SELECT id FROM \"Company\" WHERE id = ${companyId} FOR UPDATE`;
+}
+
 export async function reserveUsage(input: {
   companyId: string;
   kind: UsageKind;
@@ -202,70 +239,81 @@ export async function reserveUsage(input: {
   reservedCostEur: number;
 }) {
   const normalized = normalizeUsageReservation(input);
-  const subscription = await prisma.subscription.findFirst({
-    where: { companyId: input.companyId },
-    orderBy: { createdAt: "desc" },
-  });
-  const paid = isPaidSubscription(subscription);
 
-  if (!paid) {
-    let trialStart = await prisma.event.findFirst({
-      where: { companyId: input.companyId, type: "TRIAL_STARTED" },
-      orderBy: { createdAt: "asc" },
-    });
-    if (!trialStart) {
-      trialStart = await prisma.event.create({
+  return prisma.$transaction(
+    async (tx) => {
+      await lockCompanyUsage(tx, input.companyId);
+
+      const [subscription, priorPaidSubscription] = await Promise.all([
+        tx.subscription.findFirst({ where: { companyId: input.companyId }, orderBy: { createdAt: "desc" } }),
+        tx.subscription.findFirst({ where: { companyId: input.companyId, plan: { not: "free" } }, select: { id: true } }),
+      ]);
+      const paid = isPaidSubscription(subscription);
+      const hasPaidHistory = Boolean(priorPaidSubscription);
+
+      // Un abonnement interrompu/past_due ne doit jamais recréer un essai gratuit.
+      if (!paid && hasPaidHistory) {
+        const status = await getUsageStatusWithClient(tx, input.companyId);
+        return { allowed: false as const, reason: "subscription_inactive" as const, status };
+      }
+
+      if (!paid) {
+        const trialStart = await tx.event.findFirst({
+          where: { companyId: input.companyId, type: "TRIAL_STARTED" },
+          orderBy: { createdAt: "asc" },
+        });
+        if (!trialStart) {
+          await tx.event.create({
+            data: {
+              companyId: input.companyId,
+              type: "TRIAL_STARTED",
+              metadata: JSON.stringify({ days: TRIAL_DAYS, credits: TRIAL_CREDITS, costCapEur: TRIAL_COST_CAP_EUR }),
+            },
+          });
+        }
+      }
+
+      const status = await getUsageStatusWithClient(tx, input.companyId);
+      if (!paid && !status.trialActive) return { allowed: false as const, reason: "trial_expired" as const, status };
+      if (status.creditsUsed + normalized.credits > status.creditsLimit) {
+        return {
+          allowed: false as const,
+          reason: paid ? ("plan_credits_exhausted" as const) : ("credits_exhausted" as const),
+          status,
+        };
+      }
+      if (status.reservedCostEur + normalized.reservedCostEur > status.costCapEur) {
+        return {
+          allowed: false as const,
+          reason: paid ? ("plan_cost_cap_reached" as const) : ("cost_cap_reached" as const),
+          status,
+        };
+      }
+
+      const reservation = await tx.event.create({
         data: {
           companyId: input.companyId,
-          type: "TRIAL_STARTED",
+          type: "USAGE_RESERVED",
           metadata: JSON.stringify({
-            days: safeNumber(TRIAL_DAYS, 14),
-            credits: safeNumber(TRIAL_CREDITS, 100),
-            costCapEur: safeNumber(TRIAL_COST_CAP_EUR, 3),
+            kind: input.kind,
+            credits: normalized.credits,
+            reservedCostEur: normalized.reservedCostEur,
+            economicFloorCredits: normalized.economicFloorCredits,
+            plan: status.plan,
+            periodKind: status.periodKind,
           }),
         },
       });
-    }
-  }
-
-  const status = await getUsageStatus(input.companyId);
-  if (!paid && !status.trialActive) return { allowed: false as const, reason: "trial_expired" as const, status };
-  if (status.creditsUsed + normalized.credits > status.creditsLimit) {
-    return {
-      allowed: false as const,
-      reason: paid ? ("plan_credits_exhausted" as const) : ("credits_exhausted" as const),
-      status,
-    };
-  }
-  if (status.reservedCostEur + normalized.reservedCostEur > status.costCapEur) {
-    return {
-      allowed: false as const,
-      reason: paid ? ("plan_cost_cap_reached" as const) : ("cost_cap_reached" as const),
-      status,
-    };
-  }
-
-  const reservation = await prisma.event.create({
-    data: {
-      companyId: input.companyId,
-      type: "USAGE_RESERVED",
-      metadata: JSON.stringify({
-        kind: input.kind,
-        credits: normalized.credits,
+      return {
+        allowed: true as const,
+        paid: paid as boolean,
+        reservationId: reservation.id,
+        creditsReserved: normalized.credits,
         reservedCostEur: normalized.reservedCostEur,
-        economicFloorCredits: normalized.economicFloorCredits,
-        plan: status.plan,
-        periodKind: status.periodKind,
-      }),
+      };
     },
-  });
-  return {
-    allowed: true as const,
-    paid: paid as boolean,
-    reservationId: reservation.id,
-    creditsReserved: normalized.credits,
-    reservedCostEur: normalized.reservedCostEur,
-  };
+    { timeout: 10_000 }
+  );
 }
 
 export async function refundUsage(input: {
@@ -276,17 +324,47 @@ export async function refundUsage(input: {
   reservedCostEur: number;
 }) {
   if (!input.reservationId) return;
-  const normalized = normalizeUsageReservation(input);
-  await prisma.event.create({
-    data: {
-      companyId: input.companyId,
-      type: "USAGE_REFUNDED",
-      metadata: JSON.stringify({
-        reservationId: input.reservationId,
-        kind: input.kind,
-        credits: normalized.credits,
-        reservedCostEur: normalized.reservedCostEur,
-      }),
+
+  await prisma.$transaction(
+    async (tx) => {
+      await lockCompanyUsage(tx, input.companyId);
+      const reservation = await tx.event.findFirst({
+        where: { id: input.reservationId as string, companyId: input.companyId, type: "USAGE_RESERVED" },
+        select: { id: true, metadata: true },
+      });
+      if (!reservation) return;
+
+      const refundType = `USAGE_REFUNDED_${reservation.id}`;
+      const existingRefund = await tx.event.findFirst({ where: { companyId: input.companyId, type: refundType }, select: { id: true } });
+      if (existingRefund) return;
+
+      // Compatibilité avec les remboursements créés avant l'idempotence par type.
+      const legacyRefunds = await tx.event.findMany({
+        where: { companyId: input.companyId, type: "USAGE_REFUNDED" },
+        select: { metadata: true },
+        orderBy: { createdAt: "desc" },
+        take: 500,
+      });
+      if (legacyRefunds.some((event) => parseMetadata(event.metadata).reservationId === reservation.id)) return;
+
+      const reserved = parseMetadata(reservation.metadata);
+      const normalized = normalizeUsageReservation({
+        credits: safeNumber(reserved.credits, input.credits),
+        reservedCostEur: safeNumber(reserved.reservedCostEur, input.reservedCostEur),
+      });
+      await tx.event.create({
+        data: {
+          companyId: input.companyId,
+          type: refundType,
+          metadata: JSON.stringify({
+            reservationId: reservation.id,
+            kind: reserved.kind ?? input.kind,
+            credits: normalized.credits,
+            reservedCostEur: normalized.reservedCostEur,
+          }),
+        },
+      });
     },
-  });
+    { timeout: 10_000 }
+  );
 }

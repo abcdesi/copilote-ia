@@ -128,4 +128,5 @@ export interface ChatMessageInput {
 export interface ChatReply {
   reply: string;
   matchedTemplateId?: string;
+  matchedTemplateSource?: "explicit_request" | "assistant_recommendation";
 }

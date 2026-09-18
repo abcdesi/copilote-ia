@@ -9,12 +9,16 @@ export interface PlanDefinition {
   positioning: string;
   monthlyCredits: number;
   variableCostCapEur: number;
+  includedSeats: number;
   features: string[];
 }
 
-function envNumber(name: string, fallback: number) {
+// Les variables d'environnement peuvent réduire temporairement une enveloppe, jamais
+// dépasser le plafond économique validé dans le code. Les capacités supérieures passent
+// par un pack payé, pas par une variable qui pourrait casser la marge par accident.
+function envAtMost(name: string, hardMaximum: number) {
   const parsed = Number(process.env[name]);
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.min(parsed, hardMaximum) : hardMaximum;
 }
 
 export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
@@ -24,12 +28,14 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     priceEur: 0,
     annualPriceEur: 0,
     positioning: "Voir le potentiel de Pilotzia sur votre entreprise avant de payer.",
-    monthlyCredits: envNumber("PILOTZIA_TRIAL_CREDITS", 100),
-    variableCostCapEur: envNumber("PILOTZIA_TRIAL_COST_CAP_EUR", 3),
+    monthlyCredits: envAtMost("PILOTZIA_TRIAL_CREDITS", 100),
+    variableCostCapEur: envAtMost("PILOTZIA_TRIAL_COST_CAP_EUR", 3),
+    includedSeats: 1,
     features: [
       "Diagnostic public gratuit",
       "14 jours d'essai après le premier usage IA réel",
       "Contexte et historique conservés après l'essai",
+      "1 utilisateur",
     ],
   },
   starter: {
@@ -38,13 +44,16 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     priceEur: 79,
     annualPriceEur: 869,
     positioning: "Comprendre, prioriser et piloter votre entreprise avec un contexte vivant.",
-    monthlyCredits: envNumber("PILOTZIA_CORE_MONTHLY_CREDITS", 700),
-    variableCostCapEur: envNumber("PILOTZIA_CORE_COST_CAP_EUR", 7),
+    monthlyCredits: envAtMost("PILOTZIA_CORE_MONTHLY_CREDITS", 700),
+    variableCostCapEur: envAtMost("PILOTZIA_CORE_COST_CAP_EUR", 7),
+    includedSeats: 1,
     features: [
       "Business Graph vivant",
+      "Rafraîchissement hebdomadaire automatique du contexte",
       "Copilote de direction et Morning Brief",
       "Recommandations continues avec niveau de preuve",
       "Historique du contexte et des décisions",
+      "1 utilisateur",
     ],
   },
   pro: {
@@ -53,13 +62,15 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     priceEur: 179,
     annualPriceEur: 1969,
     positioning: "Passer du conseil à l'exécution contrôlée et mesurer les résultats.",
-    monthlyCredits: envNumber("PILOTZIA_ACTION_MONTHLY_CREDITS", 2000),
-    variableCostCapEur: envNumber("PILOTZIA_ACTION_COST_CAP_EUR", 20),
+    monthlyCredits: envAtMost("PILOTZIA_ACTION_MONTHLY_CREDITS", 2000),
+    variableCostCapEur: envAtMost("PILOTZIA_ACTION_COST_CAP_EUR", 20),
+    includedSeats: 3,
     features: [
       "Tout Core",
-      "Actions et automatisations dans les outils connectés",
+      "Accès au moteur d'exécution et aux automatisations achetées à l'unité",
       "Confirmations pour les actions sensibles",
-      "Monitoring, incidents et suivi ROI",
+      "Monitoring, incidents et suivi des résultats",
+      "3 utilisateurs avec rôles et traçabilité",
     ],
   },
   business: {
@@ -68,13 +79,15 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     priceEur: 399,
     annualPriceEur: 4389,
     positioning: "Audit de direction, intelligence financière et pilotage avancé pour une entreprise plus complexe.",
-    monthlyCredits: envNumber("PILOTZIA_SCALE_MONTHLY_CREDITS", 5000),
-    variableCostCapEur: envNumber("PILOTZIA_SCALE_COST_CAP_EUR", 50),
+    monthlyCredits: envAtMost("PILOTZIA_SCALE_MONTHLY_CREDITS", 5000),
+    variableCostCapEur: envAtMost("PILOTZIA_SCALE_COST_CAP_EUR", 50),
+    includedSeats: 10,
     features: [
       "Tout Action",
       "Audit avancé et intelligence financière",
-      "Analyses croisées, benchmarks agrégés et recommandations de direction",
+      "Analyses croisées et recommandations de direction fondées sur vos données",
       "Volumes, gouvernance et usages équipe supérieurs",
+      "10 utilisateurs inclus, sièges supplémentaires activables sur demande",
     ],
   },
 };

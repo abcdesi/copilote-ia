@@ -1,97 +1,271 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
-import { requireSession } from "@/lib/companies/current";
+import { requireCompanyPermission } from "@/lib/companies/access";
+import { getRealExecutionConfig } from "@/lib/n8n/real-execution-config";
 
 const schema = z.object({
   name: z.string().min(1).max(120),
-  email: z.string().email(),
+  email: z.string().email().max(254),
   templateId: z.string().min(1).max(60),
 });
 
+function normalizedEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
+async function auditContactChange(input: {
+  automationId?: string | null;
+  access: Awaited<ReturnType<typeof requireCompanyPermission>>;
+  eventType: string;
+  details: Record<string, unknown>;
+}) {
+  if (!input.automationId) return;
+  await prisma.automationAuditEvent.create({
+    data: {
+      automationId: input.automationId,
+      actorUserId: input.access.session.user.id,
+      actorName: input.access.session.user.name ?? null,
+      actorEmail: input.access.session.user.email ?? null,
+      actorRole: input.access.role,
+      eventType: input.eventType,
+      detailsJson: JSON.stringify(input.details),
+    },
+  });
+}
+
 export async function addProspectAction(formData: FormData) {
-  const session = await requireSession();
+  const access = await requireCompanyPermission("manage_contacts");
   const parsed = schema.safeParse({
     name: formData.get("name"),
     email: formData.get("email"),
     templateId: formData.get("templateId") || "relance-prospects",
   });
+  if (!parsed.success || !getRealExecutionConfig(parsed.data.templateId)) return;
+
+  const email = normalizedEmail(parsed.data.email);
+  const existing = await prisma.prospect.findFirst({
+    where: { companyId: access.company.id, templateId: parsed.data.templateId, email: { equals: email, mode: "insensitive" } },
+  });
+  const automation = await prisma.automation.findFirst({
+    where: { companyId: access.company.id, templateId: parsed.data.templateId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (existing) {
+    // Une exclusion est une décision explicite : un simple ajout/import ne la contourne pas.
+    if (existing.status === "excluded") throw new Error("CONTACT_EXCLUDED_REQUIRES_EXPLICIT_REACTIVATION");
+    if (existing.name !== parsed.data.name || existing.email !== email) {
+      await prisma.prospect.update({ where: { id: existing.id }, data: { name: parsed.data.name, email } });
+      await auditContactChange({
+        automationId: automation?.id,
+        access,
+        eventType: "contact_updated",
+        details: { prospectId: existing.id, email },
+      });
+    }
+  } else {
+    const created = await prisma.prospect.create({
+      data: { companyId: access.company.id, templateId: parsed.data.templateId, name: parsed.data.name, email },
+    });
+    await auditContactChange({
+      automationId: automation?.id,
+      access,
+      eventType: "contact_added",
+      details: { prospectId: created.id, email },
+    });
+  }
+  revalidatePath("/app/automations");
+}
+
+// Compatibilité avec l'ancienne UI : le bouton "supprimer" archive désormais le contact.
+export async function deleteProspectAction(formData: FormData) {
+  const access = await requireCompanyPermission("manage_contacts");
+  const prospectId = String(formData.get("prospectId") ?? "");
+  if (!prospectId) return;
+
+  const prospect = await prisma.prospect.findFirst({ where: { id: prospectId, companyId: access.company.id } });
+  if (!prospect) return;
+  const automation = await prisma.automation.findFirst({
+    where: { companyId: access.company.id, templateId: prospect.templateId },
+    orderBy: { createdAt: "desc" },
+  });
+
+  if (prospect.status !== "excluded") {
+    await prisma.prospect.update({
+      where: { id: prospect.id },
+      data: { status: "excluded", archivedAt: new Date(), lastOutcome: prospect.lastOutcome ?? "excluded_by_user" },
+    });
+    await auditContactChange({
+      automationId: automation?.id,
+      access,
+      eventType: "contact_excluded",
+      details: { prospectId: prospect.id, email: prospect.email, source: "remove_button" },
+    });
+  }
+  revalidatePath("/app/automations");
+}
+
+
+const prospectOutcomeSchema = z.object({
+  prospectId: z.string().min(1),
+  outcome: z.enum(["no_response", "replied", "meeting_booked", "won", "lost"]),
+});
+
+export async function setProspectOutcomeAction(formData: FormData) {
+  const access = await requireCompanyPermission("manage_contacts");
+  const parsed = prospectOutcomeSchema.safeParse({
+    prospectId: formData.get("prospectId"),
+    outcome: formData.get("outcome"),
+  });
   if (!parsed.success) return;
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
+  const prospect = await prisma.prospect.findFirst({
+    where: { id: parsed.data.prospectId, companyId: access.company.id },
+  });
+  if (!prospect || prospect.lastOutcome === parsed.data.outcome) return;
 
-  await prisma.prospect.create({
-    data: {
-      companyId: company.id,
-      templateId: parsed.data.templateId,
-      name: parsed.data.name,
-      email: parsed.data.email,
+  const automation = await prisma.automation.findFirst({
+    where: { companyId: access.company.id, templateId: prospect.templateId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!automation) return;
+
+  const terminal = ["replied", "meeting_booked", "won", "lost"].includes(parsed.data.outcome);
+  const metricKind =
+    parsed.data.outcome === "replied" ? "prospect_reply" :
+    parsed.data.outcome === "meeting_booked" ? "meeting_booked" :
+    parsed.data.outcome === "won" ? "deal_won" :
+    parsed.data.outcome === "lost" ? "deal_lost" :
+    null;
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.prospect.update({
+      where: { id: prospect.id },
+      data: {
+        lastOutcome: parsed.data.outcome,
+        status: terminal ? "excluded" : "active",
+        archivedAt: terminal ? now : null,
+      },
+    });
+
+    await tx.automationAuditEvent.create({
+      data: {
+        automationId: automation.id,
+        actorUserId: access.session.user.id,
+        actorName: access.session.user.name ?? null,
+        actorEmail: access.session.user.email ?? null,
+        actorRole: access.role,
+        eventType: "contact_outcome_recorded",
+        detailsJson: JSON.stringify({
+          prospectId: prospect.id,
+          recipientEmail: prospect.email,
+          previousOutcome: prospect.lastOutcome,
+          outcome: parsed.data.outcome,
+          relaunchStopped: terminal,
+        }),
+      },
+    });
+
+    if (metricKind) {
+      await tx.automationOutcome.create({
+        data: {
+          automationId: automation.id,
+          kind: metricKind,
+          value: 1,
+          unit: "count",
+          source: "user_reported",
+          confidence: 0.8,
+          evidenceJson: JSON.stringify({
+            prospectId: prospect.id,
+            recipientEmail: prospect.email,
+            contactCount: prospect.contactCount,
+          }),
+          actorUserId: access.session.user.id,
+          actorName: access.session.user.name ?? null,
+          actorEmail: access.session.user.email ?? null,
+          actorRole: access.role,
+          observedAt: now,
+        },
+      });
+    }
+  });
+
+  revalidatePath(`/app/automations/${automation.id}`);
+}
+
+const MAX_IMPORT_ROWS = 500;
+const MAX_FILE_SIZE = 1_000_000;
+const rowSchema = z.object({ name: z.string().min(1).max(120), email: z.string().email().max(254) });
+
+export async function importProspectsAction(formData: FormData) {
+  const access = await requireCompanyPermission("manage_contacts");
+  const templateId = String(formData.get("templateId") || "relance-prospects");
+  const file = formData.get("file");
+  if (!getRealExecutionConfig(templateId)) return;
+  if (!(file instanceof File) || file.size === 0 || file.size > MAX_FILE_SIZE) return;
+
+  const text = await file.text();
+  const rawRows = parseContactFile(text).slice(0, MAX_IMPORT_ROWS);
+  const existing = await prisma.prospect.findMany({
+    where: { companyId: access.company.id, templateId },
+    select: { id: true, email: true, status: true },
+  });
+  const existingByEmail = new Map(existing.map((p) => [normalizedEmail(p.email), p]));
+  const seenInFile = new Set<string>();
+
+  const toCreate: { companyId: string; templateId: string; name: string; email: string }[] = [];
+  let invalidRows = 0;
+  let duplicateRows = 0;
+  let excludedSkipped = 0;
+  for (const raw of rawRows) {
+    const parsed = rowSchema.safeParse(raw);
+    if (!parsed.success) {
+      invalidRows += 1;
+      continue;
+    }
+    const email = normalizedEmail(parsed.data.email);
+    if (seenInFile.has(email)) {
+      duplicateRows += 1;
+      continue;
+    }
+    seenInFile.add(email);
+    const previous = existingByEmail.get(email);
+    if (previous) {
+      if (previous.status === "excluded") excludedSkipped += 1;
+      else duplicateRows += 1;
+      continue;
+    }
+    toCreate.push({ companyId: access.company.id, templateId, name: parsed.data.name, email });
+  }
+
+  if (toCreate.length > 0) await prisma.prospect.createMany({ data: toCreate });
+
+  const automation = await prisma.automation.findFirst({
+    where: { companyId: access.company.id, templateId },
+    orderBy: { createdAt: "desc" },
+  });
+  await auditContactChange({
+    automationId: automation?.id,
+    access,
+    eventType: "contacts_imported",
+    details: {
+      filename: file.name.slice(0, 220),
+      fileHash: createHash("sha256").update(text).digest("hex"),
+      parsedRows: rawRows.length,
+      createdRows: toCreate.length,
+      invalidRows,
+      duplicateRows,
+      excludedSkipped,
     },
   });
   revalidatePath("/app/automations");
 }
 
-export async function deleteProspectAction(formData: FormData) {
-  const session = await requireSession();
-  const prospectId = String(formData.get("prospectId") ?? "");
-  if (!prospectId) return;
-
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
-
-  await prisma.prospect.deleteMany({ where: { id: prospectId, companyId: company.id } });
-  revalidatePath("/app/automations");
-}
-
-const MAX_IMPORT_ROWS = 500;
-const MAX_FILE_SIZE = 1_000_000; // 1 Mo — largement suffisant pour des listes de contacts texte
-
-const rowSchema = z.object({
-  name: z.string().min(1).max(120),
-  email: z.string().email(),
-});
-
-export async function importProspectsAction(formData: FormData) {
-  const session = await requireSession();
-  const templateId = String(formData.get("templateId") || "relance-prospects");
-  const file = formData.get("file");
-  if (!(file instanceof File) || file.size === 0 || file.size > MAX_FILE_SIZE) return;
-
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
-
-  const text = await file.text();
-  const rawRows = parseContactFile(text);
-
-  const existing = await prisma.prospect.findMany({
-    where: { companyId: company.id, templateId },
-    select: { email: true },
-  });
-  const seen = new Set(existing.map((p) => p.email.toLowerCase()));
-
-  const toCreate: { companyId: string; templateId: string; name: string; email: string }[] = [];
-  for (const raw of rawRows) {
-    if (toCreate.length >= MAX_IMPORT_ROWS) break;
-    const parsed = rowSchema.safeParse(raw);
-    if (!parsed.success) continue;
-    const emailKey = parsed.data.email.toLowerCase();
-    if (seen.has(emailKey)) continue;
-    seen.add(emailKey);
-    toCreate.push({ companyId: company.id, templateId, name: parsed.data.name, email: parsed.data.email });
-  }
-
-  if (toCreate.length > 0) {
-    await prisma.prospect.createMany({ data: toCreate });
-  }
-  revalidatePath("/app/automations");
-}
-
-// Accepte soit un JSON (tableau d'objets {name, email}), soit un CSV simple avec une
-// ligne d'en-tête "name,email" (ou "nom,email"). Volontairement basique — pas de
-// gestion de guillemets échappés/virgules imbriquées, ce n'est qu'une liste de contacts.
 function parseContactFile(text: string): { name: unknown; email: unknown }[] {
   const trimmed = text.trim();
   if (!trimmed) return [];
@@ -100,29 +274,50 @@ function parseContactFile(text: string): { name: unknown; email: unknown }[] {
     try {
       const json = JSON.parse(trimmed);
       const arr = Array.isArray(json) ? json : [json];
-      return arr.map((row) => ({
-        name: row?.name ?? row?.Name ?? row?.nom,
-        email: row?.email ?? row?.Email,
-      }));
+      return arr.map((row) => ({ name: row?.name ?? row?.Name ?? row?.nom, email: row?.email ?? row?.Email }));
     } catch {
-      // Pas du JSON valide malgré l'apparence — on retente en CSV ci-dessous.
+      // On tente ensuite le CSV.
     }
   }
 
-  const lines = trimmed.split(/\r?\n/).filter((l) => l.trim().length > 0);
-  if (lines.length === 0) return [];
-
-  const splitLine = (line: string) => line.split(",").map((c) => c.trim().replace(/^"|"$/g, ""));
-  const header = splitLine(lines[0]).map((h) => h.toLowerCase());
+  const rows = parseCsv(trimmed);
+  if (rows.length === 0) return [];
+  const header = rows[0].map((h) => h.trim().toLowerCase());
   const nameIdx = header.indexOf("name") !== -1 ? header.indexOf("name") : header.indexOf("nom");
   const emailIdx = header.indexOf("email");
   const hasHeader = nameIdx !== -1 && emailIdx !== -1;
-
-  const dataLines = hasHeader ? lines.slice(1) : lines;
+  const dataRows = hasHeader ? rows.slice(1) : rows;
   const [nIdx, eIdx] = hasHeader ? [nameIdx, emailIdx] : [0, 1];
+  return dataRows.filter((row) => row.some((cell) => cell.trim())).map((row) => ({ name: row[nIdx], email: row[eIdx] }));
+}
 
-  return dataLines.map((line) => {
-    const cols = splitLine(line);
-    return { name: cols[nIdx], email: cols[eIdx] };
-  });
+function parseCsv(text: string) {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const char = text[i];
+    if (quoted) {
+      if (char === '"' && text[i + 1] === '"') {
+        cell += '"';
+        i += 1;
+      } else if (char === '"') quoted = false;
+      else cell += char;
+      continue;
+    }
+    if (char === '"') quoted = true;
+    else if (char === ",") {
+      row.push(cell.trim());
+      cell = "";
+    } else if (char === "\n") {
+      row.push(cell.trim().replace(/\r$/, ""));
+      rows.push(row);
+      row = [];
+      cell = "";
+    } else cell += char;
+  }
+  row.push(cell.trim().replace(/\r$/, ""));
+  rows.push(row);
+  return rows;
 }

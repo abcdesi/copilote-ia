@@ -35,6 +35,7 @@ export const AUTOMATION_STATUS_LABELS: Record<string, string> = {
   warning: "Nécessite votre attention",
   error: "Problème détecté",
   inactive: "Désactivée",
+  needs_review: "À valider",
 };
 
 export const HEALTH_EMOJI: Record<string, string> = {

@@ -22,6 +22,7 @@ const FIELD_LABELS: Record<string, string> = {
   name: "Nom de l'entreprise",
   industry: "Activité / secteur",
   country: "Pays / zone",
+  timezone: "Fuseau horaire opérationnel",
   sizeRange: "Taille de l'équipe",
   employeeCount: "Effectif",
   objectives: "Objectifs prioritaires",
@@ -73,7 +74,7 @@ export default async function CompanyHistoryPage({ searchParams }: { searchParam
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm font-semibold">{history.total} modification{history.total > 1 ? "s" : ""} conservée{history.total > 1 ? "s" : ""}</p>
-            <p className="mt-1 text-xs text-muted-foreground">Ancienne valeur, nouvelle valeur, rubrique, source et date sont conservées tant que l'entreprise existe dans Pilotzia.</p>
+            <p className="mt-1 text-xs text-muted-foreground">Ancienne valeur, nouvelle valeur, rubrique, date/heure et auteur sont conservés lorsque l'action est nominative.</p>
           </div>
           <span className="rounded-full bg-muted px-3 py-1 text-xs font-medium text-muted-foreground">Page {history.page}/{history.pageCount}</span>
         </div>
@@ -94,6 +95,12 @@ export default async function CompanyHistoryPage({ searchParams }: { searchParam
                   {new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(new Date(revision.effectiveAt))}
                 </time>
               </div>
+              {(revision.actorName || revision.actorEmail || revision.actorRole) && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Modifié par <strong className="text-foreground">{revision.actorName || revision.actorEmail || "Utilisateur"}</strong>
+                  {revision.actorRole ? ` · rôle : ${revision.actorRole}` : ""}
+                </p>
+              )}
               <div className="mt-4 grid gap-3 md:grid-cols-2">
                 <div className="rounded-xl bg-muted/40 p-3">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">Avant</p>

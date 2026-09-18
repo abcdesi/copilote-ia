@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/db/client";
-import type { PlanKey } from "@/lib/billing/plans";
+import { getPlanDefinition, type PlanKey } from "@/lib/billing/plans";
 
 const ACTIVE_SUBSCRIPTION_STATUSES = new Set(["active", "trialing"]);
 
@@ -8,6 +8,7 @@ export interface CompanyEntitlements {
   paid: boolean;
   canExecute: boolean;
   canUseFinancialAudit: boolean;
+  seatLimit: number;
 }
 
 function normalizePlan(plan?: string | null): PlanKey {
@@ -16,19 +17,24 @@ function normalizePlan(plan?: string | null): PlanKey {
 }
 
 export async function getCompanyEntitlements(companyId: string): Promise<CompanyEntitlements> {
-  const subscription = await prisma.subscription.findFirst({
-    where: { companyId },
-    orderBy: { createdAt: "desc" },
-    select: { plan: true, status: true },
-  });
+  const [subscription, company] = await Promise.all([
+    prisma.subscription.findFirst({
+      where: { companyId },
+      orderBy: { createdAt: "desc" },
+      select: { plan: true, status: true },
+    }),
+    prisma.company.findUnique({ where: { id: companyId }, select: { additionalSeats: true } }),
+  ]);
 
   const active = Boolean(subscription && ACTIVE_SUBSCRIPTION_STATUSES.has(subscription.status));
   const plan = active ? normalizePlan(subscription?.plan) : "free";
+  const definition = getPlanDefinition(plan);
 
   return {
     plan,
     paid: plan !== "free",
     canExecute: plan === "pro" || plan === "business",
     canUseFinancialAudit: plan === "business",
+    seatLimit: definition.includedSeats + (plan === "business" ? Math.max(0, company?.additionalSeats ?? 0) : 0),
   };
 }

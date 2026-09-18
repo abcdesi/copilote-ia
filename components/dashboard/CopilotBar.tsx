@@ -1,80 +1,51 @@
 "use client";
 
-import { FormEvent, useEffect, useState } from "react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { ArrowRight, Loader2, Sparkles } from "lucide-react";
-
-const PLACEHOLDERS = [
-  "Que voulez-vous faire ? (ex : « Automatise mes relances »)",
-  "Qu'est-ce qui mérite mon attention aujourd'hui ?",
-  "Trouve ce qui me fait perdre du temps",
-  "Que sais-tu déjà de mon entreprise ?",
-  "Quels outils devrais-je connecter en priorité ?",
-];
+import { FormEvent, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { ArrowRight, Bot } from "lucide-react";
 
 export function CopilotBar() {
   const pathname = usePathname();
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [reply, setReply] = useState<string | null>(null);
-  const [placeholderIndex, setPlaceholderIndex] = useState(0);
+  const router = useRouter();
+  const [prompt, setPrompt] = useState("");
 
-  useEffect(() => {
-    const id = setInterval(() => setPlaceholderIndex((i) => (i + 1) % PLACEHOLDERS.length), 3000);
-    return () => clearInterval(id);
-  }, []);
+  if (pathname === "/app/copilot" || pathname.startsWith("/app/copilot/")) return null;
 
-  if (pathname === "/app/copilot") return null;
-
-  async function handleSubmit(e: FormEvent) {
-    e.preventDefault();
-    if (!input.trim() || loading) return;
-    setLoading(true);
-    setReply(null);
-    try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ message: input }),
-      });
-      const data = await res.json();
-      setReply(res.ok ? data.reply : "Une erreur est survenue, réessayez.");
-    } catch {
-      setReply("Une erreur est survenue, réessayez.");
-    } finally {
-      setInput("");
-      setLoading(false);
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const value = prompt.trim();
+    if (!value) {
+      router.push("/app/copilot");
+      return;
     }
+
+    window.sessionStorage.setItem("pilotzia:copilot-draft", value);
+    router.push("/app/copilot");
   }
 
   return (
     <div className="border-b border-border bg-card/60 px-4 py-3 sm:px-6">
-      <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl items-center gap-2 rounded-full border border-border bg-card px-2 py-1.5 shadow-sm focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
-        <Sparkles size={16} className="ml-2 shrink-0 text-accent" />
+      <form
+        onSubmit={handleSubmit}
+        className="mx-auto flex max-w-5xl items-center gap-3 rounded-xl border border-border bg-card px-3 py-2.5 shadow-sm transition-colors focus-within:border-accent/40 focus-within:ring-2 focus-within:ring-accent/20"
+      >
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-accent-soft text-accent">
+          <Bot size={17} />
+        </div>
         <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder={PLACEHOLDERS[placeholderIndex]}
-          className="flex-1 bg-transparent px-1 py-1.5 text-sm outline-none placeholder:text-muted-foreground"
+          value={prompt}
+          onChange={(event) => setPrompt(event.target.value)}
+          aria-label="Poser une question au Copilote"
+          placeholder="Demandez à Pilotzia ce qui mérite votre attention…"
+          className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
         />
         <button
           type="submit"
-          disabled={loading || !input.trim()}
-          className="flex shrink-0 items-center justify-center rounded-full bg-accent p-1.5 text-accent-foreground disabled:opacity-40"
+          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-accent transition-opacity hover:opacity-75"
         >
-          {loading ? <Loader2 size={14} className="animate-spin" /> : <ArrowRight size={14} />}
+          Continuer à lire dans Copilote <ArrowRight size={14} />
         </button>
       </form>
-
-      {reply && (
-        <div className="mx-auto mt-2 max-w-3xl rounded-xl bg-accent-soft px-4 py-2.5 text-sm text-foreground">
-          {reply}{" "}
-          <Link href="/app/copilot" className="font-medium text-accent whitespace-nowrap">
-            Continuer dans le copilote →
-          </Link>
-        </div>
-      )}
     </div>
   );
 }

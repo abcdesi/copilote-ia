@@ -1,12 +1,12 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { requireCompanyPermission } from "@/lib/companies/access";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
 
 export async function rebuildBusinessGraphAction() {
-  const company = await getCurrentCompany();
-  await rebuildBusinessGraph(company.id);
+  const access = await requireCompanyPermission("edit_company");
+  await rebuildBusinessGraph(access.company.id);
   revalidatePath("/app/context");
   revalidatePath("/app");
 }

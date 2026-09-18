@@ -4,12 +4,34 @@ import { getCreditPack, type CreditPackKey } from "@/lib/billing/credit-packs";
 
 export type PaidPlan = PaidPlanKey;
 
+export function identifyStripeSubscriptionPrice(priceIdValue?: string | null): { plan: PaidPlanKey; billingCycle: BillingCycle } | null {
+  if (!priceIdValue) return null;
+  const configured: Array<{ env: string; plan: PaidPlanKey; billingCycle: BillingCycle }> = [
+    { env: "STRIPE_PRICE_STARTER", plan: "starter", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_STARTER_ANNUAL", plan: "starter", billingCycle: "annual" },
+    { env: "STRIPE_PRICE_PRO", plan: "pro", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_PRO_ANNUAL", plan: "pro", billingCycle: "annual" },
+    { env: "STRIPE_PRICE_BUSINESS", plan: "business", billingCycle: "monthly" },
+    { env: "STRIPE_PRICE_BUSINESS_ANNUAL", plan: "business", billingCycle: "annual" },
+  ];
+  const match = configured.find((entry) => process.env[entry.env]?.trim() === priceIdValue);
+  return match ? { plan: match.plan, billingCycle: match.billingCycle } : null;
+}
+
 type StripePrice = {
   id: string;
   active?: boolean;
   currency?: string;
   unit_amount?: number | null;
   recurring?: { interval?: string } | null;
+};
+
+type StripeInvoice = {
+  id: string;
+  status?: string | null;
+  paid?: boolean;
+  hosted_invoice_url?: string | null;
+  amount_due?: number;
 };
 
 function secretKey() {
@@ -19,15 +41,16 @@ function secretKey() {
 }
 
 function appUrl() {
-  return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
+  const configured = process.env.APP_URL?.trim();
+  if (configured) return configured.replace(/\/$/, "");
+  if (process.env.NODE_ENV === "production") throw new Error("APP_URL manquante en production.");
+  return "http://localhost:3000";
 }
 
 function priceId(plan: PaidPlan, billingCycle: BillingCycle) {
   const baseKey = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
   const key = billingCycle === "annual" ? `${baseKey}_ANNUAL` : baseKey;
-  const value = process.env[key];
-  if (!value) throw new Error(`${key} manquante.`);
-  return value;
+  return process.env[key]?.trim() || null;
 }
 
 function creditPackPriceId(packKey: CreditPackKey) {
@@ -50,13 +73,20 @@ async function stripeGet<T>(path: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-async function stripePost<T>(path: string, body: URLSearchParams): Promise<T> {
+async function stripePost<T>(
+  path: string,
+  body: URLSearchParams,
+  options?: { idempotencyKey?: string }
+): Promise<T> {
+  const headers: Record<string, string> = {
+    authorization: `Bearer ${secretKey()}`,
+    "content-type": "application/x-www-form-urlencoded",
+  };
+  if (options?.idempotencyKey) headers["Idempotency-Key"] = options.idempotencyKey;
+
   const res = await fetch(`https://api.stripe.com/v1${path}`, {
     method: "POST",
-    headers: {
-      authorization: `Bearer ${secretKey()}`,
-      "content-type": "application/x-www-form-urlencoded",
-    },
+    headers,
     body,
   });
   if (!res.ok) {
@@ -92,27 +122,50 @@ export async function createCheckoutSession(input: {
 }) {
   const plan = getPlanDefinition(input.plan);
   const selectedPriceId = priceId(input.plan, input.billingCycle);
-  await assertStripePrice({
-    priceId: selectedPriceId,
-    expectedEur: input.billingCycle === "annual" ? plan.annualPriceEur : plan.priceEur,
-    recurringInterval: input.billingCycle === "annual" ? "year" : "month",
-  });
+  const amountEur = input.billingCycle === "annual" ? plan.annualPriceEur : plan.priceEur;
+  const interval = input.billingCycle === "annual" ? "year" : "month";
 
   const body = new URLSearchParams();
   body.set("mode", "subscription");
   body.set("success_url", `${appUrl()}/app/settings?billing=success`);
   body.set("cancel_url", `${appUrl()}/app/settings?billing=cancelled`);
-  body.set("line_items[0][price]", selectedPriceId);
   body.set("line_items[0][quantity]", "1");
+
+  if (selectedPriceId) {
+    await assertStripePrice({
+      priceId: selectedPriceId,
+      expectedEur: amountEur,
+      recurringInterval: interval,
+    });
+    body.set("line_items[0][price]", selectedPriceId);
+  } else {
+    body.set("line_items[0][price_data][currency]", "eur");
+    body.set("line_items[0][price_data][unit_amount]", String(Math.round(amountEur * 100)));
+    body.set("line_items[0][price_data][tax_behavior]", "exclusive");
+    body.set("line_items[0][price_data][recurring][interval]", interval);
+    body.set("line_items[0][price_data][product_data][name]", `Pilotzia ${plan.label}`);
+  }
   body.set("metadata[companyId]", input.companyId);
   body.set("metadata[plan]", input.plan);
   body.set("metadata[billingCycle]", input.billingCycle);
   body.set("subscription_data[metadata][companyId]", input.companyId);
   body.set("subscription_data[metadata][plan]", input.plan);
   body.set("subscription_data[metadata][billingCycle]", input.billingCycle);
-  body.set("allow_promotion_codes", "true");
-  if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
-  else body.set("customer_email", input.email);
+  // Les promotions génériques restent désactivées : un coupon Stripe non borné
+  // pourrait passer sous le plancher de marge validé. Les offres commerciales doivent
+  // être modélisées explicitement et testées dans le moteur économique Pilotzia.
+  body.set("billing_address_collection", "required");
+  body.set("tax_id_collection[enabled]", "true");
+  if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
+    body.set("automatic_tax[enabled]", "true");
+  }
+  if (input.stripeCustomerId) {
+    body.set("customer", input.stripeCustomerId);
+    body.set("customer_update[address]", "auto");
+    body.set("customer_update[name]", "auto");
+  } else {
+    body.set("customer_email", input.email);
+  }
 
   return stripePost<{ id: string; url: string }>("/checkout/sessions", body);
 }
@@ -140,10 +193,88 @@ export async function createCreditPackCheckoutSession(input: {
   body.set("metadata[credits]", String(pack.credits));
   body.set("metadata[costBudgetEur]", String(pack.costBudgetEur));
   body.set("metadata[amountEur]", String(pack.priceEur));
+  body.set("billing_address_collection", "required");
+  body.set("tax_id_collection[enabled]", "true");
+  if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
+    body.set("automatic_tax[enabled]", "true");
+  }
   if (input.stripeCustomerId) body.set("customer", input.stripeCustomerId);
   else body.set("customer_email", input.email);
 
   return stripePost<{ id: string; url: string }>("/checkout/sessions", body);
+}
+
+export async function createAutomationInvoicePurchase(input: {
+  purchaseId: string;
+  companyId: string;
+  opportunityId: string;
+  templateId: string;
+  title: string;
+  amountEur: number;
+  stripeCustomerId: string;
+  billingAttempt: number;
+}) {
+  const invoiceBody = new URLSearchParams();
+  invoiceBody.set("customer", input.stripeCustomerId);
+  invoiceBody.set("collection_method", "charge_automatically");
+  invoiceBody.set("auto_advance", "false");
+  invoiceBody.set("description", `Pilotzia — automatisation : ${input.title}`);
+  invoiceBody.set("metadata[kind]", "automation_purchase");
+  invoiceBody.set("metadata[purchaseId]", input.purchaseId);
+  invoiceBody.set("metadata[companyId]", input.companyId);
+  invoiceBody.set("metadata[opportunityId]", input.opportunityId);
+  invoiceBody.set("metadata[templateId]", input.templateId);
+  invoiceBody.set("metadata[amountEur]", String(input.amountEur));
+  if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
+    invoiceBody.set("automatic_tax[enabled]", "true");
+  }
+
+  const invoice = await stripePost<StripeInvoice>("/invoices", invoiceBody, {
+    idempotencyKey: `pilotzia-automation-invoice-${input.purchaseId}-a${input.billingAttempt}`,
+  });
+
+  const itemBody = new URLSearchParams();
+  itemBody.set("customer", input.stripeCustomerId);
+  itemBody.set("invoice", invoice.id);
+  itemBody.set("amount", String(Math.round(input.amountEur * 100)));
+  itemBody.set("currency", "eur");
+  itemBody.set("description", `Automatisation Pilotzia — ${input.title}`);
+  itemBody.set("metadata[kind]", "automation_purchase");
+  itemBody.set("metadata[purchaseId]", input.purchaseId);
+  itemBody.set("metadata[opportunityId]", input.opportunityId);
+  await stripePost("/invoiceitems", itemBody, {
+    idempotencyKey: `pilotzia-automation-item-${input.purchaseId}-a${input.billingAttempt}`,
+  });
+
+  const finalized = await stripePost<StripeInvoice>(
+    `/invoices/${encodeURIComponent(invoice.id)}/finalize`,
+    new URLSearchParams({ auto_advance: "false" }),
+    { idempotencyKey: `pilotzia-automation-finalize-${input.purchaseId}-a${input.billingAttempt}` }
+  );
+
+  let latest = finalized;
+  let paymentError: string | null = null;
+  if (latest.status !== "paid" && latest.paid !== true) {
+    try {
+      latest = await stripePost<StripeInvoice>(
+        `/invoices/${encodeURIComponent(invoice.id)}/pay`,
+        new URLSearchParams(),
+        { idempotencyKey: `pilotzia-automation-pay-${input.purchaseId}-a${input.billingAttempt}` }
+      );
+    } catch (error) {
+      paymentError = error instanceof Error ? error.message.slice(0, 400) : "Paiement à confirmer.";
+      latest = await stripeGet<StripeInvoice>(`/invoices/${encodeURIComponent(invoice.id)}`);
+    }
+  }
+
+  return {
+    invoiceId: latest.id,
+    status: latest.status ?? "open",
+    paid: latest.status === "paid" || latest.paid === true,
+    hostedInvoiceUrl: latest.hosted_invoice_url ?? null,
+    amountDueCents: latest.amount_due ?? Math.round(input.amountEur * 100),
+    paymentError,
+  };
 }
 
 export async function createBillingPortalSession(stripeCustomerId: string) {
@@ -153,7 +284,7 @@ export async function createBillingPortalSession(stripeCustomerId: string) {
 
 export function verifyStripeWebhook(rawBody: string, signatureHeader: string) {
   const secret = process.env.STRIPE_WEBHOOK_SECRET;
-  if (!secret) throw new Error("STRIPE_WEBHOOK_SECRET manquante.");
+  if (!secret) return false;
 
   const parts = signatureHeader.split(",").map((part) => part.trim());
   const timestamp = parts.find((part) => part.startsWith("t="))?.slice(2);

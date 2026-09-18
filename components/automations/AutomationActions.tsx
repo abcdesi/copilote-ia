@@ -9,10 +9,12 @@ export function AutomationActions({
   automationId,
   status,
   exportData,
+  canToggle,
 }: {
   automationId: string;
   status: string;
   exportData: Record<string, unknown>;
+  canToggle: boolean;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -40,10 +42,10 @@ export function AutomationActions({
       <Button variant="outline" size="sm" onClick={exportJson}>
         <Download size={14} /> Exporter
       </Button>
-      <Button variant={isInactive ? "primary" : "outline"} size="sm" onClick={toggle} disabled={loading}>
+      {canToggle && <Button variant={isInactive ? "primary" : "outline"} size="sm" onClick={toggle} disabled={loading}>
         {loading ? <Loader2 size={14} className="animate-spin" /> : <Power size={14} />}
         {isInactive ? "Réactiver" : "Désactiver"}
-      </Button>
+      </Button>}
     </div>
   );
 }

@@ -219,7 +219,7 @@ export const AUTOMATION_CATALOG: AutomationTemplate[] = [
     description: "Compile automatiquement les indicateurs clés de la semaine et les diffuse à l'équipe.",
     category: "Productivité",
     keywords: ["rapport", "reporting", "suivi", "kpi", "tableau de bord"],
-    relevantTools: ["Google Sheets", "Excel", "Slack", "Microsoft Teams"],
+    relevantTools: ["Google Sheets", "Excel", "Slack", "Microsoft Teams", "Google Analytics 4", "Google Ads", "Meta Ads", "LinkedIn Ads"],
     impactLevel: "medium",
     complexity: "low",
     estimatedHoursPerMonth: 3,

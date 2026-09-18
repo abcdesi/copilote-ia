@@ -3,7 +3,8 @@
 import { z } from "zod";
 import { revalidatePath } from "next/cache";
 import { prisma } from "@/lib/db/client";
-import { requireSession } from "@/lib/companies/current";
+import { requireCompanyPermission } from "@/lib/companies/access";
+import { validateMessageTemplate } from "@/lib/automations/governance";
 
 const schema = z.object({
   automationId: z.string().min(1),
@@ -12,7 +13,7 @@ const schema = z.object({
 });
 
 export async function updateMessageTemplateAction(formData: FormData) {
-  const session = await requireSession();
+  const access = await requireCompanyPermission("configure_automations");
   const parsed = schema.safeParse({
     automationId: formData.get("automationId"),
     subject: formData.get("subject"),
@@ -20,19 +21,47 @@ export async function updateMessageTemplateAction(formData: FormData) {
   });
   if (!parsed.success) return;
 
-  const company = await prisma.company.findFirst({ where: { userId: session.user.id } });
-  if (!company) return;
+  const automation = await prisma.automation.findFirst({ where: { id: parsed.data.automationId, companyId: access.company.id } });
+  if (!automation) return;
 
-  const subject = parsed.data.subject?.trim();
-  const body = parsed.data.body?.trim();
+  const subject = parsed.data.subject?.trim() ?? "";
+  const body = parsed.data.body?.trim() ?? "";
+  const validation = validateMessageTemplate(subject, body);
+  if (!validation.valid) throw new Error(`AUTOMATION_UNKNOWN_VARIABLES:${validation.unknown.join(",")}`);
 
-  // Chaîne vide = retour aux valeurs par défaut du template (on stocke null).
-  await prisma.automation.updateMany({
-    where: { id: parsed.data.automationId, companyId: company.id },
-    data: {
-      messageSubject: subject ? subject : null,
-      messageBody: body ? body : null,
-    },
-  });
-  revalidatePath(`/app/automations/${parsed.data.automationId}`);
+  const changed = (automation.messageSubject ?? "") !== subject || (automation.messageBody ?? "") !== body;
+  if (!changed) return;
+
+  await prisma.$transaction([
+    prisma.automation.update({
+      where: { id: automation.id },
+      data: {
+        messageSubject: subject || null,
+        messageBody: body || null,
+        messageVersion: { increment: 1 },
+        approvedConfigHash: null,
+        lastApprovedAt: null,
+        lastApprovedBy: null,
+        lastModifiedAt: new Date(),
+        status: automation.status === "inactive" ? "inactive" : "needs_review",
+      },
+    }),
+    prisma.automationAuditEvent.create({
+      data: {
+        automationId: automation.id,
+        actorUserId: access.session.user.id,
+        actorName: access.session.user.name ?? null,
+        actorEmail: access.session.user.email ?? null,
+        actorRole: access.role,
+        eventType: "message_changed",
+        detailsJson: JSON.stringify({
+          previousVersion: automation.messageVersion,
+          nextVersion: automation.messageVersion + 1,
+          variables: validation.variables,
+          approvalInvalidated: true,
+        }),
+      },
+    }),
+  ]);
+  revalidatePath(`/app/automations/${automation.id}`);
 }

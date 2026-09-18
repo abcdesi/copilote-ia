@@ -1,5 +1,5 @@
 import { AUTOMATION_CATALOG } from "@/lib/automations/catalog";
-import { findConfidentTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
+import { findConfidentTemplateMatch, findRecommendedTemplateMatch, isCorrectionRequest, isExplicitAutomationRequest } from "./advisor-policy";
 import { inferConversationIntent, type ConversationIntent } from "./expert-response-policy";
 import type { ChatContext, ChatMessageInput, ChatReply } from "./types";
 
@@ -172,6 +172,18 @@ function answerForIntent(intent: ConversationIntent, context: ChatContext, messa
   return generalExpertAnswer(context);
 }
 
+
+function withAutomationSuggestion(reply: string, context: ChatContext): ChatReply {
+  const match = findRecommendedTemplateMatch(reply, AUTOMATION_CATALOG, context.tools);
+  if (!match) return { reply };
+  const alreadyInstalled = context.automations.some(
+    (automation) => normalize(automation.name) === normalize(match.title)
+  );
+  return alreadyInstalled
+    ? { reply }
+    : { reply, matchedTemplateId: match.id, matchedTemplateSource: "assistant_recommendation" };
+}
+
 export function runExpertFallbackChat(messages: ChatMessageInput[], context: ChatContext): ChatReply {
   const last = messages[messages.length - 1]?.content ?? "";
   const normalized = normalize(last);
@@ -184,7 +196,7 @@ export function runExpertFallbackChat(messages: ChatMessageInput[], context: Cha
   if (isCorrectionRequest(last) || /pas compris|je ne comprends|reformule|plus simple/.test(normalized)) {
     const original = previousUser(messages);
     const intent = inferConversationIntent(original);
-    return { reply: answerForIntent(intent, context, messages, selectedScope(original)) };
+    return withAutomationSuggestion(answerForIntent(intent, context, messages, selectedScope(original)), context);
   }
 
   if (isAcknowledgement(last)) {
@@ -197,7 +209,7 @@ export function runExpertFallbackChat(messages: ChatMessageInput[], context: Cha
   if (last.trim().length <= 80 && prevAssistant.includes("?") && scope) {
     const previousIntent = inferConversationIntent(previousUser(messages));
     const intent = previousIntent === "general" && /delai|réponse|reponse/.test(normalize(prevAssistant)) ? "response_time" : previousIntent;
-    return { reply: answerForIntent(intent, context, messages, scope) };
+    return withAutomationSuggestion(answerForIntent(intent, context, messages, scope), context);
   }
 
   const intent = inferConversationIntent(last);
@@ -212,9 +224,10 @@ export function runExpertFallbackChat(messages: ChatMessageInput[], context: Cha
       return {
         reply: `Oui, **${match.title}** correspond au processus que vous voulez automatiser. Je la traiterais comme une recommandation à valider, avec une estimation catalogue d'environ ${match.estimatedHoursPerMonth} h/mois, puis je vérifierais votre volume réel avant activation.`,
         matchedTemplateId: match.id,
+        matchedTemplateSource: "explicit_request",
       };
     }
   }
 
-  return { reply: answerForIntent(intent, context, messages, scope) };
+  return withAutomationSuggestion(answerForIntent(intent, context, messages, scope), context);
 }

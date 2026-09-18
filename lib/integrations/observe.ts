@@ -12,12 +12,19 @@ interface CalendarEventsResponse {
 }
 
 export interface GoogleOperationalSnapshot {
+  // Gmail renvoie resultSizeEstimate pour une recherche : cette valeur ne doit pas
+  // être présentée comme un comptage comptable exact dans le produit.
   unreadInboxLast7Days: number;
+  unreadInboxIsEstimate: boolean;
   upcomingEventsNext7Days: number;
   observedAt: string;
 }
 
-export async function syncGoogleOperationalSnapshot(companyId: string): Promise<GoogleOperationalSnapshot> {
+export async function syncGoogleOperationalSnapshot(
+  companyId: string,
+  actorUserId?: string | null,
+  source: "manual" | "oauth_callback" | "scheduled" = "manual"
+): Promise<GoogleOperationalSnapshot> {
   const now = new Date();
   const inSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
 
@@ -36,6 +43,7 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
 
   const snapshot: GoogleOperationalSnapshot = {
     unreadInboxLast7Days: gmail.resultSizeEstimate ?? gmail.messages?.length ?? 0,
+    unreadInboxIsEstimate: typeof gmail.resultSizeEstimate === "number",
     upcomingEventsNext7Days: (calendar.items ?? []).filter((event) => event.status !== "cancelled").length,
     observedAt: now.toISOString(),
   };
@@ -47,9 +55,10 @@ export async function syncGoogleOperationalSnapshot(companyId: string): Promise<
     }),
     prisma.event.create({
       data: {
+        userId: actorUserId ?? null,
         companyId,
         type: "INTEGRATION_SNAPSHOT",
-        metadata: JSON.stringify({ provider: "google", ...snapshot }),
+        metadata: JSON.stringify({ provider: "google", source, ...snapshot }),
       },
     }),
   ]);
@@ -69,7 +78,11 @@ export async function getLatestGoogleOperationalSnapshot(companyId: string): Pro
   if (!event?.metadata) return null;
   try {
     const parsed = JSON.parse(event.metadata) as { provider?: string } & GoogleOperationalSnapshot;
-    return parsed.provider === "google" ? parsed : null;
+    if (parsed.provider !== "google") return null;
+    const observedAt = new Date(parsed.observedAt);
+    if (!Number.isFinite(observedAt.getTime())) return null;
+    if (Date.now() - observedAt.getTime() > 24 * 60 * 60 * 1000) return null;
+    return parsed;
   } catch {
     return null;
   }

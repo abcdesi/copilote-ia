@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ArchiveX, Trash2 } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { listArchivedConversations } from "@/lib/companies/conversations";
 import { deleteConversationAction } from "@/lib/companies/conversation-actions";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -9,16 +9,16 @@ import { Button } from "@/components/ui/Button";
 const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
 export default async function CopilotHistoryPage() {
-  const company = await getCurrentCompany();
-  const conversations = await listArchivedConversations(company.id);
+  const access = await getCurrentCompanyAccess();
+  const conversations = await listArchivedConversations(access.company.id, access.session.user.id);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-semibold tracking-tight">Historique des conversations</h1>
+          <h1 className="text-2xl font-semibold tracking-tight">Mon historique Copilot</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Chaque jour, une nouvelle conversation démarre avec votre copilote. Retrouvez les précédentes ici.
+            Vos conversations sont privées par défaut. Pilotzia utilise néanmoins la mémoire entreprise partagée pour vous répondre avec le même contexte opérationnel.
           </p>
         </div>
         <Button href="/app/copilot" variant="outline" size="sm">
@@ -30,7 +30,7 @@ export default async function CopilotHistoryPage() {
         <EmptyState
           icon={ArchiveX}
           title="Aucune conversation archivée pour l'instant"
-          description="Les conversations des jours précédents apparaîtront ici."
+          description="Vos conversations des jours précédents apparaîtront ici."
         />
       ) : (
         <ul className="space-y-3">

@@ -1,7 +1,4 @@
-// Config des automatisations à exécution réelle basées sur une liste de contacts +
-// un email envoyé via le moteur n8n. Un seul moteur générique (lib/n8n/workflows.ts),
-// paramétré ici par templateId — ajouter une nouvelle automatisation de ce type ne
-// demande qu'une entrée ici, pas un nouveau workflow n8n écrit à la main.
+import type { ApprovalMode } from "@/lib/automations/governance";
 
 export interface RealExecutionConfig {
   contactListTitle: string;
@@ -9,50 +6,72 @@ export interface RealExecutionConfig {
   emptyLabel: string;
   defaultSubject: string;
   defaultBody: string;
-  // Nombre de jours avant de recontacter un même contact ; null = un seul envoi jamais répété
-  // (ex: message de bienvenue, on ne va pas re-souhaiter la bienvenue tous les 7 jours).
-  recontactDays: number | null;
+  defaultCadenceDays: number | null;
+  defaultMaxSendsPerContact: number;
+  riskLevel: "low" | "medium" | "high";
+  recommendedApprovalMode: ApprovalMode;
+  allowedApprovalModes: ApprovalMode[];
 }
+
+const PROFESSIONAL_SIGNATURE =
+  "Bien cordialement,\n\n{{company_name}}\n{{phone}}\n{{address}}\nSIRET : {{siret}}";
 
 const REAL_EXECUTION_CONFIGS: Record<string, RealExecutionConfig> = {
   "relance-prospects": {
-    contactListTitle: "Vos prospects",
+    contactListTitle: "Prospects suivis",
     contactListDescription:
-      "Cette automatisation relance automatiquement les prospects sans réponse depuis plusieurs jours.",
-    emptyLabel: "Aucun prospect pour l'instant.",
-    defaultSubject: "{{name}}, un petit rappel de notre part",
+      "Pilotzia sélectionne uniquement les prospects encore actifs qui respectent la cadence et la limite de relances définies.",
+    emptyLabel: "Aucun prospect actif pour l'instant.",
+    defaultSubject: "Suite à notre échange — {{company_name}}",
     defaultBody:
-      "Bonjour {{name}},\n\nNous voulions simplement prendre de vos nouvelles suite à notre dernier échange. N'hésitez pas à nous répondre si vous avez des questions.\n\nCordialement",
-    recontactDays: 7,
+      `Bonjour {{name}},\n\nJe me permets de revenir vers vous à la suite de notre dernier échange. Je reste à votre disposition si vous souhaitez avancer ou si vous avez besoin d'un complément d'information.\n\n${PROFESSIONAL_SIGNATURE}`,
+    defaultCadenceDays: 7,
+    defaultMaxSendsPerContact: 3,
+    riskLevel: "low",
+    recommendedApprovalMode: "first_then_auto",
+    allowedApprovalModes: ["first_then_auto", "always_review"],
   },
   "onboarding-clients": {
-    contactListTitle: "Vos nouveaux clients",
+    contactListTitle: "Nouveaux clients",
     contactListDescription:
-      "Cette automatisation envoie un message de bienvenue à chaque nouveau client ajouté à la liste.",
+      "Un message de bienvenue est envoyé une seule fois à chaque client actif ajouté à cette automatisation.",
     emptyLabel: "Aucun nouveau client pour l'instant.",
-    defaultSubject: "Bienvenue {{name}} !",
+    defaultSubject: "Bienvenue chez {{company_name}}",
     defaultBody:
-      "Bonjour {{name}},\n\nBienvenue ! Nous sommes ravis de vous compter parmi nos clients. Notre équipe revient vers vous très rapidement avec les prochaines étapes.\n\nCordialement",
-    recontactDays: null,
+      `Bonjour {{name}},\n\nNous vous remercions pour votre confiance et sommes heureux de vous compter parmi nos clients. Nous revenons vers vous avec les prochaines étapes utiles à votre démarrage.\n\n${PROFESSIONAL_SIGNATURE}`,
+    defaultCadenceDays: null,
+    defaultMaxSendsPerContact: 1,
+    riskLevel: "low",
+    recommendedApprovalMode: "first_then_auto",
+    allowedApprovalModes: ["first_then_auto", "always_review"],
   },
   "suivi-satisfaction": {
-    contactListTitle: "Vos clients à sonder",
-    contactListDescription: "Cette automatisation envoie un court sondage de satisfaction à vos clients.",
+    contactListTitle: "Clients à sonder",
+    contactListDescription:
+      "Chaque client reçoit au maximum une demande de retour pour cette séquence afin d'éviter les sollicitations répétitives.",
     emptyLabel: "Aucun client à sonder pour l'instant.",
-    defaultSubject: "{{name}}, votre avis compte pour nous",
+    defaultSubject: "Votre retour sur votre expérience avec {{company_name}}",
     defaultBody:
-      "Bonjour {{name}},\n\nAfin de continuer à vous offrir le meilleur service, pourriez-vous prendre 30 secondes pour nous dire comment s'est passée votre expérience récente ? Répondez simplement à cet email.\n\nMerci et à bientôt !",
-    recontactDays: 30,
+      `Bonjour {{name}},\n\nDans une démarche d'amélioration continue, nous souhaiterions recueillir votre retour sur votre expérience récente avec {{company_name}}. Quelques lignes en réponse à cet email nous seront très utiles.\n\nMerci par avance pour votre retour.\n\n${PROFESSIONAL_SIGNATURE}`,
+    defaultCadenceDays: null,
+    defaultMaxSendsPerContact: 1,
+    riskLevel: "low",
+    recommendedApprovalMode: "first_then_auto",
+    allowedApprovalModes: ["first_then_auto", "always_review"],
   },
   "relance-factures": {
-    contactListTitle: "Vos factures impayées",
+    contactListTitle: "Factures à relancer",
     contactListDescription:
-      "Cette automatisation relance automatiquement les clients dont la facture n'a pas encore été réglée.",
-    emptyLabel: "Aucune facture impayée pour l'instant.",
-    defaultSubject: "{{name}}, votre facture est en attente de règlement",
+      "Pilotzia applique la cadence choisie et arrête automatiquement après le nombre maximal de relances prévu.",
+    emptyLabel: "Aucune facture à relancer pour l'instant.",
+    defaultSubject: "Rappel concernant votre règlement — {{company_name}}",
     defaultBody:
-      "Bonjour {{name}},\n\nNous n'avons pas encore reçu le règlement de votre facture. Merci de bien vouloir régulariser dès que possible, ou de nous contacter si vous avez une question.\n\nCordialement",
-    recontactDays: 7,
+      `Bonjour {{name}},\n\nSauf erreur de notre part, un règlement reste en attente. Nous vous remercions de bien vouloir vérifier sa situation ou de revenir vers nous si un élément nécessite clarification.\n\n${PROFESSIONAL_SIGNATURE}`,
+    defaultCadenceDays: 7,
+    defaultMaxSendsPerContact: 4,
+    riskLevel: "medium",
+    recommendedApprovalMode: "first_then_auto",
+    allowedApprovalModes: ["first_then_auto", "always_review"],
   },
 };
 

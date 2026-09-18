@@ -1,5 +1,5 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { getBusinessRhythmReminders } from "@/lib/business-graph/rhythms";
 import { prisma } from "@/lib/db/client";
@@ -12,12 +12,13 @@ import { OpportunityCard } from "@/components/opportunities/OpportunityCard";
 import { MorningBrief, MorningBriefItem, MorningBriefPriority, MorningBriefStats } from "@/components/dashboard/MorningBrief";
 import { PilotziaFeed } from "@/components/dashboard/PilotziaFeed";
 import { TrialJourney } from "@/components/dashboard/TrialJourney";
-import { IMPACT_RANK, formatEur, formatHours } from "@/lib/format";
+import { IMPACT_RANK, formatEur, formatHours, relativeTime } from "@/lib/format";
 
 export default async function DashboardHomePage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
 
-  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge] = await Promise.all([
+  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh] = await Promise.all([
     prisma.automation.findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } }),
     prisma.opportunity.findMany({
       where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
@@ -39,6 +40,15 @@ export default async function DashboardHomePage() {
     }),
     getTrialJourneyState(company.id),
     getCompanyKnowledgeCoverage(company.id),
+    prisma.automationOutcome.findMany({
+      where: { automation: { companyId: company.id } },
+      orderBy: { observedAt: "desc" },
+      take: 200,
+    }),
+    prisma.event.findFirst({
+      where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
+      orderBy: { createdAt: "desc" },
+    }),
   ]);
 
   opportunities.sort((a, b) => IMPACT_RANK[b.impactLevel] - IMPACT_RANK[a.impactLevel] || b.estimatedValueEur - a.estimatedValueEur);
@@ -48,33 +58,37 @@ export default async function DashboardHomePage() {
   const totalValue = activeAutomations.reduce((s, a) => s + a.estimatedValueEur, 0);
   const identifiedHours = Math.max(totalHours, opportunities.reduce((sum, opportunity) => sum + opportunity.estimatedHoursPerMonth, 0));
 
+  const latestOutcomeByMetric = new Map<string, (typeof outcomes)[number]>();
+  for (const outcome of outcomes) {
+    const key = outcome.automationId + ":" + outcome.kind;
+    if (!latestOutcomeByMetric.has(key)) latestOutcomeByMetric.set(key, outcome);
+  }
+  const latestOutcomes = [...latestOutcomeByMetric.values()];
+  const timeOutcomes = latestOutcomes.filter((outcome) => outcome.kind === "time_saved_weekly_hours");
+  const valueOutcomes = latestOutcomes.filter((outcome) => outcome.kind === "value_observed_eur_30d");
+  const hasReportedTime = timeOutcomes.length > 0;
+  const hasReportedValue = valueOutcomes.length > 0;
+  const reportedHoursPerWeek = timeOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedValue30d = valueOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedHoursPerMonth = reportedHoursPerWeek * 4.33;
+
   const countable = automations.filter((a) => a.status !== "inactive");
   const healthCounts = {
     green: countable.filter((a) => a.health === "green").length,
     orange: countable.filter((a) => a.health === "orange").length,
     red: countable.filter((a) => a.health === "red").length,
   };
-  const uptimeWeight = countable.length
-    ? countable.reduce((s, a) => s + (a.health === "green" ? 1 : a.health === "orange" ? 0.5 : 0), 0) / countable.length
-    : 1;
-
   const topOpportunity = opportunities[0];
   const moreOpportunities = opportunities.slice(1, 3);
-  const firstName = company.name.split(" ")[0];
+  const firstName = access.session.user.name?.trim().split(/\s+/)[0] || access.session.user.email?.split("@")[0] || company.name;
   const rhythmReminders = getBusinessRhythmReminders(company);
 
   const attentionCount = healthCounts.orange + healthCounts.red;
   const briefItems: MorningBriefItem[] = [];
 
-  if (pendingActions.length > 0) {
-    briefItems.push({
-      tone: "accent",
-      text: `${pendingActions.length} action${pendingActions.length > 1 ? "s" : ""} préparée${pendingActions.length > 1 ? "s" : ""} attend${pendingActions.length > 1 ? "ent" : ""} votre validation`,
-      href: "/app/actions",
-    });
-  }
   if (attentionCount > 0) {
     briefItems.push({
+      bucket: "decide",
       tone: "danger",
       text: `${attentionCount} automatisation${attentionCount > 1 ? "s nécessitent" : " nécessite"} votre attention`,
       href: "/app/automations",
@@ -83,6 +97,7 @@ export default async function DashboardHomePage() {
   for (const rhythm of rhythmReminders) {
     const timing = rhythm.daysUntil === 0 ? "est attendue maintenant" : `revient dans environ ${rhythm.daysUntil} jour${rhythm.daysUntil > 1 ? "s" : ""}`;
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: `${rhythm.title} ${timing} — Pilotzia l'a repéré comme un rythme récurrent à anticiper`,
       href: `/app/company#${rhythm.domain}`,
@@ -90,13 +105,15 @@ export default async function DashboardHomePage() {
   }
   if (googleSnapshot && googleSnapshot.unreadInboxLast7Days > 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
-      text: `${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
+      text: `${googleSnapshot.unreadInboxIsEstimate ? "Environ " : ""}${googleSnapshot.unreadInboxLast7Days} email${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} non lu${googleSnapshot.unreadInboxLast7Days > 1 ? "s" : ""} dans Gmail sur les 7 derniers jours`,
       href: "/app/tools",
     });
   }
   if (opportunities.length > 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: `${opportunities.length} opportunité${opportunities.length > 1 ? "s" : ""} en attente, potentiel ~${formatHours(
         opportunities.reduce((s, o) => s + o.estimatedHoursPerMonth, 0)
@@ -106,6 +123,7 @@ export default async function DashboardHomePage() {
   }
   if (attentionCount === 0 && activeAutomations.length > 0) {
     briefItems.push({
+      bucket: "handled",
       tone: "success",
       text: `Vos ${activeAutomations.length} automatisation${activeAutomations.length > 1 ? "s" : ""} fonctionnent normalement`,
       href: "/app/automations",
@@ -113,6 +131,7 @@ export default async function DashboardHomePage() {
   }
   if (briefItems.length === 0) {
     briefItems.push({
+      bucket: "know",
       tone: "accent",
       text: "Décrivez une tâche qui vous fait perdre du temps à votre copilote pour recevoir vos premières recommandations",
       href: "/app/copilot",
@@ -169,6 +188,7 @@ export default async function DashboardHomePage() {
         opportunitiesCount={opportunities.length}
         pendingActionsCount={pendingActions.length}
         activeAutomationsCount={activeAutomations.length}
+        hasMeasuredOutcome={outcomes.length > 0}
         totalHoursPerMonth={identifiedHours}
       />
 
@@ -200,10 +220,38 @@ export default async function DashboardHomePage() {
 
       {googleSnapshot && (
         <div className="grid gap-3 sm:grid-cols-3">
-          <MiniOperationalStat label="Emails non lus · 7 jours" value={String(googleSnapshot.unreadInboxLast7Days)} />
+          <MiniOperationalStat label="Emails non lus · 7 jours" value={`${googleSnapshot.unreadInboxIsEstimate ? "~" : ""}${googleSnapshot.unreadInboxLast7Days}`} />
           <MiniOperationalStat label="Événements · 7 jours" value={String(googleSnapshot.upcomingEventsNext7Days)} />
           <MiniOperationalStat label="Observation Google" value="Synchronisée" />
         </div>
+      )}
+
+      {(outcomes.length > 0 || lastWeeklyRefresh) && (
+        <Card className="border-success/20">
+          <CardHeader>
+            <CardTitle>Résultats observés & fraîcheur</CardTitle>
+            <CardDescription>
+              Les résultats déclarés restent séparés des estimations. Le contexte opérationnel est rafraîchi automatiquement chaque semaine.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="grid gap-4 sm:grid-cols-3">
+            <Stat
+              icon={Clock}
+              label="Temps déclaré économisé"
+              value={hasReportedTime ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "Non renseigné"}
+            />
+            <Stat
+              icon={TrendingUp}
+              label="Impact € déclaré · 30 j"
+              value={hasReportedValue ? formatEur(reportedValue30d) : "Non renseigné"}
+            />
+            <Stat
+              icon={Sparkles}
+              label="Dernier refresh hebdo"
+              value={lastWeeklyRefresh ? relativeTime(lastWeeklyRefresh.createdAt) : "À venir"}
+            />
+          </CardContent>
+        </Card>
       )}
 
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.4fr)]">
@@ -226,15 +274,15 @@ export default async function DashboardHomePage() {
         {activeAutomations.length > 0 ? (
           <Card>
             <CardHeader>
-              <CardTitle>Valeur générée ce mois-ci</CardTitle>
-              <CardDescription>Estimations basées sur le temps habituellement consacré à ces tâches.</CardDescription>
+              <CardTitle>Potentiel estimé des automatisations actives</CardTitle>
+              <CardDescription>Estimations mensuelles fondées sur le temps déclaré ou modélisé — ce ne sont pas encore des gains réalisés.</CardDescription>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-                <Stat icon={Clock} label="Heures économisées" value={formatHours(totalHours)} />
-                <Stat icon={TrendingUp} label="Valeur estimée" value={formatEur(totalValue)} />
+                <Stat icon={Clock} label="Temps potentiel / mois" value={formatHours(totalHours)} />
+                <Stat icon={TrendingUp} label="Valeur potentielle / mois" value={formatEur(totalValue)} />
                 <Stat icon={Zap} label="Automatisations actives" value={String(activeAutomations.length)} />
-                <Stat icon={Sparkles} label="Fonctionnement" value={`${Math.round(uptimeWeight * 1000) / 10} %`} />
+                <Stat icon={Sparkles} label="Indice de santé" value={`${healthCounts.green}/${countable.length}`} />
               </div>
               <div className="mt-5 flex flex-wrap gap-2 text-sm">
                 <span>🟢 {healthCounts.green} fonctionnent normalement</span>

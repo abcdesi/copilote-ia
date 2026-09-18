@@ -1,0 +1,2 @@
+ALTER TABLE "Company"
+  ADD COLUMN "automationPurchaseMonthlyCapEur" DOUBLE PRECISION NOT NULL DEFAULT 250;

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { prisma } from "@/lib/db/client";
+import { getCurrentCompanyAccess } from "@/lib/companies/access";
 
 export async function requireSession() {
   const session = await auth();
@@ -9,12 +9,6 @@ export async function requireSession() {
 }
 
 export async function getCurrentCompany() {
-  const session = await requireSession();
-  const company = await prisma.company.findFirst({
-    where: { userId: session.user.id },
-    include: { tools: true, subscriptions: true },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!company) redirect("/onboarding");
-  return company;
+  const access = await getCurrentCompanyAccess();
+  return access.company;
 }
