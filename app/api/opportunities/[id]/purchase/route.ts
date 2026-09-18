@@ -63,6 +63,20 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           where: { companyId_opportunityId: { companyId, opportunityId: opportunity.id } },
         });
         if (existing) {
+          if (existing.status === "void") {
+            const updated = await tx.purchase.update({
+              where: { id: existing.id },
+              data: {
+                amountEur: template.priceEur,
+                status: "pending",
+                providerRef: null,
+                paymentUrl: null,
+                paidAt: null,
+                billingAttempt: { increment: 1 },
+              },
+            });
+            return { blocked: false as const, purchase: updated };
+          }
           if (!existing.providerRef && existing.amountEur !== template.priceEur) {
             const updated = await tx.purchase.update({
               where: { id: existing.id },
@@ -150,6 +164,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       title: opportunity.title,
       amountEur: purchase.amountEur,
       stripeCustomerId: subscription.stripeCustomerId,
+      billingAttempt: purchase.billingAttempt,
     });
 
     const nextStatus = invoice.paid ? "paid" : invoice.paymentError ? "payment_action_required" : "pending";
