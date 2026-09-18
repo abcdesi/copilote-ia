@@ -7,10 +7,8 @@ import { getUsageStatus } from "@/lib/billing/usage-policy";
 import { PAID_PLAN_KEYS, PLAN_DEFINITIONS, type BillingCycle } from "@/lib/billing/plans";
 import { CREDIT_PACKS, creditPackStripeReady } from "@/lib/billing/credit-packs";
 
-function stripeReady(plan: "starter" | "pro" | "business", billingCycle: BillingCycle) {
-  const baseKey = plan === "starter" ? "STRIPE_PRICE_STARTER" : plan === "pro" ? "STRIPE_PRICE_PRO" : "STRIPE_PRICE_BUSINESS";
-  const priceKey = billingCycle === "annual" ? `${baseKey}_ANNUAL` : baseKey;
-  return Boolean(process.env.STRIPE_SECRET_KEY && process.env[priceKey]);
+function stripeReady(_plan: "starter" | "pro" | "business", _billingCycle: BillingCycle) {
+  return Boolean(process.env.STRIPE_SECRET_KEY);
 }
 
 function formatDate(value: Date | null) {
@@ -51,7 +49,7 @@ export default async function SettingsPage() {
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Votre essai</p>
               <h2 className="mt-1 text-lg font-semibold">Testez Pilotzia sur votre entreprise réelle</h2>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                L'essai démarre au premier usage IA réel. Vous avez 14 jours et une enveloppe d'usage suffisante pour vérifier la qualité du copilote, enrichir le contexte et tester les premières recommandations sans carte bancaire.
+                L'essai démarre au premier usage IA réel. Vous avez 14 jours et une enveloppe d'usage suffisante pour vérifier la qualité du copilote, enrichir le contexte et tester les premières recommandations sans carte bancaire. Vous pouvez souscrire à tout moment sans attendre la fin de l'essai.
               </p>
             </div>
             <Badge tone={usage.trialExpired ? "neutral" : "accent"}>{usage.trialExpired ? "Essai terminé" : usage.trialActive ? "Essai actif" : "Prêt à démarrer"}</Badge>
