@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 import { IMPACT_LABELS, COMPLEXITY_SHORT_LABELS, formatEur, formatHours } from "@/lib/format";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
+import { getTemplateById } from "@/lib/automations/catalog";
 
 export interface OpportunityCardData {
   id: string;
@@ -18,6 +19,7 @@ export interface OpportunityCardData {
 
 export function OpportunityCard({ opportunity, highlight = false }: { opportunity: OpportunityCardData; highlight?: boolean }) {
   const isReal = isRealExecutionTemplate(opportunity.templateId);
+  const currentPriceEur = getTemplateById(opportunity.templateId)?.priceEur ?? opportunity.priceEur;
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">
@@ -53,7 +55,7 @@ export function OpportunityCard({ opportunity, highlight = false }: { opportunit
       <div className="mt-4 flex items-center justify-between gap-3">
         <div>
           <span className="text-xs text-muted-foreground">{IMPACT_LABELS[opportunity.impactLevel]}</span>
-          {isReal && <p className="mt-1 text-[11px] font-medium text-accent">{formatEur(opportunity.priceEur)} HT · achat unique</p>}
+          {isReal && <p className="mt-1 text-[11px] font-medium text-accent">{formatEur(currentPriceEur)} HT · achat unique</p>}
         </div>
         <Button href={`/app/opportunities/${opportunity.id}`} size="sm">
           Examiner
