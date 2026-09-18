@@ -112,6 +112,9 @@ export async function triggerAutomation(
     approvalMode: fresh.approvalMode,
     cadenceDays: plan.cadenceDays,
     maxSendsPerContact: plan.maxSendsPerContact,
+    scheduleStartHour: fresh.scheduleStartHour,
+    scheduleEndHour: fresh.scheduleEndHour,
+    scheduleDays: fresh.scheduleDays,
     replyToEmail: fresh.replyToEmail,
   });
   if (!fresh.approvedConfigHash || fresh.approvedConfigHash !== currentHash) {
