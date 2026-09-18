@@ -62,13 +62,13 @@ export default async function ResultsPage() {
     if (!latestContinuous.has(key)) latestContinuous.set(key, outcome);
   }
   const continuousOutcomes = [...latestContinuous.values()];
-  const reportedHoursPerWeek = continuousOutcomes
-    .filter((outcome) => outcome.kind === "time_saved_weekly_hours")
-    .reduce((sum, outcome) => sum + outcome.value, 0);
+  const timeOutcomes = continuousOutcomes.filter((outcome) => outcome.kind === "time_saved_weekly_hours");
+  const valueOutcomes = continuousOutcomes.filter((outcome) => outcome.kind === "value_observed_eur_30d");
+  const hasReportedTime = timeOutcomes.length > 0;
+  const hasReportedValue = valueOutcomes.length > 0;
+  const reportedHoursPerWeek = timeOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
   const reportedHoursPerMonth = reportedHoursPerWeek * 4.33;
-  const reportedValue30d = continuousOutcomes
-    .filter((outcome) => outcome.kind === "value_observed_eur_30d")
-    .reduce((sum, outcome) => sum + outcome.value, 0);
+  const reportedValue30d = valueOutcomes.reduce((sum, outcome) => sum + outcome.value, 0);
 
   // Les outcomes commerciaux sont événementiels : chaque occurrence représente un résultat
   // distinct enregistré sur un contact.
@@ -109,12 +109,12 @@ export default async function ResultsPage() {
                 <Metric
                   icon={Clock3}
                   label="Temps déclaré économisé"
-                  value={reportedHoursPerWeek > 0 ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "—"}
+                  value={hasReportedTime ? "~" + formatHours(reportedHoursPerMonth) + "/mois" : "—"}
                 />
                 <Metric
                   icon={Euro}
                   label="Impact € déclaré · 30 j"
-                  value={reportedValue30d > 0 ? formatEur(reportedValue30d) : "—"}
+                  value={hasReportedValue ? formatEur(reportedValue30d) : "—"}
                 />
                 <Metric icon={MessageCircleReply} label="Réponses enregistrées" value={String(replies)} />
                 <Metric icon={Target} label="Rendez-vous enregistrés" value={String(meetings)} />
