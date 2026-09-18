@@ -118,27 +118,6 @@ function serializeHistoryValue(value: unknown) {
   return JSON.stringify(value);
 }
 
-async function recordContextHistory(
-  companyId: string,
-  previous: Record<string, unknown>,
-  next: CompanyUpdate,
-  changedFields: Array<keyof CompanyUpdate>
-) {
-  if (!changedFields.length) return;
-  const effectiveAt = new Date();
-  await prisma.companyContextRevision.createMany({
-    data: changedFields.map((field) => ({
-      companyId,
-      section: FIELD_SECTION[field],
-      field,
-      previousValueJson: serializeHistoryValue(previous[field as string]),
-      nextValueJson: serializeHistoryValue(next[field]),
-      source: "company_profile",
-      effectiveAt,
-    })),
-  });
-}
-
 async function recordToolHistory(companyId: string, action: "added" | "removed", tool: string) {
   const previousValueJson = action === "removed" ? JSON.stringify(tool) : null;
   const nextValueJson = action === "added" ? JSON.stringify(tool) : null;
