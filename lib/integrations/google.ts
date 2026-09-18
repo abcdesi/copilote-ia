@@ -19,7 +19,12 @@ export const GOOGLE_ACTION_SCOPES = [
   "https://www.googleapis.com/auth/calendar.events",
 ];
 
-export type GoogleAuthorizationMode = "observe" | "action";
+export const GOOGLE_MARKETING_SCOPES = [
+  "https://www.googleapis.com/auth/analytics.readonly",
+  "https://www.googleapis.com/auth/adwords",
+];
+
+export type GoogleAuthorizationMode = "observe" | "action" | "marketing";
 export type GoogleConfigurationStatus = { configured: boolean; missing: string[] };
 
 export function getGoogleConfigurationStatus(): GoogleConfigurationStatus {
@@ -76,10 +81,14 @@ export function verifyGoogleState(state: string) {
     ts: number;
   };
   if (!parsed.companyId || Date.now() - parsed.ts > 10 * 60 * 1000) throw new Error("État OAuth expiré.");
-  return { ...parsed, mode: parsed.mode === "action" ? ("action" as const) : ("observe" as const) };
+  const mode: GoogleAuthorizationMode =
+    parsed.mode === "action" ? "action" : parsed.mode === "marketing" ? "marketing" : "observe";
+  return { ...parsed, mode };
 }
 
 export function googleRedirectUri() {
+  const explicit = process.env.GOOGLE_REDIRECT_URI?.trim();
+  if (explicit) return explicit;
   return `${env("APP_URL").replace(/\/$/, "")}/api/integrations/google/callback`;
 }
 
@@ -87,7 +96,12 @@ export function buildGoogleAuthorizationUrl(companyId: string, mode: GoogleAutho
   const configuration = getGoogleConfigurationStatus();
   if (!configuration.configured) throw new Error(`Configuration Google incomplète: ${configuration.missing.join(", ")}`);
 
-  const scopes = mode === "action" ? [...GOOGLE_SCOPES, ...GOOGLE_ACTION_SCOPES] : GOOGLE_SCOPES;
+  const scopes =
+    mode === "action"
+      ? [...GOOGLE_SCOPES, ...GOOGLE_ACTION_SCOPES]
+      : mode === "marketing"
+        ? ["openid", "email", "profile", ...GOOGLE_MARKETING_SCOPES]
+        : GOOGLE_SCOPES;
   const url = new URL(GOOGLE_AUTH_URL);
   url.searchParams.set("client_id", env("GOOGLE_CLIENT_ID"));
   url.searchParams.set("redirect_uri", googleRedirectUri());
@@ -173,18 +187,23 @@ export async function upsertGoogleConnection(companyId: string, tokens: Awaited<
   });
 }
 
+export function parseStoredGoogleScopes(scopes: string | null | undefined) {
+  try {
+    const parsed = JSON.parse(scopes ?? "[]") as unknown;
+    return Array.isArray(parsed) ? parsed.filter((scope): scope is string => typeof scope === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export async function hasGoogleScopes(companyId: string, requiredScopes: readonly string[]) {
   const connection = await prisma.integrationConnection.findUnique({
     where: { companyId_provider: { companyId, provider: "google" } },
     select: { status: true, scopes: true },
   });
   if (!connection || connection.status !== "connected") return false;
-  try {
-    const granted = JSON.parse(connection.scopes) as string[];
-    return requiredScopes.every((scope) => granted.includes(scope));
-  } catch {
-    return false;
-  }
+  const granted = parseStoredGoogleScopes(connection.scopes);
+  return requiredScopes.every((scope) => granted.includes(scope));
 }
 
 async function refreshGoogleToken(refreshToken: string) {
