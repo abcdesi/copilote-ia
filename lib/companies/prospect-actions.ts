@@ -109,6 +109,95 @@ export async function deleteProspectAction(formData: FormData) {
   revalidatePath("/app/automations");
 }
 
+
+const prospectOutcomeSchema = z.object({
+  prospectId: z.string().min(1),
+  outcome: z.enum(["no_response", "replied", "meeting_booked", "won", "lost"]),
+});
+
+export async function setProspectOutcomeAction(formData: FormData) {
+  const access = await requireCompanyPermission("manage_contacts");
+  const parsed = prospectOutcomeSchema.safeParse({
+    prospectId: formData.get("prospectId"),
+    outcome: formData.get("outcome"),
+  });
+  if (!parsed.success) return;
+
+  const prospect = await prisma.prospect.findFirst({
+    where: { id: parsed.data.prospectId, companyId: access.company.id },
+  });
+  if (!prospect || prospect.lastOutcome === parsed.data.outcome) return;
+
+  const automation = await prisma.automation.findFirst({
+    where: { companyId: access.company.id, templateId: prospect.templateId },
+    orderBy: { createdAt: "desc" },
+  });
+  if (!automation) return;
+
+  const terminal = ["replied", "meeting_booked", "won", "lost"].includes(parsed.data.outcome);
+  const metricKind =
+    parsed.data.outcome === "replied" ? "prospect_reply" :
+    parsed.data.outcome === "meeting_booked" ? "meeting_booked" :
+    parsed.data.outcome === "won" ? "deal_won" :
+    parsed.data.outcome === "lost" ? "deal_lost" :
+    null;
+
+  const now = new Date();
+  await prisma.$transaction(async (tx) => {
+    await tx.prospect.update({
+      where: { id: prospect.id },
+      data: {
+        lastOutcome: parsed.data.outcome,
+        status: terminal ? "excluded" : "active",
+        archivedAt: terminal ? now : null,
+      },
+    });
+
+    await tx.automationAuditEvent.create({
+      data: {
+        automationId: automation.id,
+        actorUserId: access.session.user.id,
+        actorName: access.session.user.name ?? null,
+        actorEmail: access.session.user.email ?? null,
+        actorRole: access.role,
+        eventType: "contact_outcome_recorded",
+        detailsJson: JSON.stringify({
+          prospectId: prospect.id,
+          recipientEmail: prospect.email,
+          previousOutcome: prospect.lastOutcome,
+          outcome: parsed.data.outcome,
+          relaunchStopped: terminal,
+        }),
+      },
+    });
+
+    if (metricKind) {
+      await tx.automationOutcome.create({
+        data: {
+          automationId: automation.id,
+          kind: metricKind,
+          value: 1,
+          unit: "count",
+          source: "user_reported",
+          confidence: 0.8,
+          evidenceJson: JSON.stringify({
+            prospectId: prospect.id,
+            recipientEmail: prospect.email,
+            contactCount: prospect.contactCount,
+          }),
+          actorUserId: access.session.user.id,
+          actorName: access.session.user.name ?? null,
+          actorEmail: access.session.user.email ?? null,
+          actorRole: access.role,
+          observedAt: now,
+        },
+      });
+    }
+  });
+
+  revalidatePath(`/app/automations/${automation.id}`);
+}
+
 const MAX_IMPORT_ROWS = 500;
 const MAX_FILE_SIZE = 1_000_000;
 const rowSchema = z.object({ name: z.string().min(1).max(120), email: z.string().email().max(254) });
