@@ -1,5 +1,5 @@
 import { AlertTriangle, CheckCircle2, Database, Network, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
-import { getCurrentCompany } from "@/lib/companies/current";
+import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { getBusinessGraphContext } from "@/lib/business-graph";
 import { rebuildBusinessGraphAction } from "@/lib/business-graph/actions";
 import { Badge } from "@/components/ui/Badge";
@@ -51,7 +51,9 @@ function formatDate(value: string | null) {
 }
 
 export default async function ContextPage() {
-  const company = await getCurrentCompany();
+  const access = await getCurrentCompanyAccess();
+  const company = access.company;
+  const canRebuild = hasCompanyPermission(access.role, "edit_company");
   const graph = await getBusinessGraphContext(company.id);
   const entityById = new Map(graph.entities.map((entity) => [entity.id, entity]));
   const visibleFacts = graph.facts.slice(0, 8);
@@ -67,11 +69,15 @@ export default async function ContextPage() {
             actualisé et exploitable par le copilote, les automatisations et, à terme, vos agents externes.
           </p>
         </div>
-        <form action={rebuildBusinessGraphAction}>
-          <Button type="submit" variant="outline" size="sm">
-            <RefreshCw size={14} /> Actualiser le contexte
-          </Button>
-        </form>
+        {canRebuild ? (
+          <form action={rebuildBusinessGraphAction}>
+            <Button type="submit" variant="outline" size="sm">
+              <RefreshCw size={14} /> Actualiser le contexte
+            </Button>
+          </form>
+        ) : (
+          <span className="rounded-xl border border-border px-3 py-2 text-xs text-muted-foreground">Lecture seule</span>
+        )}
       </div>
 
       <section className="overflow-hidden rounded-2xl border border-accent/20 bg-accent-soft">
@@ -108,7 +114,7 @@ export default async function ContextPage() {
 
           {graph.summary.sources.length === 0 ? (
             <div className="mt-5 rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">
-              Aucune source externe connectée. Les données actuelles proviennent uniquement de la mémoire interne Pilotzia.
+              Aucune source externe connectée. Les faits actuels proviennent du contexte déclaré dans Pilotzia et de ses calculs internes traçables.
             </div>
           ) : (
             <div className="mt-5 space-y-3">
@@ -171,7 +177,9 @@ export default async function ContextPage() {
                   <span className="font-medium">{object?.name || value || "—"}</span>
                 </div>
                 <div className="flex items-center gap-2 text-[11px] text-muted-foreground">
-                  <span className="capitalize">{fact.sourceProvider}</span>
+                  <span>{factSourceLabel(fact.sourceProvider, fact.sourceRef, fact.provenanceJson)}</span>
+                  <span>·</span>
+                  <span>{new Intl.DateTimeFormat("fr-FR", { dateStyle: "short", timeStyle: "short" }).format(new Date(fact.observedAt))}</span>
                   <span>·</span>
                   <span>{Math.round(fact.confidence * 100)}% confiance</span>
                 </div>
@@ -215,4 +223,23 @@ function Metric({ label, value, icon: Icon }: { label: string; value: string; ic
       <p className="mt-2 text-2xl font-semibold">{value}</p>
     </div>
   );
+}
+
+
+function factSourceLabel(provider: string, sourceRef: string | null, provenanceJson: string | null) {
+  if (provider === "google") return "Google API";
+  if (provider === "pilotzia-memory") return "Mémoire dérivée";
+  if (provider === "pilotzia") {
+    try {
+      const provenance = provenanceJson ? JSON.parse(provenanceJson) as { method?: string } : {};
+      if (provenance.method === "company_profile") return "Profil renseigné";
+      if (provenance.method === "declared") return "Application renseignée";
+    } catch {
+      // Provenance ancienne : on retombe sur le type de sourceRef.
+    }
+    if (sourceRef?.startsWith("graph:company:")) return "Profil renseigné";
+    if (sourceRef?.startsWith("graph:tool:")) return "Application renseignée";
+    return "Pilotzia dérivé";
+  }
+  return provider;
 }
