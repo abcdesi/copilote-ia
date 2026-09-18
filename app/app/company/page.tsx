@@ -220,7 +220,7 @@ export default async function CompanyPage() {
                 <Input id="timezone" name="timezone" defaultValue={company.timezone ?? ""} placeholder="Ex. America/Martinique" />
                 <p className="text-xs leading-5 text-muted-foreground">
                   Pilotzia le détecte automatiquement une seule fois au premier accès d'un administrateur. Vous pouvez le corriger ici.
-                  Les automatisations planifiées commencent à partir de 06:00 heure locale, du lundi au samedi.
+                  Les automatisations planifiées commencent à partir de 10:00 heure locale par défaut, du lundi au samedi.
                 </p>
               </div>
               <div className="space-y-1.5 md:col-span-2">
