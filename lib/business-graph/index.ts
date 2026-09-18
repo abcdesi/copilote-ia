@@ -461,6 +461,8 @@ export async function getBusinessGraphContext(companyId: string) {
         objectEntityId: true,
         valueJson: true,
         sourceProvider: true,
+        sourceRef: true,
+        provenanceJson: true,
         confidence: true,
         observedAt: true,
       },
