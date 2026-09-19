@@ -16,7 +16,7 @@ type Profile = {
   sizeRange: string;
   employeeCount: number;
   plan: "starter" | "pro" | "business";
-  role: "owner" | "admin";
+  role: "owner" | "admin" | "operator";
   objective: string;
   painPoint: string;
   businessModel: string;
@@ -114,6 +114,48 @@ const PROFILES: Profile[] = [
       operationsContext: "Revue quotidienne des actions à valider, incidents, responsables et preuves d'exécution.",
     },
     tools: ["Gmail", "Google Calendar", "HubSpot", "Slack"],
+  },
+  {
+    key: "finance-manager",
+    email: "e2e-finance-manager@pilotzia.local",
+    name: "Nora Finance",
+    companyName: "E2E Finance Services",
+    industry: "Services B2B",
+    country: "France métropolitaine",
+    sizeRange: "51-200",
+    employeeCount: 72,
+    plan: "business",
+    role: "admin",
+    objective: "Relier trésorerie, marge et décisions opérationnelles avec des preuves traçables.",
+    painPoint: "Les analyses financières arrivent trop tard et restent déconnectées des causes opérationnelles.",
+    businessModel: "Contrats B2B récurrents et prestations de service.",
+    customerProfile: "Entreprises françaises multi-équipes.",
+    domainContext: {
+      financeContext: "Suivi de trésorerie, marge, BFR, encaissements et écarts mensuels avec besoin d'analyse documentée.",
+      operationsContext: "Les écarts financiers doivent être reliés aux ventes, opérations et processus avant toute décision.",
+    },
+    tools: ["Stripe", "Google Sheets", "Pennylane"],
+  },
+  {
+    key: "sales-manager",
+    email: "e2e-sales-manager@pilotzia.local",
+    name: "Thomas Sales",
+    companyName: "E2E Sales Engine",
+    industry: "Services B2B",
+    country: "France métropolitaine",
+    sizeRange: "21-50",
+    employeeCount: 24,
+    plan: "pro",
+    role: "operator",
+    objective: "Accélérer les relances, fiabiliser le pipeline et réduire les opportunités commerciales oubliées.",
+    painPoint: "Les prospects silencieux et les relances manuelles ralentissent la conversion.",
+    businessModel: "Vente B2B avec contrats récurrents.",
+    customerProfile: "PME avec cycle de vente de plusieurs semaines.",
+    domainContext: {
+      salesContext: "Pipeline HubSpot, relances Gmail et rendez-vous Calendar avec besoin de priorisation quotidienne.",
+      operationsContext: "Les actions commerciales simples doivent être exécutables sans ouvrir les droits de configuration ou facturation.",
+    },
+    tools: ["Gmail", "Google Calendar", "HubSpot"],
   },
   {
     key: "solopreneur",
@@ -233,6 +275,34 @@ async function ensureProfile(profile: Profile) {
   await prisma.companyTool.createMany({
     data: profile.tools.map((name) => ({ companyId: company.id, name, detected: true })),
   });
+
+  if (profile.key === "sales-manager") {
+    await prisma.pendingAction.deleteMany({ where: { companyId: company.id } });
+    await prisma.pendingAction.createMany({
+      data: [
+        {
+          companyId: company.id,
+          provider: "Gmail",
+          kind: "prospect_follow_up",
+          title: "Relancer un prospect silencieux",
+          description: "Relance commerciale simple préparée pour vérifier l'exécution faible risque par un opérateur.",
+          payloadJson: JSON.stringify({ testProfile: "sales-manager", risk: "low" }),
+          riskLevel: "low",
+          status: "pending",
+        },
+        {
+          companyId: company.id,
+          provider: "HubSpot",
+          kind: "pipeline_bulk_update",
+          title: "Modifier plusieurs étapes du pipeline",
+          description: "Action de risque moyen qui doit rester soumise à validation d'un admin ou propriétaire.",
+          payloadJson: JSON.stringify({ testProfile: "sales-manager", risk: "medium" }),
+          riskLevel: "medium",
+          status: "pending",
+        },
+      ],
+    });
+  }
 
   if (profile.key === "operations-manager") {
     await prisma.pendingAction.deleteMany({ where: { companyId: company.id } });
@@ -412,6 +482,60 @@ async function testRuntimeProfile(profile: Profile) {
     assert.match(await team.text(), /Membres actifs/i, "[operations-manager] team governance should render");
   }
 
+  if (profile.key === "finance-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "admin", "[finance-manager] runtime role should be admin");
+
+    const finance = await request("/app/finance");
+    const financeHtml = await finance.text();
+    assert.match(financeHtml, /Intelligence financière/i, "[finance-manager] finance cockpit should render");
+    assert.match(
+      financeHtml,
+      /Importer un bilan ou un compte de résultat/i,
+      "[finance-manager] Scale financial audit upload should be available"
+    );
+    assert.ok(
+      !financeHtml.includes("Voir Scale à 399 €/mois"),
+      "[finance-manager] active Scale profile must not see the financial audit upsell"
+    );
+  }
+
+  if (profile.key === "sales-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "operator", "[sales-manager] runtime role should be operator");
+
+    const actions = await request("/app/actions");
+    const actionsHtml = await actions.text();
+    assert.match(actionsHtml, /Relancer un prospect silencieux/i, "[sales-manager] low-risk commercial action should render");
+    assert.match(actionsHtml, /Modifier plusieurs étapes du pipeline/i, "[sales-manager] medium-risk commercial action should render");
+    assert.match(actionsHtml, /Confirmer et exécuter/i, "[sales-manager] operator should be able to execute low risk");
+    assert.match(
+      actionsHtml,
+      /Votre rôle ne peut pas approuver ce niveau de risque/i,
+      "[sales-manager] medium-risk action should require escalation"
+    );
+
+    const opportunities = await request("/app/opportunities");
+    assert.match(await opportunities.text(), /Opportunités/i, "[sales-manager] opportunities cockpit should render");
+
+    const automations = await request("/app/automations");
+    assert.match(await automations.text(), /Automatisations/i, "[sales-manager] automations cockpit should render");
+  }
+
   if (profile.key === "marketing") {
     const tools = await request("/app/tools");
     const html = await tools.text();
@@ -438,7 +562,7 @@ async function main() {
   for (const profile of PROFILES) {
     await testRuntimeProfile(profile);
   }
-  console.log("Five-profile authenticated runtime smoke tests: OK");
+  console.log("Seven-profile authenticated runtime smoke tests: OK");
 }
 
 main()
