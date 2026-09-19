@@ -11,7 +11,8 @@ import { prisma } from "@/lib/db/client";
 import { updateAutomationPurchaseCapAction } from "@/lib/billing/settings-actions";
 import { Input, Label } from "@/components/ui/Input";
 import {
-  AUTOMATION_PURCHASE_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES,
   getAutomationPurchaseMonthWindow,
   getMonthlyAutomationPurchaseLimit,
 } from "@/lib/billing/automation-purchase-policy";
@@ -93,23 +94,35 @@ export default async function SettingsPage() {
   const { start: monthStart } = getAutomationPurchaseMonthWindow();
   const automationPurchases = await safeRead(
     "settings.automation-purchases",
-    () =>
-      prisma.purchase.aggregate({
-        where: {
-          companyId: company.id,
-          status: { in: [...AUTOMATION_PURCHASE_COMMITTED_STATUSES] },
-          OR: [
-            { createdAt: { gte: monthStart } },
-            { termsAcceptedAt: { gte: monthStart } },
-          ],
-        },
-        _sum: { amountEur: true },
-        _count: { _all: true },
-      }),
-    { _sum: { amountEur: null }, _count: { _all: 0 } }
+    async () => {
+      const periodFilter = {
+        companyId: company.id,
+        OR: [
+          { createdAt: { gte: monthStart } },
+          { termsAcceptedAt: { gte: monthStart } },
+        ],
+      };
+      const [financial, quantityCount] = await Promise.all([
+        prisma.purchase.aggregate({
+          where: {
+            ...periodFilter,
+            status: { in: [...AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES] },
+          },
+          _sum: { amountEur: true },
+        }),
+        prisma.purchase.count({
+          where: {
+            ...periodFilter,
+            status: { in: [...AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES] },
+          },
+        }),
+      ]);
+      return { committedEur: financial._sum.amountEur ?? 0, quantityCount };
+    },
+    { committedEur: 0, quantityCount: 0 }
   );
-  const automationPurchaseCommittedEur = automationPurchases._sum.amountEur ?? 0;
-  const automationPurchaseCommittedCount = automationPurchases._count._all;
+  const automationPurchaseCommittedEur = automationPurchases.committedEur;
+  const automationPurchaseCommittedCount = automationPurchases.quantityCount;
   const automationPlanLimit = getMonthlyAutomationPurchaseLimit(usage.plan);
   const automationPurchaseHistory = await safeRead(
     "settings.automation-purchase-history",
