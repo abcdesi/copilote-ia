@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../lib/db/client";
-import { observeProspectReplies } from "../lib/automations/provider-outcomes";
+import { observeProspectMeetings, observeProspectReplies } from "../lib/automations/provider-outcomes";
 
 async function main() {
   const suffix = randomUUID();
@@ -156,6 +156,68 @@ async function main() {
       where: { automationId: automation.id, kind: "prospect_reply" },
     });
     assert.equal(outcomeCount, 1, "Une réponse fournisseur ne doit être comptée qu'une seule fois.");
+
+    let meetingSearches = 0;
+    const meetingCreatedAt = new Date(sentAt.getTime() + 45_000);
+    const meetingStartAt = new Date(sentAt.getTime() + 24 * 60 * 60 * 1000);
+    const meeting = await observeProspectMeetings({
+      companyId: company.id,
+      actorUserId: user.id,
+      source: "manual",
+      searchMeeting: async ({ prospectEmail, sentAt: searchedSentAt }) => {
+        meetingSearches += 1;
+        assert.equal(prospectEmail, prospect.email);
+        assert.equal(searchedSentAt.getTime(), sentEvent.createdAt.getTime());
+        return {
+          eventId: `calendar-meeting-${suffix}`,
+          createdAt: meetingCreatedAt,
+          startAt: meetingStartAt,
+        };
+      },
+    });
+
+    assert.deepEqual(meeting, { checked: 1, meetingsObserved: 1, errors: 0 });
+    assert.equal(meetingSearches, 1);
+
+    const meetingProspect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospect.id } });
+    assert.equal(meetingProspect.lastOutcome, "meeting_booked");
+
+    const meetingOutcome = await prisma.automationOutcome.findFirstOrThrow({
+      where: { automationId: automation.id, kind: "meeting_booked" },
+    });
+    assert.equal(meetingOutcome.value, 1);
+    assert.equal(meetingOutcome.unit, "count");
+    assert.equal(meetingOutcome.source, "provider_observed");
+    assert.equal(meetingOutcome.confidence, 0.85);
+    const meetingEvidence = JSON.parse(meetingOutcome.evidenceJson ?? "{}");
+    assert.equal(meetingEvidence.calendarEventId, `calendar-meeting-${suffix}`);
+    assert.equal(meetingEvidence.attribution, "temporal_after_pilotzia_follow_up");
+    assert.equal(meetingEvidence.sourceContactEventId, sentEvent.id);
+
+    const meetingContactEvent = await prisma.automationContactEvent.findFirstOrThrow({
+      where: { automationId: automation.id, prospectId: prospect.id, kind: "meeting_observed" },
+    });
+    assert.equal(meetingContactEvent.provider, "google_calendar");
+    assert.equal(meetingContactEvent.providerMessageId, `calendar-meeting-${suffix}`);
+
+    const secondMeeting = await observeProspectMeetings({
+      companyId: company.id,
+      searchMeeting: async () => {
+        meetingSearches += 1;
+        return {
+          eventId: `calendar-meeting-${suffix}`,
+          createdAt: meetingCreatedAt,
+          startAt: meetingStartAt,
+        };
+      },
+    });
+    assert.deepEqual(secondMeeting, { checked: 0, meetingsObserved: 0, errors: 0 });
+    assert.equal(meetingSearches, 1, "Un rendez-vous déjà observé ne doit pas être recherché ou compté deux fois.");
+
+    const meetingOutcomeCount = await prisma.automationOutcome.count({
+      where: { automationId: automation.id, kind: "meeting_booked" },
+    });
+    assert.equal(meetingOutcomeCount, 1, "Un rendez-vous Calendar ne doit produire qu'un seul résultat métier.");
 
     console.log("Provider-observed automation outcome tests: OK");
   } finally {
