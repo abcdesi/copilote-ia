@@ -54,11 +54,11 @@ const FAQ = [
   ],
   [
     "Quels sont les plans ?",
-    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et le rafraîchissement hebdomadaire. Action à 179 €/mois ouvre le moteur d'exécution et le suivi des résultats ; les automatisations exécutables sont ensuite achetées séparément au prix affiché. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Les crédits couvrent l'usage courant des fonctions et automatisations, pas leur prix d'achat initial.",
+    "Core à 79 €/mois approfondit le contexte, le pilotage, le Morning Brief et permet d'acheter puis déployer jusqu'à 2 nouvelles automatisations par mois. Action à 179 €/mois retire cette limite Core de quantité et renforce l'exécution contrôlée et le suivi des résultats. Scale à 399 €/mois ajoute l'audit avancé, l'intelligence financière, les analyses croisées et 10 utilisateurs inclus. Les automatisations exécutables restent achetées séparément au prix affiché ; les crédits couvrent leur usage courant, pas leur prix d'achat initial.",
   ],
   [
     "Comment sont facturées les automatisations ?",
-    "Une offre Action ou Scale est nécessaire pour accéder au moteur d'exécution. Chaque automatisation exécutable est ensuite achetée une seule fois au prix affiché. Après le premier abonnement, Pilotzia utilise le compte Stripe déjà associé à l'entreprise afin d'éviter de ressaisir la carte à chaque achat ; une confirmation bancaire supplémentaire peut toutefois être demandée. L'usage courant de l'automatisation consomme ensuite les crédits du plan.",
+    "Une offre Core, Action ou Scale active est nécessaire pour exécuter une automatisation achetée. Core permet jusqu'à 2 nouvelles automatisations par mois, chacune achetée une seule fois au prix affiché ; les automatisations déjà installées continuent de fonctionner et ne sont pas recomptées chaque mois. Action et Scale n'ont pas cette limite de quantité liée au plan. Pilotzia utilise le compte Stripe déjà associé à l'entreprise afin d'éviter de ressaisir la carte à chaque achat ; une confirmation bancaire supplémentaire peut toutefois être demandée. L'usage courant de l'automatisation consomme ensuite les crédits du plan.",
   ],
   [
     "Pilotzia peut-il analyser un bilan ou un compte de résultat ?",

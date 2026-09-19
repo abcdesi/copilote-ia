@@ -190,7 +190,7 @@ export async function triggerAutomation(
   if (!entitlements.canExecute) {
     return {
       ok: false as const,
-      error: "L'exécution réelle des automatisations nécessite une offre Action ou Scale active.",
+      error: "L'exécution réelle des automatisations achetées nécessite une offre Core, Action ou Scale active.",
       upgradeRequired: true as const,
     };
   }

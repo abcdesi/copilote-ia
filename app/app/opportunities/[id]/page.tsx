@@ -139,7 +139,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         <p className="font-semibold">{isReal ? "⚡ Exécution réelle disponible" : "🧪 Simulation disponible"}</p>
         <p className="mt-1 leading-6">
           {isReal
-            ? "Action ou Scale donne accès au moteur d'exécution. Cette automatisation s'achète séparément une seule fois ; son usage courant consomme ensuite les crédits du plan. Le prix et les permissions sont visibles avant achat."
+            ? "Core, Action ou Scale donne accès au moteur d'exécution pour les automatisations achetées. Core permet jusqu'à 2 nouvelles automatisations par mois ; Action et Scale n'ont pas cette limite de quantité liée au plan. Le prix et les permissions sont visibles avant achat."
             : "Cette recommandation sert aujourd'hui à valider la logique et la valeur potentielle. Pilotzia ne la présente pas comme achetable tant que son exécution réelle n'est pas prête."}
         </p>
       </div>
@@ -216,7 +216,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
               : !isReal
                 ? "Validation en simulation"
                 : !entitlements.canExecute
-                  ? "Action ou Scale requis avant achat"
+                  ? "Abonnement Core, Action ou Scale requis avant achat"
                   : purchased
                     ? "Automatisation payée · prête à installer"
                     : `${formatEur(priceEur)} HT · achat unique`}
@@ -229,7 +229,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
               : !isReal
                 ? "La logique peut être évaluée sans laisser croire qu'une action réelle est déjà disponible."
                 : !entitlements.canExecute
-                  ? "L'abonnement ouvre le moteur d'exécution et les crédits d'usage. L'automatisation reste ensuite un achat séparé."
+                  ? "Core ouvre déjà le moteur pour les automatisations achetées, avec jusqu'à 2 nouvelles automatisations par mois. Action et Scale retirent cette limite Core. L'automatisation reste un achat séparé."
                   : purchased
                     ? "L'achat est enregistré. Vous pouvez installer le workflow sans repayer ; son usage consommera ensuite les crédits du plan."
                     : "Le Propriétaire valide l'achat. Pilotzia tente d'utiliser le moyen de paiement Stripe déjà enregistré, sans demander de ressaisir la carte sauf exigence bancaire."}
@@ -244,7 +244,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         ) : !isReal ? (
           <Button href="/app/copilot" variant="outline">Approfondir avec le copilote</Button>
         ) : !entitlements.canExecute ? (
-          <Button href="/app/settings#plans">Choisir Action ou Scale</Button>
+          <Button href="/app/settings#plans">Choisir un abonnement</Button>
         ) : purchased && canConfigure ? (
           <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased />
         ) : purchased ? (

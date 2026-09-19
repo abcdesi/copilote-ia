@@ -10,6 +10,12 @@ import { CREDIT_PACKS, creditPackStripeReady } from "@/lib/billing/credit-packs"
 import { prisma } from "@/lib/db/client";
 import { updateAutomationPurchaseCapAction } from "@/lib/billing/settings-actions";
 import { Input, Label } from "@/components/ui/Input";
+import {
+  AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES,
+  getAutomationPurchaseMonthWindow,
+  getMonthlyAutomationPurchaseLimit,
+} from "@/lib/billing/automation-purchase-policy";
 
 function stripeReady(_plan: "starter" | "pro" | "business", _billingCycle: BillingCycle) {
   return Boolean(process.env.STRIPE_SECRET_KEY);
@@ -85,22 +91,39 @@ export default async function SettingsPage() {
       alertLevel: "normal" as const,
     }
   );
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+  const { start: monthStart } = getAutomationPurchaseMonthWindow();
   const automationPurchases = await safeRead(
     "settings.automation-purchases",
-    () =>
-      prisma.purchase.aggregate({
-        where: {
-          companyId: company.id,
-          createdAt: { gte: monthStart },
-          status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
-        },
-        _sum: { amountEur: true },
-      }),
-    { _sum: { amountEur: null } }
+    async () => {
+      const periodFilter = {
+        companyId: company.id,
+        OR: [
+          { createdAt: { gte: monthStart } },
+          { termsAcceptedAt: { gte: monthStart } },
+        ],
+      };
+      const [financial, quantityCount] = await Promise.all([
+        prisma.purchase.aggregate({
+          where: {
+            ...periodFilter,
+            status: { in: [...AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES] },
+          },
+          _sum: { amountEur: true },
+        }),
+        prisma.purchase.count({
+          where: {
+            ...periodFilter,
+            status: { in: [...AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES] },
+          },
+        }),
+      ]);
+      return { committedEur: financial._sum.amountEur ?? 0, quantityCount };
+    },
+    { committedEur: 0, quantityCount: 0 }
   );
-  const automationPurchaseCommittedEur = automationPurchases._sum.amountEur ?? 0;
+  const automationPurchaseCommittedEur = automationPurchases.committedEur;
+  const automationPurchaseCommittedCount = automationPurchases.quantityCount;
+  const automationPlanLimit = getMonthlyAutomationPurchaseLimit(usage.plan);
   const automationPurchaseHistory = await safeRead(
     "settings.automation-purchase-history",
     () =>
@@ -216,7 +239,7 @@ export default async function SettingsPage() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Choisissez jusqu'où Pilotzia doit aller pour vous</h2>
-            <p className="mt-1 text-sm text-muted-foreground">Core aide à décider. Action ouvre le moteur d'exécution ; les automatisations sont ensuite achetées séparément au prix affiché. Scale ajoute une profondeur d'audit et de pilotage supérieure.</p>
+            <p className="mt-1 text-sm text-muted-foreground">Core aide à décider et permet de déployer jusqu'à 2 nouvelles automatisations par mois, achetées à l'unité. Action retire cette limite Core pour accélérer le déploiement. Scale ajoute une profondeur d'audit et de pilotage supérieure.</p>
           </div>
           {hasStripeCustomer && canManageBilling && (
             <form method="post" action="/api/billing/portal">
@@ -280,7 +303,7 @@ export default async function SettingsPage() {
           })}
         </div>
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
-          Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel. Les automatisations exécutables sont des achats uniques séparés : leur prix est affiché avant validation et leur usage courant consomme ensuite les crédits du plan.
+          Les changements d'un abonnement actif passent par le portail de facturation afin d'éviter tout doublon. Les crédits inclus se renouvellent à chaque période d'usage mensuelle, y compris sur l'abonnement annuel. Les automatisations exécutables sont des achats uniques séparés : Core permet jusqu'à 2 nouveaux achats par mois ; Action et Scale n'ont pas cette limite de quantité liée au plan. Les automatisations déjà installées continuent de fonctionner et leur usage courant consomme les crédits du plan.
         </p>
       </section>
 
@@ -290,12 +313,22 @@ export default async function SettingsPage() {
             <div>
               <h2 className="font-semibold">Budget d'achat des automatisations</h2>
               <p className="mt-1 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Les automatisations exécutables sont achetées séparément de l'abonnement. Ce plafond dur empêche Pilotzia d'engager plus que le montant autorisé sur un même mois, même en cas de double clic ou de demandes rapprochées.
+                Les automatisations exécutables sont achetées séparément de l'abonnement. Core autorise jusqu'à 2 nouvelles automatisations par mois ; les automatisations déjà installées ne sont pas comptées à nouveau. Le plafond financier ci-dessous reste un garde-fou distinct pour tous les plans.
               </p>
             </div>
-            <Badge tone={automationPurchaseCommittedEur >= company.automationPurchaseMonthlyCapEur ? "warning" : "neutral"}>
-              {formatEur(automationPurchaseCommittedEur)} / {formatEur(company.automationPurchaseMonthlyCapEur)} engagés
-            </Badge>
+            <div className="flex flex-wrap gap-2">
+              {automationPlanLimit !== null && usage.paid && (
+                <Badge tone={automationPurchaseCommittedCount >= automationPlanLimit ? "warning" : "accent"}>
+                  {automationPurchaseCommittedCount} / {automationPlanLimit} nouvelles automatisations ce mois
+                </Badge>
+              )}
+              {automationPlanLimit === null && usage.paid && (
+                <Badge tone="success">Pas de limite de quantité liée au plan</Badge>
+              )}
+              <Badge tone={automationPurchaseCommittedEur >= company.automationPurchaseMonthlyCapEur ? "warning" : "neutral"}>
+                {formatEur(automationPurchaseCommittedEur)} / {formatEur(company.automationPurchaseMonthlyCapEur)} engagés
+              </Badge>
+            </div>
           </div>
           <form action={updateAutomationPurchaseCapAction} className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="w-full max-w-xs space-y-1.5">

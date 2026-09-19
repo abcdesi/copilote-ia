@@ -8,6 +8,10 @@ import {
   acceptsCurrentAutomationPurchaseTerms,
 } from "../lib/billing/purchase-terms";
 import { recordFirstDigitalProductUse } from "../lib/billing/automation-purchase-evidence";
+import {
+  evaluateAutomationPurchaseQuantity,
+  getMonthlyAutomationPurchaseLimit,
+} from "../lib/billing/automation-purchase-policy";
 
 function prismaCode(error: unknown) {
   return error && typeof error === "object" && "code" in error
@@ -38,6 +42,11 @@ async function main() {
   try {
     const reloaded = await prisma.company.findUniqueOrThrow({ where: { id: company.id } });
     assert.equal(reloaded.automationPurchaseMonthlyCapEur, 250);
+
+    assert.equal(getMonthlyAutomationPurchaseLimit("starter"), 2);
+    assert.equal(getMonthlyAutomationPurchaseLimit("pro"), null);
+    assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 2 }).reached, true);
+    assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 1 }).remaining, 1);
 
     const template = getTemplateById("relance-prospects");
     assert.ok(template);
@@ -227,11 +236,21 @@ async function main() {
     const installRoute = readFileSync("app/api/opportunities/[id]/install/route.ts", "utf-8");
     const executionSource = readFileSync("lib/n8n/execution.ts", "utf-8");
     const feedbackRoute = readFileSync("app/api/automations/[id]/feedback/route.ts", "utf-8");
+    const faqPage = readFileSync("app/faq/page.tsx", "utf-8");
+    const cgvPage = readFileSync("app/cgv/page.tsx", "utf-8");
 
     assert.ok(
       purchaseRoute.includes("acceptsCurrentAutomationPurchaseTerms") &&
         purchaseRoute.includes("createAutomationInvoicePurchase"),
       "Le parcours doit conserver acceptation contractuelle puis création du paiement Stripe."
+    );
+    assert.ok(
+      purchaseRoute.includes('plan: { in: ["starter", "pro", "business"] }') &&
+        purchaseRoute.includes("evaluateAutomationPurchaseQuantity") &&
+        purchaseRoute.includes("automationQuantityCapReached") &&
+        purchaseRoute.includes('existing.status === "payment_failed"') &&
+        purchaseRoute.includes("FOR UPDATE"),
+      "Core doit pouvoir acheter une automatisation, avec une limite mensuelle de quantité sérialisée avant création du paiement."
     );
     assert.ok(
       webhookRoute.includes('event.type === "invoice.paid"') &&
@@ -240,17 +259,24 @@ async function main() {
     );
     assert.ok(
       installRoute.includes('purchase.status !== "paid"') &&
-        installRoute.includes("data: { deliveredAt }"),
-      "L'installation doit exiger un achat payé puis tracer la livraison."
+        installRoute.includes("data: { deliveredAt }") &&
+        installRoute.includes("Core, Action ou Scale"),
+      "L'installation Core/Action/Scale doit exiger un achat payé puis tracer la livraison."
     );
     assert.ok(
-      executionSource.includes("recordFirstDigitalProductUse"),
-      "L'exécution réelle doit tracer le premier usage du produit numérique."
+      executionSource.includes("recordFirstDigitalProductUse") &&
+        executionSource.includes("Core, Action ou Scale active"),
+      "L'exécution réelle doit accepter Core/Action/Scale et tracer le premier usage du produit numérique."
     );
     assert.ok(
       feedbackRoute.includes("automationOutcome.create") &&
         feedbackRoute.includes('source: "user_reported"'),
       "Le résultat métier doit rester distinct de la simple preuve d'exécution."
+    );
+    assert.ok(
+      faqPage.includes("Core permet jusqu'à 2 nouvelles automatisations par mois") &&
+        cgvPage.includes("Core permet d'engager jusqu'à deux nouvelles automatisations par mois"),
+      "La FAQ et les CGV doivent décrire le même accès Core que le moteur de facturation."
     );
 
     const otherOpportunity = await prisma.opportunity.create({

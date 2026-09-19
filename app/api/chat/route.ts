@@ -337,7 +337,7 @@ async function getAutomationCapability(
       select: { status: true },
     }),
   ]);
-  if (!entitlements.canExecute) blockers.push("offre Action ou Scale requise");
+  if (!entitlements.canExecute) blockers.push("offre Core, Action ou Scale requise");
   if (purchase?.status !== "paid") {
     const template = getTemplateById(templateId);
     blockers.push(

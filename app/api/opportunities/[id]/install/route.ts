@@ -19,7 +19,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
     if (!entitlements.canExecute) {
       return NextResponse.json(
         {
-          error: "Une offre Action ou Scale active est requise pour exécuter une automatisation achetée.",
+          error: "Une offre Core, Action ou Scale active est requise pour exécuter une automatisation achetée.",
           upgradeRequired: true,
           href: "/app/settings",
         },

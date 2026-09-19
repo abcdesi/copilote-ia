@@ -10,6 +10,12 @@ import {
   AUTOMATION_PURCHASE_TERMS_VERSION,
   acceptsCurrentAutomationPurchaseTerms,
 } from "@/lib/billing/purchase-terms";
+import {
+  AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES,
+  evaluateAutomationPurchaseQuantity,
+  getAutomationPurchaseMonthWindow,
+} from "@/lib/billing/automation-purchase-policy";
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -27,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       prisma.subscription.findFirst({
         where: {
           companyId,
-          plan: { in: ["pro", "business"] },
+          plan: { in: ["starter", "pro", "business"] },
           status: { in: ["active", "trialing"] },
         },
         orderBy: { createdAt: "desc" },
@@ -41,7 +47,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     if (!entitlements.canExecute || !subscription) {
       return NextResponse.json(
         {
-          error: "Une offre Action ou Scale active est requise avant l'achat d'une automatisation.",
+          error: "Une offre Core, Action ou Scale active est requise avant l'achat d'une automatisation.",
           upgradeRequired: true,
           href: "/app/settings#plans",
         },
@@ -87,6 +93,70 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           immediateFulfillmentRequestedAt: termsAcceptedAt,
         };
 
+        const requiresQuantitySlot =
+          !existing || existing.status === "void" || existing.status === "payment_failed";
+        const requiresFinancialCommitment =
+          !existing || existing.status === "void" || existing.status === "payment_failed";
+        if (requiresQuantitySlot || requiresFinancialCommitment) {
+          const company = await tx.company.findUnique({
+            where: { id: companyId },
+            select: { automationPurchaseMonthlyCapEur: true },
+          });
+          const monthlyCapEur = Math.max(0, company?.automationPurchaseMonthlyCapEur ?? 0);
+          const { start: monthStart, nextStart } = getAutomationPurchaseMonthWindow();
+          const periodFilter = {
+            companyId,
+            OR: [
+              { createdAt: { gte: monthStart } },
+              { termsAcceptedAt: { gte: monthStart } },
+            ],
+          };
+
+          if (requiresQuantitySlot) {
+            const committedCount = await tx.purchase.count({
+              where: {
+                ...periodFilter,
+                status: { in: [...AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES] },
+              },
+            });
+            const quantity = evaluateAutomationPurchaseQuantity({
+              plan: entitlements.plan,
+              committedCount,
+            });
+
+            if (quantity.reached) {
+              return {
+                blocked: true as const,
+                blockKind: "quantity" as const,
+                monthlyAutomationLimit: quantity.limit,
+                committedAutomationCount: quantity.committedCount,
+                nextAvailableAt: nextStart.toISOString(),
+              };
+            }
+          }
+
+          if (requiresFinancialCommitment) {
+            const committed = await tx.purchase.aggregate({
+              where: {
+                ...periodFilter,
+                ...(existing ? { id: { not: existing.id } } : {}),
+                status: { in: [...AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES] },
+              },
+              _sum: { amountEur: true },
+            });
+            const committedEur = committed._sum.amountEur ?? 0;
+            if (committedEur + template.priceEur > monthlyCapEur) {
+              return {
+                blocked: true as const,
+                blockKind: "amount" as const,
+                monthlyCapEur,
+                committedEur,
+                requestedEur: template.priceEur,
+              };
+            }
+          }
+        }
+
         if (existing) {
           if (existing.status === "void") {
             const updated = await tx.purchase.update({
@@ -117,31 +187,6 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           return { blocked: false as const, termsRequired: false as const, purchase: updated };
         }
 
-        const company = await tx.company.findUnique({
-          where: { id: companyId },
-          select: { automationPurchaseMonthlyCapEur: true },
-        });
-        const monthlyCapEur = Math.max(0, company?.automationPurchaseMonthlyCapEur ?? 0);
-        const now = new Date();
-        const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-        const committed = await tx.purchase.aggregate({
-          where: {
-            companyId,
-            createdAt: { gte: monthStart },
-            status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
-          },
-          _sum: { amountEur: true },
-        });
-        const committedEur = committed._sum.amountEur ?? 0;
-        if (committedEur + template.priceEur > monthlyCapEur) {
-          return {
-            blocked: true as const,
-            monthlyCapEur,
-            committedEur,
-            requestedEur: template.priceEur,
-          };
-        }
-
         const purchase = await tx.purchase.create({
           data: {
             companyId,
@@ -169,9 +214,23 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     if (purchaseDecision.blocked) {
+      if (purchaseDecision.blockKind === "quantity") {
+        return NextResponse.json(
+          {
+            error: `Votre offre Core permet jusqu'à ${purchaseDecision.monthlyAutomationLimit} nouvelles automatisations par mois, achetées à l'unité. Vous pouvez attendre le prochain mois ou passer à Action pour continuer à déployer sans cette limite Core.`,
+            automationQuantityCapReached: true,
+            monthlyAutomationLimit: purchaseDecision.monthlyAutomationLimit,
+            committedAutomationCount: purchaseDecision.committedAutomationCount,
+            nextAvailableAt: purchaseDecision.nextAvailableAt,
+            href: "/app/settings#plans",
+          },
+          { status: 409 }
+        );
+      }
+
       return NextResponse.json(
         {
-          error: `Cet achat dépasserait le plafond mensuel d'automatisations (${purchaseDecision.monthlyCapEur} € HT). Modifiez le plafond dans Compte & abonnement si vous souhaitez continuer.`,
+          error: `Cet achat dépasserait le plafond financier mensuel d'automatisations (${purchaseDecision.monthlyCapEur} € HT). Modifiez ce garde-fou dans Compte & abonnement si vous souhaitez continuer.`,
           purchaseCapReached: true,
           monthlyCapEur: purchaseDecision.monthlyCapEur,
           committedEur: purchaseDecision.committedEur,
