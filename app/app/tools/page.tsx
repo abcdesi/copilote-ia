@@ -232,6 +232,12 @@ export default async function ToolsPage({
           </div>
         </div>
       )}
+      {hubspotMessage && (
+        <ConnectionMessage message={hubspotMessage} code={params.hubspot} />
+      )}
+      {stripeBusinessMessage && (
+        <ConnectionMessage message={stripeBusinessMessage} code={params.stripeBusiness} />
+      )}
 
       <div className="rounded-2xl border border-accent/20 bg-accent-soft p-5">
         <div className="flex gap-3">
@@ -325,6 +331,117 @@ export default async function ToolsPage({
       </section>
 
       <section className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Cloud size={18} className="text-accent" />
+              <h2 className="font-semibold">HubSpot</h2>
+              {hubspotConnected ? (
+                <Badge tone="success">Connecté · lecture seule</Badge>
+              ) : hubspotNeedsReauth ? (
+                <Badge tone="warning">Reconnexion requise</Badge>
+              ) : (
+                <Badge tone="accent">Disponible</Badge>
+              )}
+            </div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              Pilotzia lit uniquement les contacts et les deals nécessaires pour confirmer qu&apos;une opportunité est réellement gagnée après une relance.
+              Aucune modification du CRM n&apos;est effectuée.
+            </p>
+            {hubspot && (
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                <p>Compte : {hubspot.accountLabel ?? "Compte HubSpot"}</p>
+                {hubspotNeedsReauth && <p className="font-medium text-warning">Le compte doit être reconnecté avant la prochaine observation.</p>}
+                {hubspot.lastError && !hubspotNeedsReauth && <p className="font-medium text-warning">Dernière erreur HubSpot enregistrée.</p>}
+              </div>
+            )}
+            {!hubspotConfiguration.configured && canManageIntegrations && (
+              <p className="mt-3 text-xs font-medium text-danger">Configuration serveur HubSpot incomplète.</p>
+            )}
+            {hubspotRedirect && canManageIntegrations && (
+              <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+                <p className="font-medium text-foreground">Callback OAuth HubSpot</p>
+                <code className="mt-1 block break-all">{hubspotRedirect}</code>
+                <p className="mt-3 font-medium text-foreground">Webhook HubSpot à configurer</p>
+                <code className="mt-1 block break-all">{hubspotWebhookUrl()}</code>
+                <p className="mt-1">Événement : deal.propertyChange · propriété hs_is_closed_won.</p>
+              </div>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {(!hubspotConnected || hubspotNeedsReauth) && canManageIntegrations && hubspotConfiguration.configured && (
+              <a
+                href="/api/integrations/hubspot/connect"
+                className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
+              >
+                <RefreshCcw size={15} /> {hubspotNeedsReauth ? "Reconnecter HubSpot" : "Connecter HubSpot"}
+              </a>
+            )}
+            {hubspotConnected && canManageIntegrations && (
+              <form method="post" action="/api/integrations/hubspot/disconnect">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                  <Unplug size={15} /> Déconnecter
+                </button>
+              </form>
+            )}
+          </div>
+        </div>
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <ConnectionCapability title="Deals gagnés" body="Observation signée puis rapprochement avec une relance Pilotzia antérieure." connected={hubspotConnected} />
+          <ConnectionCapability title="CRM en lecture seule" body="Contacts et associations nécessaires à la preuve ; aucune écriture HubSpot." connected={hubspotConnected} />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0 flex-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <Cloud size={18} className="text-accent" />
+              <h2 className="font-semibold">Stripe métier</h2>
+              {stripeBusinessConnected ? <Badge tone="success">Connecté · invoice.paid</Badge> : <Badge tone="accent">Disponible</Badge>}
+            </div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              Ce connecteur est distinct du Stripe qui facture Pilotzia. Il observe uniquement les factures payées du compte métier et
+              les rapproche d&apos;une relance de facture Pilotzia au même contact.
+            </p>
+            <div className="mt-3 rounded-lg border border-border bg-muted/40 p-3 text-xs text-muted-foreground">
+              <p className="font-medium text-foreground">Endpoint webhook à créer dans Stripe</p>
+              <code className="mt-1 block break-all">{stripeWebhook}</code>
+              <p className="mt-2">Événement unique : <code>invoice.paid</code>. Copiez ensuite son secret de signature <code>whsec_…</code> ci-dessous.</p>
+            </div>
+            {stripeBusinessConnected && (
+              <p className="mt-3 text-xs text-success">Secret de signature chiffré au repos · aucun accès aux remboursements ou transferts.</p>
+            )}
+          </div>
+          {stripeBusinessConnected && canManageIntegrations && (
+            <form method="post" action="/api/integrations/stripe-business/disconnect">
+              <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                <Unplug size={15} /> Déconnecter
+              </button>
+            </form>
+          )}
+        </div>
+        {canManageIntegrations && (
+          <form method="post" action="/api/integrations/stripe-business/configure" className="mt-5 flex flex-col gap-3 sm:flex-row sm:items-end">
+            <label className="min-w-0 flex-1 text-xs font-medium text-foreground">
+              Secret de signature Stripe métier
+              <input
+                type="password"
+                name="webhookSecret"
+                required
+                autoComplete="off"
+                placeholder="whsec_…"
+                className="mt-1.5 w-full rounded-xl border border-border bg-background px-3 py-2 text-sm outline-none transition focus:border-accent"
+              />
+            </label>
+            <button className="inline-flex items-center justify-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
+              <ShieldCheck size={15} /> {stripeBusinessConnected ? "Remplacer le secret" : "Activer Stripe métier"}
+            </button>
+          </form>
+        )}
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
         <div className="flex items-center justify-between gap-3">
           <div>
             <h2 className="font-semibold">Applications connues de Pilotzia</h2>
@@ -342,7 +459,10 @@ export default async function ToolsPage({
             {company.tools.map((tool) => {
               const definition = getIntegrationDefinition(tool.name);
               const isGoogleTool = tool.name === "Gmail" || tool.name === "Google Calendar";
-              const isReallyConnected = isGoogleTool && googleConnected;
+              const isReallyConnected =
+                (isGoogleTool && googleConnected) ||
+                (tool.name === "HubSpot" && hubspotConnected) ||
+                (tool.name === "Stripe" && stripeBusinessConnected);
               return (
                 <li key={tool.id} className="rounded-xl border border-border bg-background p-4">
                   <div className="flex items-start justify-between gap-3">
@@ -400,6 +520,32 @@ export default async function ToolsPage({
           </div>
         </section>
       )}
+    </div>
+  );
+}
+
+function ConnectionMessage({
+  message,
+  code,
+}: {
+  message: { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string };
+  code?: string;
+}) {
+  return (
+    <div className="rounded-2xl border border-border bg-card p-4">
+      <div className="flex gap-3">
+        <AlertCircle
+          size={18}
+          className={message.tone === "danger" ? "mt-0.5 text-danger" : message.tone === "warning" ? "mt-0.5 text-warning" : "mt-0.5 text-accent"}
+        />
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <p className="text-sm font-semibold">{message.title}</p>
+            {code && <Badge tone={message.tone}>{code}</Badge>}
+          </div>
+          <p className="mt-1 text-sm leading-6 text-muted-foreground">{message.body}</p>
+        </div>
+      </div>
     </div>
   );
 }
