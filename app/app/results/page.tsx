@@ -385,7 +385,7 @@ function outcomeLabel(kind: string, value: number, unit: string) {
   if (kind === "time_saved_weekly_hours") return `${value} h / semaine déclarées comme économisées`;
   if (kind === "value_observed_eur_30d") return `${formatEur(value)} déclarés sur 30 jours`;
   if (kind === "prospect_reply") return "Réponse prospect enregistrée";
-  if (kind === "meeting_booked") return "Rendez-vous obtenu enregistré";
+  if (kind === "meeting_booked") return "Rendez-vous enregistré";
   if (kind === "deal_won") return "Opportunité gagnée enregistrée";
   if (kind === "deal_lost") return "Opportunité perdue enregistrée";
   return `${value} ${unit}`;
