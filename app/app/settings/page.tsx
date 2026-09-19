@@ -1,4 +1,5 @@
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { Button } from "@/components/ui/Button";
 import { Badge } from "@/components/ui/Badge";
 import { formatEur } from "@/lib/format";
@@ -20,24 +21,80 @@ function formatDate(value: Date | null) {
 }
 
 export default async function SettingsPage() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const session = access.session;
-  const company = access.company;
+  const billingState = await safeRead(
+    "settings.billing-state",
+    async () => {
+      const [subscription, companySettings] = await Promise.all([
+        prisma.subscription.findFirst({
+          where: { companyId: access.company.id },
+          orderBy: { createdAt: "desc" },
+          select: { plan: true, status: true, stripeCustomerId: true },
+        }),
+        prisma.company.findUnique({
+          where: { id: access.company.id },
+          select: { automationPurchaseMonthlyCapEur: true },
+        }),
+      ]);
+      return {
+        subscription,
+        automationPurchaseMonthlyCapEur: companySettings?.automationPurchaseMonthlyCapEur ?? 0,
+      };
+    },
+    { subscription: null, automationPurchaseMonthlyCapEur: 0 }
+  );
+  const company = { ...access.company, automationPurchaseMonthlyCapEur: billingState.automationPurchaseMonthlyCapEur };
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
-  const subscription = company.subscriptions[0];
+  const subscription = billingState.subscription;
   const currentPlan = subscription?.plan ?? "free";
   const hasStripeCustomer = Boolean(subscription?.stripeCustomerId);
-  const usage = await getUsageStatus(company.id);
+  const usage = await safeRead(
+    "settings.usage",
+    () => getUsageStatus(company.id),
+    {
+      paid: false,
+      hasPaidHistory: false,
+      subscriptionInactive: false,
+      plan: "free",
+      planLabel: "Découverte",
+      nextPlan: "starter",
+      periodKind: "trial" as const,
+      periodStartsAt: null,
+      periodEndsAt: null,
+      daysRemaining: null,
+      trialStartedAt: null,
+      trialEndsAt: null,
+      trialActive: false,
+      trialExpired: false,
+      creditsUsed: 0,
+      baseCreditsLimit: 0,
+      addonCredits: 0,
+      creditsLimit: 0,
+      creditsRemaining: 0,
+      reservedCostEur: 0,
+      baseCostCapEur: 0,
+      addonCostCapEur: 0,
+      costCapEur: 0,
+      costRemainingEur: 0,
+      alertLevel: "normal" as const,
+    }
+  );
   const now = new Date();
   const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
-  const automationPurchases = await prisma.purchase.aggregate({
-    where: {
-      companyId: company.id,
-      createdAt: { gte: monthStart },
-      status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
-    },
-    _sum: { amountEur: true },
-  });
+  const automationPurchases = await safeRead(
+    "settings.automation-purchases",
+    () =>
+      prisma.purchase.aggregate({
+        where: {
+          companyId: company.id,
+          createdAt: { gte: monthStart },
+          status: { in: ["pending", "payment_action_required", "payment_failed", "paid"] },
+        },
+        _sum: { amountEur: true },
+      }),
+    { _sum: { amountEur: null } }
+  );
   const automationPurchaseCommittedEur = automationPurchases._sum.amountEur ?? 0;
   const creditPct = usage.creditsLimit > 0 ? Math.min(100, Math.round((usage.creditsUsed / usage.creditsLimit) * 100)) : 100;
 
