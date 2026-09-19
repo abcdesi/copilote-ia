@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { CheckCircle2, CreditCard, Database, LifeBuoy, Settings2, ShieldCheck, Wrench } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { prisma } from "@/lib/db/client";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
@@ -58,7 +59,7 @@ export default async function SupportPage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
   const params = await searchParams;
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
@@ -66,23 +67,36 @@ export default async function SupportPage({
   const sent = params.sent === "1";
   const requestedCategory = typeof params.category === "string" && ["technical", "billing", "data", "privacy", "automation", "feature", "other"].includes(params.category) ? params.category : "technical";
   const requesterEmail = access.session.user.email ?? null;
-  const tickets = await prisma.supportRequest.findMany({
-    where: {
-      companyId: company.id,
-      ...(canSeeCompanyTickets && requesterEmail
-        ? {
-            OR: [
-              { category: { not: "privacy" } },
-              { category: "privacy", requesterEmail },
-            ],
-          }
-        : requesterEmail
-          ? { requesterEmail }
-          : { id: "__none__" }),
-    },
-    orderBy: { createdAt: "desc" },
-    take: 8,
-  });
+  const tickets = await safeRead(
+    "support.requests",
+    () =>
+      prisma.supportRequest.findMany({
+        where: {
+          companyId: company.id,
+          ...(canSeeCompanyTickets && requesterEmail
+            ? {
+                OR: [
+                  { category: { not: "privacy" } },
+                  { category: "privacy", requesterEmail },
+                ],
+              }
+            : requesterEmail
+              ? { requesterEmail }
+              : { id: "__none__" }),
+        },
+        orderBy: { createdAt: "desc" },
+        take: 8,
+        select: {
+          id: true,
+          category: true,
+          subject: true,
+          message: true,
+          status: true,
+          createdAt: true,
+        },
+      }),
+    []
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-8 px-4 py-8 sm:px-6">
