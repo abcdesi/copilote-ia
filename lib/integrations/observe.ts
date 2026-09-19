@@ -1,10 +1,16 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
+import { observeProspectReplies } from "@/lib/automations/provider-outcomes";
 
 interface GmailListResponse {
   resultSizeEstimate?: number;
   messages?: { id: string }[];
+}
+
+interface GmailMessageResponse {
+  id?: string;
+  internalDate?: string;
 }
 
 interface CalendarEventsResponse {
@@ -17,7 +23,42 @@ export interface GoogleOperationalSnapshot {
   unreadInboxLast7Days: number;
   unreadInboxIsEstimate: boolean;
   upcomingEventsNext7Days: number;
+  prospectRepliesObserved: number;
   observedAt: string;
+}
+
+function gmailSearchDate(value: Date) {
+  return value.toISOString().slice(0, 10).replace(/-/g, "/");
+}
+
+function gmailSubjectQuery(subject: string | null) {
+  const value = subject?.trim();
+  if (!value) return "";
+  return ` subject:"${value.replace(/[\\"]/g, " ").slice(0, 120)}"`;
+}
+
+async function findGmailReplyAfter(companyId: string, input: {
+  prospectEmail: string;
+  sentAt: Date;
+  subject: string | null;
+}) {
+  const query = `from:${input.prospectEmail} after:${gmailSearchDate(input.sentAt)}${gmailSubjectQuery(input.subject)}`;
+  const list = await googleApi<GmailListResponse>(
+    companyId,
+    `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`
+  );
+
+  for (const message of list.messages ?? []) {
+    if (!message.id) continue;
+    const detail = await googleApi<GmailMessageResponse>(
+      companyId,
+      `https://gmail.googleapis.com/gmail/v1/users/me/messages/${encodeURIComponent(message.id)}?format=metadata`
+    );
+    const internalDate = Number(detail.internalDate);
+    if (!Number.isFinite(internalDate) || internalDate <= input.sentAt.getTime()) continue;
+    return { messageId: detail.id || message.id, observedAt: new Date(internalDate) };
+  }
+  return null;
 }
 
 export async function syncGoogleOperationalSnapshot(
@@ -41,10 +82,21 @@ export async function syncGoogleOperationalSnapshot(
     ),
   ]);
 
+  const replyObservation = await observeProspectReplies({
+    companyId,
+    actorUserId,
+    source,
+    searchReply: (input) => findGmailReplyAfter(companyId, input),
+  }).catch((error) => {
+    console.error("Prospect reply observation unavailable", error);
+    return { checked: 0, repliesObserved: 0, errors: 1 };
+  });
+
   const snapshot: GoogleOperationalSnapshot = {
     unreadInboxLast7Days: gmail.resultSizeEstimate ?? gmail.messages?.length ?? 0,
     unreadInboxIsEstimate: typeof gmail.resultSizeEstimate === "number",
     upcomingEventsNext7Days: (calendar.items ?? []).filter((event) => event.status !== "cancelled").length,
+    prospectRepliesObserved: replyObservation.repliesObserved,
     observedAt: now.toISOString(),
   };
 
