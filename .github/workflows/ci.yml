@@ -61,7 +61,7 @@ jobs:
       - name: Operational refresh and scheduling tests
         run: npm run test:operations
 
-      - name: Four-profile product acceptance tests
+      - name: Five-profile product acceptance tests
         run: npm run test:profiles
 
       - name: Team governance tests
@@ -73,7 +73,7 @@ jobs:
       - name: Build
         run: npm run build
 
-      - name: Four-profile authenticated runtime smoke tests
+      - name: Five-profile authenticated runtime smoke tests
         run: |
           npm run start -- -p 3000 > /tmp/pilotzia-next.log 2>&1 &
           SERVER_PID=$!
