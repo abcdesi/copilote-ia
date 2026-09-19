@@ -156,3 +156,165 @@ export async function observeProspectReplies(input: {
 
   return { checked, repliesObserved, errors };
 }
+
+
+export interface ProviderMeetingMatch {
+  eventId: string;
+  createdAt: Date;
+  startAt: Date;
+}
+
+export interface ProspectMeetingSearchInput {
+  prospectEmail: string;
+  sentAt: Date;
+}
+
+export type ProspectMeetingSearch = (input: ProspectMeetingSearchInput) => Promise<ProviderMeetingMatch | null>;
+
+export async function observeProspectMeetings(input: {
+  companyId: string;
+  searchMeeting: ProspectMeetingSearch;
+  actorUserId?: string | null;
+  source?: "manual" | "oauth_callback" | "scheduled";
+  limit?: number;
+}) {
+  const sentEvents = await prisma.automationContactEvent.findMany({
+    where: {
+      automation: {
+        companyId: input.companyId,
+        templateId: "relance-prospects",
+      },
+      kind: "message_sent",
+      status: "sent",
+      prospect: {
+        status: "active",
+        lastOutcome: { in: ["sent", "replied"] },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+    take: Math.max(1, Math.min(input.limit ?? 20, 50)),
+    select: {
+      id: true,
+      automationId: true,
+      automationRunId: true,
+      renderedSubject: true,
+      messageVersion: true,
+      createdAt: true,
+      prospect: {
+        select: {
+          id: true,
+          name: true,
+          email: true,
+        },
+      },
+    },
+  });
+
+  const seenProspects = new Set<string>();
+  let checked = 0;
+  let meetingsObserved = 0;
+  let errors = 0;
+
+  for (const sentEvent of sentEvents) {
+    if (seenProspects.has(sentEvent.prospect.id)) continue;
+    seenProspects.add(sentEvent.prospect.id);
+    checked += 1;
+
+    let meeting: ProviderMeetingMatch | null = null;
+    try {
+      meeting = await input.searchMeeting({
+        prospectEmail: sentEvent.prospect.email,
+        sentAt: sentEvent.createdAt,
+      });
+    } catch (error) {
+      errors += 1;
+      console.error("Unable to observe prospect meeting", {
+        companyId: input.companyId,
+        prospectId: sentEvent.prospect.id,
+        error,
+      });
+      continue;
+    }
+    if (!meeting) continue;
+
+    const recorded = await prisma.$transaction(async (tx) => {
+      const updated = await tx.prospect.updateMany({
+        where: {
+          id: sentEvent.prospect.id,
+          companyId: input.companyId,
+          lastOutcome: { in: ["sent", "replied"] },
+        },
+        data: { lastOutcome: "meeting_booked" },
+      });
+      if (updated.count === 0) return false;
+
+      const evidence = {
+        provider: "google_calendar",
+        calendarEventId: meeting.eventId,
+        eventCreatedAt: meeting.createdAt.toISOString(),
+        meetingStartAt: meeting.startAt.toISOString(),
+        sourceContactEventId: sentEvent.id,
+        sourceAutomationRunId: sentEvent.automationRunId,
+        attribution: "temporal_after_pilotzia_follow_up",
+      };
+
+      await tx.automationContactEvent.create({
+        data: {
+          automationId: sentEvent.automationId,
+          automationRunId: sentEvent.automationRunId,
+          prospectId: sentEvent.prospect.id,
+          kind: "meeting_observed",
+          status: "observed",
+          recipientName: sentEvent.prospect.name,
+          recipientEmail: sentEvent.prospect.email,
+          renderedSubject: sentEvent.renderedSubject,
+          provider: "google_calendar",
+          providerMessageId: meeting.eventId,
+          messageVersion: sentEvent.messageVersion,
+          evidenceJson: JSON.stringify(evidence),
+        },
+      });
+
+      await tx.automationOutcome.create({
+        data: {
+          automationId: sentEvent.automationId,
+          kind: "meeting_booked",
+          value: 1,
+          unit: "count",
+          source: "provider_observed",
+          confidence: 0.85,
+          note:
+            "Rendez-vous avec ce prospect détecté dans Google Calendar après une relance Pilotzia. Le lien est temporel et ne prouve pas à lui seul que la relance a causé le rendez-vous.",
+          evidenceJson: JSON.stringify(evidence),
+          actorName: "Google Calendar",
+          actorRole: "provider",
+          observedAt: meeting.createdAt,
+        },
+      });
+
+      await tx.event.create({
+        data: {
+          companyId: input.companyId,
+          userId: input.actorUserId ?? null,
+          type: "AUTOMATION_PROVIDER_OUTCOME_OBSERVED",
+          metadata: JSON.stringify({
+            automationId: sentEvent.automationId,
+            prospectId: sentEvent.prospect.id,
+            kind: "meeting_booked",
+            provider: "google_calendar",
+            source: input.source ?? "scheduled",
+            observedAt: meeting.createdAt.toISOString(),
+            meetingStartAt: meeting.startAt.toISOString(),
+            attribution: "temporal_after_pilotzia_follow_up",
+          }),
+        },
+      });
+
+      return true;
+    });
+
+    if (recorded) meetingsObserved += 1;
+  }
+
+  return { checked, meetingsObserved, errors };
+}
