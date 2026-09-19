@@ -305,7 +305,9 @@ async function testRuntimeProfile(profile: Profile) {
   }
 
   const dashboard = await request("/app");
-  assert.match(await dashboard.text(), /Pilotage de direction/i, `[${profile.key}] executive scorecard should render`);
+  const dashboardHtml = await dashboard.text();
+  assert.match(dashboardHtml, /Tableau de bord/i, `[${profile.key}] resilient dashboard should render`);
+  assert.match(dashboardHtml, /Décisions à valider/i, `[${profile.key}] core dashboard KPIs should render`);
 
   if (profile.key === "ceo") {
     const finance = await request("/app/finance");
@@ -335,7 +337,7 @@ async function testRuntimeProfile(profile: Profile) {
     assert.equal(company.employeeCount, 1);
     assert.equal(company.country, "Martinique");
     const soloDashboard = await request("/app");
-    assert.match(await soloDashboard.text(), /Connaissance de votre entreprise/i, "[solopreneur] dashboard should render");
+    assert.match(await soloDashboard.text(), /Maturité automatisation/i, "[solopreneur] dashboard should render");
   }
 
   console.log(`Runtime profile ${profile.key}: OK`);
