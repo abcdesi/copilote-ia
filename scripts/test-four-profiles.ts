@@ -39,6 +39,17 @@ function testSixtyEmployeeCompany() {
   assert.equal(hasCompanyPermission("viewer", "operate_automations"), false);
 }
 
+function testOperationsManager() {
+  assert.equal(hasCompanyPermission("admin", "operate_automations"), true);
+  assert.equal(hasCompanyPermission("admin", "configure_automations"), true);
+  assert.equal(hasCompanyPermission("admin", "manage_team"), true);
+  assert.equal(hasCompanyPermission("admin", "manage_billing"), false, "Le COO ne doit pas pouvoir modifier la facturation.");
+  assert.equal(canApproveRisk("admin", "low"), true);
+  assert.equal(canApproveRisk("admin", "medium"), true);
+  assert.equal(canApproveRisk("admin", "high"), false, "Le risque élevé doit rester réservé au propriétaire.");
+  assert.equal(canApproveRisk("admin", "critical"), false, "Le risque critique doit rester réservé au propriétaire.");
+}
+
 function testCopilotRecommendationGovernance() {
   const recommended = findRecommendedTemplateMatch(
     "Je recommande de commencer par automatiser la relance des prospects silencieux.",
@@ -285,6 +296,7 @@ function testSolopreneur() {
 function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
+  testOperationsManager();
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testProfileGuideCanCollapseAndMove();
@@ -296,7 +308,7 @@ function main() {
   testTerritoriesAndCopilotAutomationProposals();
   testSolopreneur();
   testCopilotRecommendationGovernance();
-  console.log("Four-profile product acceptance tests: OK");
+  console.log("Five-profile product acceptance tests: OK");
 }
 
 main();
