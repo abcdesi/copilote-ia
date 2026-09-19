@@ -267,9 +267,7 @@ export async function runWeeklyBusinessRefresh(companyId: string) {
       const marketing = await getGoogleMarketingState(companyId);
       const marketingConfigured =
         (marketing.analyticsAuthorized && Boolean(marketing.settings.ga4PropertyId)) ||
-        (marketing.adsAuthorized &&
-          marketing.adsServerConfigured &&
-          Boolean(marketing.settings.googleAdsCustomerId));
+        (marketing.adsAuthorized && Boolean(marketing.settings.googleAdsCustomerId));
       if (marketingConfigured) {
         try {
           await syncGoogleMarketingSnapshot(companyId, null, "scheduled");
