@@ -103,6 +103,29 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testGoogleAdsV25AccessModel() {
+  const source = readFileSync("lib/integrations/google-marketing.ts", "utf-8");
+  const marketingPage = readFileSync("app/app/marketing/page.tsx", "utf-8");
+  const envExample = readFileSync(".env.example", "utf-8");
+
+  assert.ok(
+    source.includes('const GOOGLE_ADS_API_VERSION = "v25"'),
+    "Google Ads doit utiliser l'API REST v25."
+  );
+  assert.ok(
+    !source.includes("GOOGLE_ADS_DEVELOPER_TOKEN") && !source.includes('"developer-token"'),
+    "Google Ads ne doit plus dépendre du developer token supprimé par Google."
+  );
+  assert.ok(
+    !marketingPage.includes("Developer token serveur manquant"),
+    "L'interface Marketing ne doit plus présenter le developer token comme un prérequis."
+  );
+  assert.ok(
+    !envExample.includes("GOOGLE_ADS_DEVELOPER_TOKEN") && envExample.includes("Google Ads API Overview"),
+    "La configuration doit documenter l'accès porté par le projet Google Cloud."
+  );
+}
+
 function testProfileGuideCanCollapseAndMove() {
   const source = readFileSync("components/company/ProfileCompletionGuide.tsx", "utf-8");
   assert.ok(source.includes("Réduire la fenêtre"), "Le guide profil doit pouvoir être réduit.");
@@ -263,6 +286,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testGoogleAdsV25AccessModel();
   testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
   testDashboardViewsAreFailSoft();
