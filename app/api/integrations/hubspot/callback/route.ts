@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { exchangeHubSpotCode, upsertHubSpotConnection, verifyHubSpotState } from "@/lib/integrations/hubspot";
+import { ensureProviderOutcomeRelayWorkflow } from "@/lib/n8n/provider-outcome-workflows";
 
 function appUrl() {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -40,6 +41,7 @@ export async function GET(req: NextRequest) {
     }
 
     const tokens = await exchangeHubSpotCode(code);
+    await ensureProviderOutcomeRelayWorkflow("hubspot");
     const connection = await upsertHubSpotConnection(access.company.id, tokens);
 
     await prisma.$transaction([
