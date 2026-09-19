@@ -156,7 +156,7 @@ export default async function DashboardHomePage() {
     briefItems.push({
       bucket: "handled",
       tone: "success",
-      text: `${googleSnapshot.prospectMeetingsObserved} rendez-vous commercial${googleSnapshot.prospectMeetingsObserved > 1 ? "x ont" : " a"} été détecté${googleSnapshot.prospectMeetingsObserved > 1 ? "s" : ""} dans Calendar après relance`,
+      text: `${googleSnapshot.prospectMeetingsObserved} rendez-vous ${googleSnapshot.prospectMeetingsObserved > 1 ? "ont été détectés" : "a été détecté"} dans Calendar après relance`,
       href: "/app/results",
     });
   }
