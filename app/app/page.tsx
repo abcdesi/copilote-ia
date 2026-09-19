@@ -144,6 +144,14 @@ export default async function DashboardHomePage() {
       href: "/app/tools",
     });
   }
+  if (googleSnapshot && googleSnapshot.prospectRepliesObserved > 0) {
+    briefItems.push({
+      bucket: "handled",
+      tone: "success",
+      text: `${googleSnapshot.prospectRepliesObserved} réponse${googleSnapshot.prospectRepliesObserved > 1 ? "s" : ""} prospect détectée${googleSnapshot.prospectRepliesObserved > 1 ? "s" : ""} automatiquement après relance`,
+      href: "/app/results",
+    });
+  }
   if (marketingSnapshot && marketingKpis?.roas != null) {
     briefItems.push({
       bucket: "know",
