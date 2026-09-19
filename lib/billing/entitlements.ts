@@ -33,7 +33,7 @@ export async function getCompanyEntitlements(companyId: string): Promise<Company
   return {
     plan,
     paid: plan !== "free",
-    canExecute: plan === "pro" || plan === "business",
+    canExecute: plan !== "free",
     canUseFinancialAudit: plan === "business",
     seatLimit: definition.includedSeats + (plan === "business" ? Math.max(0, company?.additionalSeats ?? 0) : 0),
   };
