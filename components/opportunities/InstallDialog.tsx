@@ -1,11 +1,13 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { CheckCircle2, CreditCard, Loader2, ShieldCheck } from "lucide-react";
 import { Dialog, DialogContent, DialogTrigger } from "@/components/ui/Dialog";
 import { Button } from "@/components/ui/Button";
 import { formatEur } from "@/lib/format";
+import { AUTOMATION_PURCHASE_TERMS_VERSION } from "@/lib/billing/purchase-terms";
 
 export function InstallDialog({
   opportunityId,
@@ -23,6 +25,7 @@ export function InstallDialog({
   const [status, setStatus] = useState<"idle" | "loading" | "done" | "error">("idle");
   const [automationId, setAutomationId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [acceptedDigitalTerms, setAcceptedDigitalTerms] = useState(false);
 
   async function install() {
     const res = await fetch(`/api/opportunities/${opportunityId}/install`, { method: "POST" });
@@ -38,7 +41,17 @@ export function InstallDialog({
     setErrorMessage(null);
     try {
       if (!purchased) {
-        const res = await fetch(`/api/opportunities/${opportunityId}/purchase`, { method: "POST" });
+        if (!acceptedDigitalTerms) {
+          throw new Error("Confirmez les conditions de l'achat numérique avant de continuer.");
+        }
+        const res = await fetch(`/api/opportunities/${opportunityId}/purchase`, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({
+            acceptDigitalTerms: true,
+            termsVersion: AUTOMATION_PURCHASE_TERMS_VERSION,
+          }),
+        });
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || "Paiement impossible.");
 
@@ -66,6 +79,7 @@ export function InstallDialog({
         if (!value) {
           setStatus("idle");
           setErrorMessage(null);
+          setAcceptedDigitalTerms(false);
         }
       }}
     >
@@ -105,6 +119,20 @@ export function InstallDialog({
                     Si votre banque exige une authentification supplémentaire, Stripe ouvrira une page de confirmation sécurisée. L'automatisation ne sera installée qu'après confirmation du paiement.
                   </p>
                 </div>
+                <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-accent/20 bg-accent-soft px-4 py-3">
+                  <input
+                    type="checkbox"
+                    checked={acceptedDigitalTerms}
+                    onChange={(event) => setAcceptedDigitalTerms(event.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0"
+                  />
+                  <span className="text-xs leading-5 text-foreground/80">
+                    Je confirme cet achat professionnel de produit numérique et demande sa livraison / exécution immédiate après paiement. Une fois livré, installé, activé ou utilisé, l&apos;achat est ferme et non remboursable, sous réserve des droits impératifs applicables et des cas de non-fourniture, défaut, erreur de facturation ou opération non autorisée. J&apos;accepte les{" "}
+                    <Link href="/cgv" target="_blank" className="font-semibold text-accent hover:underline">
+                      CGV Pilotzia
+                    </Link>.
+                  </span>
+                </label>
               </div>
             ) : (
               <div className="flex items-start gap-3 rounded-xl bg-muted px-4 py-3">
@@ -117,7 +145,11 @@ export function InstallDialog({
 
             {status === "error" && errorMessage && <p className="mt-3 text-sm leading-6 text-danger">{errorMessage}</p>}
 
-            <Button className="mt-5 w-full" onClick={purchaseAndInstall} disabled={status === "loading"}>
+            <Button
+              className="mt-5 w-full"
+              onClick={purchaseAndInstall}
+              disabled={status === "loading" || (!purchased && !acceptedDigitalTerms)}
+            >
               {status === "loading" ? (
                 <Loader2 size={16} className="animate-spin" />
               ) : purchased ? (

@@ -495,13 +495,21 @@ model Purchase {
   provider      String      @default("stripe")
   providerRef   String?     @unique
   paymentUrl    String?
-  billingAttempt Int        @default(0)
-  paidAt        DateTime?
-  createdAt     DateTime    @default(now())
+  billingAttempt                  Int       @default(0)
+  paidAt                          DateTime?
+  termsVersion                    String?
+  termsAcceptedAt                 DateTime?
+  termsAcceptedByUserId           String?
+  termsAcceptedByEmail            String?
+  immediateFulfillmentRequestedAt DateTime?
+  deliveredAt                     DateTime?
+  firstUsedAt                     DateTime?
+  createdAt                       DateTime  @default(now())
   updatedAt     DateTime    @updatedAt
 
   @@unique([companyId, opportunityId])
   @@index([companyId, status])
+  @@index([companyId, deliveredAt])
 }
 
 model CreditPurchase {
