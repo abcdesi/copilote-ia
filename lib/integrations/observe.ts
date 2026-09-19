@@ -76,7 +76,7 @@ function calendarStartAt(event: NonNullable<CalendarEventsResponse["items"]>[num
   return Number.isFinite(value.getTime()) ? value : null;
 }
 
-function findCalendarMeetingAfter(
+export function findCalendarMeetingAfter(
   events: NonNullable<CalendarEventsResponse["items"]>,
   input: { prospectEmail: string; sentAt: Date }
 ) {
