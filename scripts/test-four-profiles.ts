@@ -165,6 +165,30 @@ function testProfileGuideCanCollapseAndMove() {
   assert.ok(source.includes("onPointerMove={drag}"), "Le déplacement doit fonctionner à la souris ou au pointeur.");
 }
 
+function testAutomaticValueProofLoop() {
+  const observe = readFileSync("lib/integrations/observe.ts", "utf-8");
+  const providerOutcomes = readFileSync("lib/automations/provider-outcomes.ts", "utf-8");
+  const results = readFileSync("app/app/results/page.tsx", "utf-8");
+
+  assert.ok(
+    observe.includes("observeProspectReplies") && observe.includes("prospectRepliesObserved"),
+    "La synchronisation Google doit observer les réponses prospects et remonter le signal au produit."
+  );
+  assert.ok(
+    providerOutcomes.includes('"provider_observed"') &&
+      providerOutcomes.includes('"AUTOMATION_PROVIDER_OUTCOME_OBSERVED"') &&
+      providerOutcomes.includes('"reply_observed"'),
+    "Une réponse fournisseur doit produire une preuve métier, une preuve contact et un événement traçable."
+  );
+  assert.ok(
+    results.includes("Chaîne de preuve opérationnelle") &&
+      results.includes("1 · Détecter") &&
+      results.includes("4 · Mesurer") &&
+      results.includes("Résultat métier à mesurer"),
+    "Résultats doit matérialiser la boucle détection → décision → action → mesure sans confondre exécution et valeur."
+  );
+}
+
 function testCoreViewsPreserveUiAndFailSoft() {
   const automations = readFileSync("app/app/automations/page.tsx", "utf-8");
   const opportunities = readFileSync("app/app/opportunities/page.tsx", "utf-8");
@@ -322,6 +346,7 @@ function main() {
   testSalesManager();
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
+  testAutomaticValueProofLoop();
   testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
   testDashboardViewsAreFailSoft();
