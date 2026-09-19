@@ -1,18 +1,31 @@
 import { prisma } from "@/lib/db/client";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getDashboardShellAccess } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { getOrCreateTodayConversation } from "@/lib/companies/conversations";
 import { ChatView } from "@/components/dashboard/ChatView";
 import type { ChatViewMessage } from "@/components/dashboard/ChatView";
 
 export default async function CopilotPage() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
-  const conversation = await getOrCreateTodayConversation(company.id, access.session.user.id);
+  const conversation = await safeRead(
+    "copilot.today-conversation",
+    () => getOrCreateTodayConversation(company.id, access.session.user.id),
+    null
+  );
 
-  const history = await prisma.chatMessage.findMany({
-    where: { conversationId: conversation.id },
-    orderBy: { createdAt: "asc" },
-  });
+  const history = conversation
+    ? await safeRead(
+        "copilot.history",
+        () =>
+          prisma.chatMessage.findMany({
+            where: { conversationId: conversation.id },
+            orderBy: { createdAt: "asc" },
+            select: { id: true, role: true, content: true, actionsJson: true },
+          }),
+        []
+      )
+    : [];
 
   return (
     <ChatView

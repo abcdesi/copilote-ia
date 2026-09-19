@@ -3,12 +3,17 @@ import { auth } from "@/lib/auth";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { isPilotziaAdmin } from "@/lib/admin/access";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { FinancialAuditUpload } from "@/components/finance/FinancialAuditUpload";
 import { Button } from "@/components/ui/Button";
 
 export default async function FinancePage() {
   const [session, company] = await Promise.all([auth(), getCurrentCompany()]);
-  const entitlements = await getCompanyEntitlements(company.id);
+  const entitlements = await safeRead(
+    "finance.entitlements",
+    () => getCompanyEntitlements(company.id),
+    { plan: "free", paid: false, canExecute: false, canUseFinancialAudit: false, seatLimit: 1 }
+  );
   const access = entitlements.canUseFinancialAudit || isPilotziaAdmin(session?.user?.email);
 
   return (
