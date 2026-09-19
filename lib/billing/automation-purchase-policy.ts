@@ -1,9 +1,15 @@
 import { getPlanDefinition, type PlanKey } from "@/lib/billing/plans";
 
-export const AUTOMATION_PURCHASE_COMMITTED_STATUSES = [
+export const AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES = [
   "pending",
   "payment_action_required",
   "payment_failed",
+  "paid",
+] as const;
+
+export const AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES = [
+  "pending",
+  "payment_action_required",
   "paid",
 ] as const;
 
