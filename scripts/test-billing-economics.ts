@@ -3,6 +3,8 @@ import { CREDIT_PACKS } from "../lib/billing/credit-packs";
 import { creditsRequiredForCost, normalizeUsageReservation, usageAlertLevel } from "../lib/billing/economics";
 import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { identifyStripeSubscriptionPrice } from "../lib/billing/stripe";
+import { evaluateAutomationPurchaseQuantity } from "../lib/billing/automation-purchase-policy";
+import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 
 assert.equal(creditsRequiredForCost(0), 0);
 assert.equal(creditsRequiredForCost(0.01), 1);
@@ -22,12 +24,32 @@ assert.equal(PLAN_DEFINITIONS.starter.priceEur, 79);
 assert.equal(PLAN_DEFINITIONS.starter.annualPriceEur, 869);
 assert.equal(PLAN_DEFINITIONS.starter.monthlyCredits, 700);
 assert.equal(PLAN_DEFINITIONS.starter.variableCostCapEur, 7);
+assert.equal(PLAN_DEFINITIONS.starter.monthlyAutomationPurchaseLimit, 2);
 assert.equal(PLAN_DEFINITIONS.pro.priceEur, 179);
 assert.equal(PLAN_DEFINITIONS.pro.monthlyCredits, 2000);
 assert.equal(PLAN_DEFINITIONS.pro.variableCostCapEur, 20);
+assert.equal(PLAN_DEFINITIONS.pro.monthlyAutomationPurchaseLimit, null);
 assert.equal(PLAN_DEFINITIONS.business.priceEur, 399);
 assert.equal(PLAN_DEFINITIONS.business.monthlyCredits, 5000);
 assert.equal(PLAN_DEFINITIONS.business.variableCostCapEur, 50);
+assert.equal(PLAN_DEFINITIONS.business.monthlyAutomationPurchaseLimit, null);
+
+assert.deepEqual(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 0 }), {
+  limit: 2,
+  committedCount: 0,
+  reached: false,
+  remaining: 2,
+});
+assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 1 }).remaining, 1);
+assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 2 }).reached, true);
+assert.equal(evaluateAutomationPurchaseQuantity({ plan: "pro", committedCount: 20 }).reached, false);
+assert.equal(evaluateAutomationPurchaseQuantity({ plan: "business", committedCount: 20 }).remaining, null);
+
+const maxAutomationPriceEur = Math.max(...AUTOMATION_CATALOG.map((template) => template.priceEur));
+assert.ok(
+  maxAutomationPriceEur * PLAN_DEFINITIONS.starter.monthlyAutomationPurchaseLimit! <= 250,
+  "Le plafond financier par défaut doit permettre à Core d'acheter ses 2 automatisations mensuelles au prix catalogue actuel."
+);
 
 for (const pack of CREDIT_PACKS) {
   assert.equal(pack.credits * 0.01, pack.costBudgetEur);
