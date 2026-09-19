@@ -353,6 +353,19 @@ export async function recordTrustedProviderOutcome(input: {
       if (!prospect) return { ok: false as const, reason: "prospect_not_found" as const };
     }
 
+    if (input.provider === "hubspot" && input.kind !== "deal_won") {
+      return { ok: false as const, reason: "provider_kind_mismatch" as const };
+    }
+    if (input.provider === "stripe" && input.kind !== "payment_received") {
+      return { ok: false as const, reason: "provider_kind_mismatch" as const };
+    }
+    if (input.kind === "deal_won" && !prospect) {
+      return { ok: false as const, reason: "prospect_required" as const };
+    }
+    if (input.kind === "payment_received" && (!(input.amountEur && input.amountEur > 0) || !Number.isFinite(input.amountEur))) {
+      return { ok: false as const, reason: "invalid_amount" as const };
+    }
+
     const evidence = {
       provider: input.provider,
       providerEventId: input.providerEventId,
@@ -363,19 +376,29 @@ export async function recordTrustedProviderOutcome(input: {
     };
     const evidenceJson = JSON.stringify(evidence);
 
-    const existing = await tx.automationOutcome.findFirst({
+    const existingCandidates = await tx.automationOutcome.findMany({
       where: {
         automationId: automation.id,
         source: "provider_observed",
-        evidenceJson,
       },
-      select: { id: true },
+      orderBy: { createdAt: "desc" },
+      take: 500,
+      select: { id: true, evidenceJson: true },
+    });
+    const existing = existingCandidates.find((candidate) => {
+      if (!candidate.evidenceJson) return false;
+      try {
+        const parsed = JSON.parse(candidate.evidenceJson) as { provider?: string; providerEventId?: string };
+        return parsed.provider === input.provider && parsed.providerEventId === input.providerEventId;
+      } catch {
+        return false;
+      }
     });
     if (existing) {
       return { ok: true as const, created: false as const, outcomeId: existing.id };
     }
 
-    const value = input.kind === "payment_received" ? input.amountEur ?? 0 : 1;
+    const value = input.kind === "payment_received" ? input.amountEur! : 1;
     const unit = input.kind === "payment_received" ? "eur" : "count";
     const providerName = input.provider === "hubspot" ? "HubSpot" : "Stripe";
 
