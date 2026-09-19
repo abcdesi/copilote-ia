@@ -103,6 +103,18 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testDashboardHomeUsesMinimalAccess() {
+  const source = readFileSync("app/app/page.tsx", "utf-8");
+  assert.ok(
+    source.includes("getDashboardShellAccess"),
+    "Le tableau de bord doit utiliser l'accès minimal pour rester disponible avec des données historiques."
+  );
+  assert.ok(
+    !source.includes("getCurrentCompanyAccess"),
+    "Le tableau de bord ne doit plus dépendre du chargement enrichi de l'entreprise avant de rendre la page."
+  );
+}
+
 function testCopilotTopBarHandoff() {
   const source = readFileSync("components/dashboard/CopilotBar.tsx", "utf-8");
   assert.ok(
@@ -183,6 +195,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testDashboardHomeUsesMinimalAccess();
   testCopilotTopBarHandoff();
   testCopilotRecommendationActions();
   testTerritoriesAndCopilotAutomationProposals();
