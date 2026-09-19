@@ -4,7 +4,11 @@ import { normalizeCompanySize } from "../lib/companies/company-size";
 import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { canApproveRisk, hasCompanyPermission } from "../lib/companies/access";
 import { KNOWN_TOOLS } from "../lib/automations/types";
-import { getIntegrationDefinition } from "../lib/integrations/registry";
+import { getIntegrationDefinition, INTEGRATION_DEFINITIONS } from "../lib/integrations/registry";
+import {
+  CUSTOMER_MANAGED_INTEGRATION_POLICY,
+  normalizeIntegrationConnectionState,
+} from "../lib/integrations/connection-framework";
 import { BUSINESS_TERRITORY_GROUPS, BUSINESS_TERRITORIES } from "../lib/companies/territories";
 import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
@@ -56,6 +60,50 @@ function testLiveBusinessOutcomeConnectors() {
   assert.equal(hubspot.permissionMode, "read_only");
   assert.equal(stripe.mvpPriority, "now", "Stripe métier doit être présenté comme connecteur live pour les factures payées.");
   assert.equal(stripe.permissionMode, "read_only");
+}
+
+function testCustomerManagedIntegrationFramework() {
+  assert.equal(CUSTOMER_MANAGED_INTEGRATION_POLICY.accountOwnership, "customer_managed");
+  assert.equal(CUSTOMER_MANAGED_INTEGRATION_POLICY.subscriptionOwner, "customer");
+
+  for (const definition of INTEGRATION_DEFINITIONS) {
+    assert.equal(
+      definition.accountOwnership,
+      "customer_managed",
+      `${definition.name} doit toujours utiliser le compte détenu par l'entreprise cliente.`
+    );
+    assert.equal(
+      definition.subscriptionOwner,
+      "customer",
+      `Pilotzia ne doit jamais porter l'abonnement fournisseur de ${definition.name}.`
+    );
+  }
+
+  assert.equal(getIntegrationDefinition("HubSpot").authMode, "oauth");
+  assert.equal(getIntegrationDefinition("Stripe").authMode, "signed_webhook");
+  assert.equal(getIntegrationDefinition("Slack").authMode, "oauth");
+  assert.equal(getIntegrationDefinition("Outil futur").accountOwnership, "customer_managed");
+  assert.equal(getIntegrationDefinition("Outil futur").subscriptionOwner, "customer");
+
+  assert.equal(normalizeIntegrationConnectionState(null), "not_connected");
+  assert.equal(normalizeIntegrationConnectionState({ status: "connected" }), "connected");
+  assert.equal(
+    normalizeIntegrationConnectionState({ status: "connected", lastError: "sync failed" }),
+    "degraded"
+  );
+  assert.equal(normalizeIntegrationConnectionState({ status: "needs_reauth" }), "needs_reauth");
+  assert.equal(
+    normalizeIntegrationConnectionState({ status: "connected" }, { requirementsSatisfied: false }),
+    "needs_reauth"
+  );
+
+  const toolsPage = readFileSync("app/app/tools/page.tsx", "utf-8");
+  assert.ok(
+    toolsPage.includes("Vos outils, vos comptes, vos abonnements") &&
+      toolsPage.includes("Pilotzia ne souscrit jamais HubSpot") &&
+      toolsPage.includes("Compte et abonnement fournisseur : gérés par votre entreprise"),
+    "L'interface doit expliquer clairement que les comptes et abonnements fournisseurs restent ceux du client."
+  );
 }
 
 function testSalesManager() {
@@ -392,6 +440,7 @@ function main() {
   testFinancialManager();
   testSalesManager();
   testLiveBusinessOutcomeConnectors();
+  testCustomerManagedIntegrationFramework();
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testAutomaticValueProofLoop();
