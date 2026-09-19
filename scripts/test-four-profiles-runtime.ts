@@ -83,6 +83,7 @@ const PROFILES: Profile[] = [
     sizeRange: "6-20",
     employeeCount: 14,
     plan: "pro",
+    role: "owner",
     objective: "Suivre l'acquisition et automatiser le reporting marketing.",
     painPoint: "Les KPI sont répartis entre plusieurs régies et feuilles de calcul.",
     businessModel: "Agence avec forfaits mensuels.",
@@ -261,36 +262,6 @@ async function ensureProfile(profile: Profile) {
     });
   }
 
-  if (profile.key === "operations-manager") {
-    const membership = await prisma.companyMembership.findUniqueOrThrow({
-      where: {
-        companyId_userId: {
-          companyId: company.id,
-          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
-        },
-      },
-    });
-    assert.equal(membership.role, "admin", "[operations-manager] runtime role should be admin");
-
-    const actions = await request("/app/actions");
-    const actionsHtml = await actions.text();
-    assert.match(actionsHtml, /Actions préparées/i, "[operations-manager] actions cockpit should render");
-    assert.match(actionsHtml, /Relancer les dossiers en attente/i, "[operations-manager] medium-risk action should render");
-    assert.match(actionsHtml, /Modifier un lot de dossiers sensibles/i, "[operations-manager] high-risk action should render");
-    assert.match(actionsHtml, /Confirmer et exécuter/i, "[operations-manager] admin should be able to approve medium risk");
-    assert.match(
-      actionsHtml,
-      /Votre rôle ne peut pas approuver ce niveau de risque/i,
-      "[operations-manager] high-risk action should require owner escalation"
-    );
-
-    const automations = await request("/app/automations");
-    assert.match(await automations.text(), /Automatisations/i, "[operations-manager] automations cockpit should render");
-
-    const team = await request("/app/team");
-    assert.match(await team.text(), /Membres actifs/i, "[operations-manager] team governance should render");
-  }
-
   if (profile.key === "marketing") {
     await prisma.event.deleteMany({ where: { companyId: company.id, type: "MARKETING_KPI_SNAPSHOT" } });
     await prisma.event.create({
@@ -409,6 +380,36 @@ async function testRuntimeProfile(profile: Profile) {
     assert.equal(company.sizeRange, "51-200");
     const team = await request("/app/team");
     assert.match(await team.text(), /Membres actifs/i, "[company-60] team governance surface should render");
+  }
+
+  if (profile.key === "operations-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "admin", "[operations-manager] runtime role should be admin");
+
+    const actions = await request("/app/actions");
+    const actionsHtml = await actions.text();
+    assert.match(actionsHtml, /Actions préparées/i, "[operations-manager] actions cockpit should render");
+    assert.match(actionsHtml, /Relancer les dossiers en attente/i, "[operations-manager] medium-risk action should render");
+    assert.match(actionsHtml, /Modifier un lot de dossiers sensibles/i, "[operations-manager] high-risk action should render");
+    assert.match(actionsHtml, /Confirmer et exécuter/i, "[operations-manager] admin should be able to approve medium risk");
+    assert.match(
+      actionsHtml,
+      /Votre rôle ne peut pas approuver ce niveau de risque/i,
+      "[operations-manager] high-risk action should require owner escalation"
+    );
+
+    const automations = await request("/app/automations");
+    assert.match(await automations.text(), /Automatisations/i, "[operations-manager] automations cockpit should render");
+
+    const team = await request("/app/team");
+    assert.match(await team.text(), /Membres actifs/i, "[operations-manager] team governance should render");
   }
 
   if (profile.key === "marketing") {
