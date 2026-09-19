@@ -3,6 +3,7 @@ import { LifeBuoy } from "lucide-react";
 import { auth } from "@/lib/auth";
 import { isPilotziaAdmin } from "@/lib/admin/access";
 import { prisma } from "@/lib/db/client";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { Badge } from "@/components/ui/Badge";
 import { Button } from "@/components/ui/Button";
 
@@ -18,11 +19,16 @@ export default async function AdminSupportPage() {
   const session = await auth();
   if (!isPilotziaAdmin(session?.user?.email)) notFound();
 
-  const tickets = await prisma.supportRequest.findMany({
-    include: { company: { select: { name: true } } },
-    orderBy: [{ status: "asc" }, { createdAt: "desc" }],
-    take: 100,
-  });
+  const tickets = await safeRead(
+    "admin.support-tickets",
+    () =>
+      prisma.supportRequest.findMany({
+        include: { company: { select: { name: true } } },
+        orderBy: [{ status: "asc" }, { createdAt: "desc" }],
+        take: 100,
+      }),
+    []
+  );
 
   const open = tickets.filter((ticket) => ticket.status !== "resolved").length;
 
