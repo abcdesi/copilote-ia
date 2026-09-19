@@ -447,6 +447,12 @@ function testSolopreneur() {
   }
   assert.equal(PLAN_DEFINITIONS.starter.includedSeats, 1);
   assert.equal(PLAN_DEFINITIONS.starter.priceEur, 79);
+  assert.equal(PLAN_DEFINITIONS.starter.monthlyAutomationPurchaseLimit, 2);
+  assert.ok(
+    PLAN_DEFINITIONS.starter.features.some((feature) => /2 nouvelles automatisations par mois/i.test(feature)),
+    "Core doit permettre explicitement jusqu'à 2 nouvelles automatisations mensuelles achetées à l'unité."
+  );
+  assert.equal(PLAN_DEFINITIONS.pro.monthlyAutomationPurchaseLimit, null);
   assert.equal(hasCompanyPermission("owner", "view"), true);
   assert.equal(hasCompanyPermission("owner", "edit_company"), true);
 }
