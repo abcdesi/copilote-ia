@@ -168,6 +168,7 @@ function testProfileGuideCanCollapseAndMove() {
 function testAutomaticValueProofLoop() {
   const observe = readFileSync("lib/integrations/observe.ts", "utf-8");
   const providerOutcomes = readFileSync("lib/automations/provider-outcomes.ts", "utf-8");
+  const providerOutcomeRoute = readFileSync("app/api/automation-engine/outcomes/provider/route.ts", "utf-8");
   const results = readFileSync("app/app/results/page.tsx", "utf-8");
 
   assert.ok(
@@ -187,6 +188,12 @@ function testAutomaticValueProofLoop() {
       providerOutcomes.includes('"payment_received"') &&
       providerOutcomes.includes('"authenticated_n8n_callback"'),
     "Les réponses, rendez-vous, deals et encaissements fournisseur doivent produire des preuves traçables avec une attribution explicite."
+  );
+  assert.ok(
+    providerOutcomeRoute.includes("verifyN8nCallback") &&
+      providerOutcomeRoute.includes('z.enum(["hubspot", "stripe"])') &&
+      providerOutcomeRoute.includes('z.enum(["deal_won", "payment_received"])'),
+    "Les résultats CRM et paiement doivent entrer uniquement par un callback n8n authentifié et borné."
   );
   assert.ok(
     results.includes("Chaîne de preuve opérationnelle") &&
