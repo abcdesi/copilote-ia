@@ -48,6 +48,45 @@ function actorForRun(actor?: ExecutionActor | null) {
       };
 }
 
+async function recordFirstDigitalProductUse(input: {
+  companyId: string;
+  opportunityId: string | null;
+  automationId: string;
+  runId: string;
+  source: string;
+  sentCount: number;
+}) {
+  if (!input.opportunityId || input.sentCount <= 0) return;
+
+  const usedAt = new Date();
+  const updated = await prisma.purchase.updateMany({
+    where: {
+      companyId: input.companyId,
+      opportunityId: input.opportunityId,
+      status: "paid",
+      firstUsedAt: null,
+    },
+    data: { firstUsedAt: usedAt },
+  });
+
+  if (updated.count > 0) {
+    await prisma.event.create({
+      data: {
+        companyId: input.companyId,
+        type: "AUTOMATION_DIGITAL_PRODUCT_FIRST_USED",
+        metadata: JSON.stringify({
+          opportunityId: input.opportunityId,
+          automationId: input.automationId,
+          runId: input.runId,
+          source: input.source,
+          sentCount: input.sentCount,
+          firstUsedAt: usedAt.toISOString(),
+        }),
+      },
+    });
+  }
+}
+
 function isCurrentWorkflow(workflow: { nodes?: unknown[] }) {
   const serialized = JSON.stringify(workflow.nodes ?? []);
   return serialized.includes("/api/automation-engine/prospects/") &&
@@ -285,6 +324,15 @@ export async function triggerAutomation(
     ]);
 
     if (sentCount > 0) {
+      await recordFirstDigitalProductUse({
+        companyId: fresh.companyId,
+        opportunityId: fresh.opportunityId,
+        automationId: fresh.id,
+        runId: run.id,
+        source,
+        sentCount,
+      }).catch((error) => console.error("Unable to record first digital product use", error));
+
       await track(EVENTS.AUTOMATION_EXECUTED, {
         companyId: fresh.companyId,
         metadata: { automationId: fresh.id, templateId, sentCount, source, plan: entitlements.plan, actorUserId: actor?.userId ?? null },

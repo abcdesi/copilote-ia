@@ -213,6 +213,8 @@ export async function createAutomationInvoicePurchase(input: {
   amountEur: number;
   stripeCustomerId: string;
   billingAttempt: number;
+  termsVersion: string;
+  termsAcceptedAt: Date;
 }) {
   const invoiceBody = new URLSearchParams();
   invoiceBody.set("customer", input.stripeCustomerId);
@@ -225,6 +227,10 @@ export async function createAutomationInvoicePurchase(input: {
   invoiceBody.set("metadata[opportunityId]", input.opportunityId);
   invoiceBody.set("metadata[templateId]", input.templateId);
   invoiceBody.set("metadata[amountEur]", String(input.amountEur));
+  invoiceBody.set("metadata[productKind]", "b2b_digital_automation");
+  invoiceBody.set("metadata[termsVersion]", input.termsVersion);
+  invoiceBody.set("metadata[termsAcceptedAt]", input.termsAcceptedAt.toISOString());
+  invoiceBody.set("metadata[immediateFulfillmentRequested]", "true");
   if (process.env.STRIPE_AUTOMATIC_TAX_ENABLED === "true") {
     invoiceBody.set("automatic_tax[enabled]", "true");
   }
@@ -242,6 +248,8 @@ export async function createAutomationInvoicePurchase(input: {
   itemBody.set("metadata[kind]", "automation_purchase");
   itemBody.set("metadata[purchaseId]", input.purchaseId);
   itemBody.set("metadata[opportunityId]", input.opportunityId);
+  itemBody.set("metadata[termsVersion]", input.termsVersion);
+  itemBody.set("metadata[termsAcceptedAt]", input.termsAcceptedAt.toISOString());
   await stripePost("/invoiceitems", itemBody, {
     idempotencyKey: `pilotzia-automation-item-${input.purchaseId}-a${input.billingAttempt}`,
   });

@@ -20,6 +20,11 @@ function formatDate(value: Date | null) {
   return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium" }).format(value);
 }
 
+function formatDateTime(value: Date | null) {
+  if (!value) return "—";
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "medium", timeStyle: "short" }).format(value);
+}
+
 export default async function SettingsPage() {
   const access = await getDashboardShellAccess();
   const session = access.session;
@@ -96,6 +101,30 @@ export default async function SettingsPage() {
     { _sum: { amountEur: null } }
   );
   const automationPurchaseCommittedEur = automationPurchases._sum.amountEur ?? 0;
+  const automationPurchaseHistory = await safeRead(
+    "settings.automation-purchase-history",
+    () =>
+      prisma.purchase.findMany({
+        where: { companyId: company.id },
+        orderBy: { createdAt: "desc" },
+        take: 20,
+        select: {
+          id: true,
+          amountEur: true,
+          status: true,
+          providerRef: true,
+          paidAt: true,
+          termsVersion: true,
+          termsAcceptedAt: true,
+          immediateFulfillmentRequestedAt: true,
+          deliveredAt: true,
+          firstUsedAt: true,
+          createdAt: true,
+          opportunity: { select: { title: true } },
+        },
+      }),
+    []
+  );
   const creditPct = usage.creditsLimit > 0 ? Math.min(100, Math.round((usage.creditsUsed / usage.creditsLimit) * 100)) : 100;
 
   return (
@@ -286,6 +315,47 @@ export default async function SettingsPage() {
           <p className="mt-3 text-xs leading-5 text-muted-foreground">
             0 € bloque tout nouvel achat. Le plafond ne déclenche aucun achat automatiquement : chaque automatisation doit toujours être validée manuellement par le Propriétaire. Une facture Stripe déjà initiée reste comptée jusqu'à paiement ou annulation.
           </p>
+
+          <div className="mt-6 border-t border-border pt-5">
+            <h3 className="text-sm font-semibold">Historique et preuve des achats numériques</h3>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Pilotzia conserve la validation des conditions, la confirmation du paiement, la livraison et le premier usage lorsqu'ils sont disponibles. Les achats antérieurs à cette traçabilité restent identifiés comme tels.
+            </p>
+            {automationPurchaseHistory.length === 0 ? (
+              <p className="mt-4 text-sm text-muted-foreground">Aucun achat d'automatisation enregistré.</p>
+            ) : (
+              <div className="mt-4 space-y-3">
+                {automationPurchaseHistory.map((purchase) => (
+                  <div key={purchase.id} className="rounded-xl border border-border bg-background p-4">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-semibold">{purchase.opportunity.title}</p>
+                        <p className="mt-1 text-xs text-muted-foreground">
+                          {formatEur(purchase.amountEur)} HT · {purchase.status}
+                          {purchase.providerRef ? ` · Stripe ${purchase.providerRef}` : ""}
+                        </p>
+                      </div>
+                      <Badge tone={purchase.deliveredAt ? "success" : purchase.paidAt ? "accent" : "neutral"}>
+                        {purchase.firstUsedAt ? "Utilisée" : purchase.deliveredAt ? "Livrée" : purchase.paidAt ? "Payée" : "En cours"}
+                      </Badge>
+                    </div>
+                    <div className="mt-3 grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
+                      <p>Commande : {formatDateTime(purchase.createdAt)}</p>
+                      <p>Paiement : {formatDateTime(purchase.paidAt)}</p>
+                      <p>
+                        Conditions : {purchase.termsAcceptedAt
+                          ? `acceptées le ${formatDateTime(purchase.termsAcceptedAt)} · v${purchase.termsVersion ?? "historique"}`
+                          : "achat antérieur à la traçabilité contractuelle"}
+                      </p>
+                      <p>Exécution immédiate demandée : {formatDateTime(purchase.immediateFulfillmentRequestedAt)}</p>
+                      <p>Livraison / installation : {formatDateTime(purchase.deliveredAt)}</p>
+                      <p>Premier usage réel : {formatDateTime(purchase.firstUsedAt)}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </section>
       )}
 
