@@ -2,12 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireCompanyPermission } from "@/lib/companies/access";
 import { prisma } from "@/lib/db/client";
 import { upsertStripeBusinessWebhookConnection } from "@/lib/integrations/stripe-business";
+import { ensureProviderOutcomeRelayWorkflow } from "@/lib/n8n/provider-outcome-workflows";
 
 export async function POST(req: NextRequest) {
   try {
     const access = await requireCompanyPermission("manage_integrations");
     const form = await req.formData();
     const webhookSecret = String(form.get("webhookSecret") || "").trim();
+    await ensureProviderOutcomeRelayWorkflow("stripe");
     await upsertStripeBusinessWebhookConnection({
       companyId: access.company.id,
       webhookSecret,
