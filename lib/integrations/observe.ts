@@ -42,7 +42,8 @@ async function findGmailReplyAfter(companyId: string, input: {
   sentAt: Date;
   subject: string | null;
 }) {
-  const searchFrom = new Date(input.sentAt.getTime() - 24 * 60 * 60 * 1000);\n  const query = `from:${input.prospectEmail} after:${gmailSearchDate(searchFrom)}${gmailSubjectQuery(input.subject)}`;
+  const searchFrom = new Date(input.sentAt.getTime() - 24 * 60 * 60 * 1000);
+  const query = `from:${input.prospectEmail} after:${gmailSearchDate(searchFrom)}${gmailSubjectQuery(input.subject)}`;
   const list = await googleApi<GmailListResponse>(
     companyId,
     `https://gmail.googleapis.com/gmail/v1/users/me/messages?q=${encodeURIComponent(query)}&maxResults=5`
