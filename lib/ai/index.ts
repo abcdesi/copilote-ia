@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { extractAnthropicText } from "./anthropic-response";
 import { runMockDiagnostic } from "./mock-engine";
 import { runExpertFallbackChat } from "./expert-fallback";
 import { ChatContext, ChatMessageInput, ChatReply, DiagnosticResult } from "./types";
@@ -84,7 +85,7 @@ async function callClaude(input: {
   });
   if (!res.ok) throw new Error(`Claude API error: ${res.status}`);
   const data = await res.json();
-  const text = data?.content?.find?.((part: { type?: string }) => part.type === "text")?.text ?? data?.content?.[0]?.text;
+  const text = extractAnthropicText(data?.content);
   if (!text) throw new Error("Claude API: empty response");
 
   const inputTokens = Number(data?.usage?.input_tokens ?? 0);
