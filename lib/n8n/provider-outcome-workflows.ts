@@ -120,6 +120,11 @@ export async function ensureProviderOutcomeRelayWorkflow(provider: ProviderOutco
   const workflows = await listWorkflows();
   let workflow = workflows.data.find((candidate) => candidate.name === definition.name) ?? null;
 
+  if (workflow && isCurrentRelayWorkflow(workflow, provider)) {
+    if (!workflow.active) await activateWorkflow(workflow.id);
+    return workflow.id;
+  }
+
   if (!workflow) {
     workflow = await createWorkflow(definition);
   } else {
