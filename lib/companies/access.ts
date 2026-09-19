@@ -146,61 +146,38 @@ export async function getDashboardShellAccess() {
 }
 
 export async function getCurrentCompanyAccess() {
-  const session = await requireAuthenticatedSession();
-  const cookieStore = await cookies();
-  const preferredCompanyId = cookieStore.get(ACTIVE_COMPANY_COOKIE)?.value ?? null;
+  const shell = await getDashboardShellAccess();
 
-  const memberships = await prisma.companyMembership.findMany({
-    where: { userId: session.user.id, status: "active" },
-    include: {
-      company: {
-        include: {
-          tools: true,
-          subscriptions: { orderBy: { createdAt: "desc" } },
-        },
-      },
-    },
-    orderBy: { joinedAt: "desc" },
-  });
+  const [company, tools, subscriptions] = await Promise.all([
+    prisma.company
+      .findUnique({ where: { id: shell.company.id } })
+      .catch((error) => {
+        console.error("Company profile unavailable in enriched access", error);
+        return null;
+      }),
+    prisma.companyTool
+      .findMany({ where: { companyId: shell.company.id } })
+      .catch((error) => {
+        console.error("Company tools unavailable in enriched access", error);
+        return [];
+      }),
+    prisma.subscription
+      .findMany({ where: { companyId: shell.company.id }, orderBy: { createdAt: "desc" } })
+      .catch((error) => {
+        console.error("Company subscriptions unavailable in enriched access", error);
+        return [];
+      }),
+  ]);
 
-  const membership =
-    (preferredCompanyId ? memberships.find((item) => item.companyId === preferredCompanyId) : null) ?? memberships[0] ?? null;
-  if (membership) {
-    return {
-      session,
-      company: membership.company,
-      membershipId: membership.id,
-      role: normalizeCompanyRole(membership.role),
-      companyChoices: memberships.map((item) => ({
-        companyId: item.companyId,
-        companyName: item.company.name,
-        role: normalizeCompanyRole(item.role),
-      })),
-    };
-  }
-
-  const legacyCompany = await prisma.company.findFirst({
-    where: { userId: session.user.id },
-    include: {
-      tools: true,
-      subscriptions: { orderBy: { createdAt: "desc" } },
-    },
-    orderBy: { createdAt: "desc" },
-  });
-  if (!legacyCompany) redirect("/onboarding");
-
-  const legacyMembership = await prisma.companyMembership.upsert({
-    where: { companyId_userId: { companyId: legacyCompany.id, userId: session.user.id } },
-    create: { companyId: legacyCompany.id, userId: session.user.id, role: "owner", status: "active" },
-    update: { role: "owner", status: "active" },
-  });
+  if (!company) redirect("/onboarding");
 
   return {
-    session,
-    company: legacyCompany,
-    membershipId: legacyMembership.id,
-    role: "owner" as const,
-    companyChoices: [{ companyId: legacyCompany.id, companyName: legacyCompany.name, role: "owner" as const }],
+    ...shell,
+    company: {
+      ...company,
+      tools,
+      subscriptions,
+    },
   };
 }
 
