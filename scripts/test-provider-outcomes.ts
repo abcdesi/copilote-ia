@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../lib/db/client";
 import { observeProspectMeetings, observeProspectReplies } from "../lib/automations/provider-outcomes";
+import { findCalendarMeetingAfter } from "../lib/integrations/observe";
 
 async function main() {
   const suffix = randomUUID();
@@ -156,6 +157,42 @@ async function main() {
       where: { automationId: automation.id, kind: "prospect_reply" },
     });
     assert.equal(outcomeCount, 1, "Une réponse fournisseur ne doit être comptée qu'une seule fois.");
+
+    const ignoredCalendarEvents = [
+      {
+        id: "created-before-follow-up",
+        status: "confirmed",
+        created: new Date(sentAt.getTime() - 1_000).toISOString(),
+        start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+        attendees: [{ email: prospect.email, responseStatus: "accepted" }],
+      },
+      {
+        id: "declined-after-follow-up",
+        status: "confirmed",
+        created: new Date(sentAt.getTime() + 1_000).toISOString(),
+        start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+        attendees: [{ email: prospect.email, responseStatus: "declined" }],
+      },
+    ];
+    assert.equal(
+      findCalendarMeetingAfter(ignoredCalendarEvents, { prospectEmail: prospect.email, sentAt }),
+      null,
+      "Calendar ne doit pas attribuer un rendez-vous préexistant ou refusé à la relance."
+    );
+
+    const matchingCalendarEvent = {
+      id: `calendar-match-${suffix}`,
+      status: "confirmed",
+      created: new Date(sentAt.getTime() + 2_000).toISOString(),
+      start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+      attendees: [{ email: prospect.email.toUpperCase(), responseStatus: "accepted" }],
+    };
+    const matchedCalendarMeeting = findCalendarMeetingAfter(
+      [...ignoredCalendarEvents, matchingCalendarEvent],
+      { prospectEmail: prospect.email, sentAt }
+    );
+    assert.equal(matchedCalendarMeeting?.eventId, matchingCalendarEvent.id);
+    assert.equal(matchedCalendarMeeting?.createdAt.toISOString(), matchingCalendarEvent.created);
 
     let meetingSearches = 0;
     const meetingCreatedAt = new Date(sentAt.getTime() + 45_000);
