@@ -146,7 +146,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatBox label="Potentiel" value={`~${formatHours(opportunity.estimatedHoursPerMonth)}/mois`} />
-        <StatBox label="Valeur estimée" value={formatEur(opportunity.estimatedValueEur)} />
+        <StatBox label="Économie mensuelle estimée" value={`${formatEur(opportunity.estimatedValueEur)}/mois`} />
         <StatBox label="Mise en place" value={COMPLEXITY_LABELS[opportunity.complexity]} small />
         <StatBox label="Prix automatisation" value={isReal ? `${formatEur(priceEur)} HT` : "Non disponible"} small />
       </div>
