@@ -8,6 +8,10 @@ import {
   acceptsCurrentAutomationPurchaseTerms,
 } from "../lib/billing/purchase-terms";
 import { recordFirstDigitalProductUse } from "../lib/billing/automation-purchase-evidence";
+import {
+  evaluateAutomationPurchaseQuantity,
+  getMonthlyAutomationPurchaseLimit,
+} from "../lib/billing/automation-purchase-policy";
 
 function prismaCode(error: unknown) {
   return error && typeof error === "object" && "code" in error
@@ -38,6 +42,11 @@ async function main() {
   try {
     const reloaded = await prisma.company.findUniqueOrThrow({ where: { id: company.id } });
     assert.equal(reloaded.automationPurchaseMonthlyCapEur, 250);
+
+    assert.equal(getMonthlyAutomationPurchaseLimit("starter"), 2);
+    assert.equal(getMonthlyAutomationPurchaseLimit("pro"), null);
+    assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 2 }).reached, true);
+    assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 1 }).remaining, 1);
 
     const template = getTemplateById("relance-prospects");
     assert.ok(template);
@@ -234,14 +243,22 @@ async function main() {
       "Le parcours doit conserver acceptation contractuelle puis création du paiement Stripe."
     );
     assert.ok(
+      purchaseRoute.includes('plan: { in: ["starter", "pro", "business"] }') &&
+        purchaseRoute.includes("evaluateAutomationPurchaseQuantity") &&
+        purchaseRoute.includes("automationQuantityCapReached") &&
+        purchaseRoute.includes("FOR UPDATE"),
+      "Core doit pouvoir acheter une automatisation, avec une limite mensuelle de quantité sérialisée avant création du paiement."
+    );
+    assert.ok(
       webhookRoute.includes('event.type === "invoice.paid"') &&
         webhookRoute.includes("handleAutomationInvoice"),
       "Le webhook Stripe doit pouvoir matérialiser le paiement de l'achat."
     );
     assert.ok(
       installRoute.includes('purchase.status !== "paid"') &&
-        installRoute.includes("data: { deliveredAt }"),
-      "L'installation doit exiger un achat payé puis tracer la livraison."
+        installRoute.includes("data: { deliveredAt }") &&
+        installRoute.includes("Core, Action ou Scale"),
+      "L'installation Core/Action/Scale doit exiger un achat payé puis tracer la livraison."
     );
     assert.ok(
       executionSource.includes("recordFirstDigitalProductUse"),
