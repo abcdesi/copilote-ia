@@ -128,6 +128,47 @@ function testCoreViewsPreserveUiAndFailSoft() {
   assert.ok(results.includes("Résultats constatés ou déclarés"), "Le contenu Résultats doit rester inchangé.");
 }
 
+function testDashboardViewsAreFailSoft() {
+  const pages = [
+    "app/app/actions/page.tsx",
+    "app/app/support/page.tsx",
+    "app/app/context/page.tsx",
+    "app/app/copilot/page.tsx",
+    "app/app/copilot/history/page.tsx",
+    "app/app/finance/page.tsx",
+    "app/app/team/page.tsx",
+    "app/app/tools/page.tsx",
+    "app/app/marketing/page.tsx",
+    "app/app/settings/page.tsx",
+    "app/app/company/page.tsx",
+    "app/app/company/history/page.tsx",
+    "app/app/automations/[id]/page.tsx",
+    "app/app/opportunities/[id]/page.tsx",
+    "app/app/admin/intelligence/page.tsx",
+    "app/app/admin/support/page.tsx",
+  ];
+
+  for (const page of pages) {
+    const source = readFileSync(page, "utf-8");
+    assert.ok(
+      source.includes("safeRead") || source.includes(".catch((error) =>"),
+      `${page} doit isoler ses lectures fragiles au lieu de faire tomber toute la vue.`
+    );
+  }
+
+  const company = readFileSync("app/app/company/page.tsx", "utf-8");
+  assert.ok(
+    company.includes("getDashboardShellAccess") && company.includes("company.core") && company.includes("company.domains"),
+    "Mon entreprise doit charger les groupes de données indépendamment pour conserver l'interface si une colonne historique pose problème."
+  );
+
+  const automationDetail = readFileSync("app/app/automations/[id]/page.tsx", "utf-8");
+  assert.ok(
+    automationDetail.includes("automation-detail.core") && automationDetail.includes("automation-detail.governance"),
+    "Le détail d'une automatisation doit séparer le cœur historique des champs de gouvernance plus récents."
+  );
+}
+
 function testLegacyCompanyAccessCompatibility() {
   const current = readFileSync("lib/companies/current.ts", "utf-8");
   const access = readFileSync("lib/companies/access.ts", "utf-8");
@@ -145,16 +186,16 @@ function testLegacyCompanyAccessCompatibility() {
 function testCopilotTopBarHandoff() {
   const source = readFileSync("components/dashboard/CopilotBar.tsx", "utf-8");
   assert.ok(
-    !source.includes('fetch("/api/chat"'),
-    "La barre haute ne doit jamais appeler le chat ni injecter une réponse longue dans la page courante."
+    source.includes('fetch("/api/chat"'),
+    "La barre haute doit pouvoir afficher un aperçu court de la réponse."
   );
   assert.ok(
-    source.includes("pilotzia:copilot-draft"),
-    "La barre haute doit transmettre le prompt au Copilote complet."
+    source.includes("line-clamp-2") && source.includes("compactPreview"),
+    "L'aperçu du Copilote doit rester limité à une ou deux lignes."
   );
   assert.ok(
-    source.includes("Continuer à lire dans Copilote"),
-    "La barre haute doit conserver le lien explicite vers le Copilote."
+    source.includes("<span>{reply}</span>") && source.includes("Continuer à lire dans Copilote"),
+    "Le lien vers le Copilote doit apparaître juste après le texte de réponse."
   );
 }
 
@@ -224,6 +265,7 @@ function main() {
   testMarketingExpert();
   testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
+  testDashboardViewsAreFailSoft();
   testLegacyCompanyAccessCompatibility();
   testCopilotTopBarHandoff();
   testCopilotRecommendationActions();

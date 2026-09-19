@@ -1,7 +1,10 @@
 import Link from "next/link";
 import { ArrowRight, Brain, CheckCircle2, Database, Route, Sparkles, Target } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage, type KnowledgeGuidanceStep } from "@/lib/companies/knowledge-coverage";
+import { computeCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-model";
+import { prisma } from "@/lib/db/client";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { buildCompanyProfileSummary } from "@/lib/companies/profile-summary";
 import { updateCompanyAction } from "@/lib/companies/actions";
 import { RadarChart } from "@/components/knowledge/RadarChart";
@@ -14,10 +17,132 @@ import { BUSINESS_TERRITORY_GROUPS, isKnownBusinessTerritory } from "@/lib/compa
 const SIZE_OPTIONS = ["1-5", "6-20", "21-50", "51-200", "200+"];
 
 export default async function CompanyPage() {
-  const access = await getCurrentCompanyAccess();
-  const company = access.company;
+  const access = await getDashboardShellAccess();
   const canEditCompany = hasCompanyPermission(access.role, "edit_company");
-  const coverage = await getCompanyKnowledgeCoverage(company.id);
+
+  const [core, contact, model, domains, tools] = await Promise.all([
+    safeRead(
+      "company.core",
+      () =>
+        prisma.company.findUnique({
+          where: { id: access.company.id },
+          select: {
+            updatedAt: true,
+            industry: true,
+            sizeRange: true,
+            employeeCount: true,
+            country: true,
+            objectives: true,
+            painPoints: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "company.contact",
+      () =>
+        prisma.company.findUnique({
+          where: { id: access.company.id },
+          select: {
+            siret: true,
+            phone: true,
+            address: true,
+            timezone: true,
+            localContext: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "company.business-model",
+      () =>
+        prisma.company.findUnique({
+          where: { id: access.company.id },
+          select: {
+            businessModel: true,
+            customerProfile: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "company.domains",
+      () =>
+        prisma.company.findUnique({
+          where: { id: access.company.id },
+          select: {
+            financeContext: true,
+            accountingContext: true,
+            salesContext: true,
+            marketingContext: true,
+            hrContext: true,
+            operationsContext: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "company.tools",
+      () =>
+        prisma.companyTool.findMany({
+          where: { companyId: access.company.id },
+          select: { id: true, name: true, detected: true },
+          orderBy: { name: "asc" },
+        }),
+      []
+    ),
+  ]);
+
+  const company = {
+    id: access.company.id,
+    name: access.company.name,
+    updatedAt: core?.updatedAt ?? new Date(0),
+    industry: core?.industry ?? null,
+    sizeRange: core?.sizeRange ?? null,
+    employeeCount: core?.employeeCount ?? null,
+    country: core?.country ?? null,
+    objectives: core?.objectives ?? null,
+    painPoints: core?.painPoints ?? null,
+    siret: contact?.siret ?? null,
+    phone: contact?.phone ?? null,
+    address: contact?.address ?? null,
+    timezone: contact?.timezone ?? null,
+    localContext: contact?.localContext ?? null,
+    businessModel: model?.businessModel ?? null,
+    customerProfile: model?.customerProfile ?? null,
+    financeContext: domains?.financeContext ?? null,
+    accountingContext: domains?.accountingContext ?? null,
+    salesContext: domains?.salesContext ?? null,
+    marketingContext: domains?.marketingContext ?? null,
+    hrContext: domains?.hrContext ?? null,
+    operationsContext: domains?.operationsContext ?? null,
+    tools,
+  };
+
+  const coverage = await safeRead(
+    "company.knowledge-coverage",
+    () => getCompanyKnowledgeCoverage(company.id),
+    computeCompanyKnowledgeCoverage({
+      company,
+      tools: company.tools.map((tool) => tool.name),
+      connections: [],
+      facts: [],
+      sectionUpdatedAt: {
+        activity: company.updatedAt.toISOString(),
+        team: company.updatedAt.toISOString(),
+        objectives: company.updatedAt.toISOString(),
+        painPoints: company.updatedAt.toISOString(),
+        applications: company.updatedAt.toISOString(),
+        local: company.updatedAt.toISOString(),
+        finance: company.updatedAt.toISOString(),
+        accounting: company.updatedAt.toISOString(),
+        sales: company.updatedAt.toISOString(),
+        marketing: company.updatedAt.toISOString(),
+        hr: company.updatedAt.toISOString(),
+        operations: company.updatedAt.toISOString(),
+      },
+    })
+  );
   const profileSummary = buildCompanyProfileSummary(company);
 
   return (

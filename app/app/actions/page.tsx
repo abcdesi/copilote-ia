@@ -1,5 +1,6 @@
 import { ArrowRight, CheckCircle2, Clock3, ShieldAlert, XCircle } from "lucide-react";
-import { canApproveRisk, getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { canApproveRisk, getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { prisma } from "@/lib/db/client";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 import { Badge } from "@/components/ui/Badge";
@@ -15,17 +16,37 @@ const STATUS_LABELS: Record<string, string> = {
 };
 
 export default async function ActionsPage() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
   const canReject = hasCompanyPermission(access.role, "operate_automations");
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
   const [actions, entitlements] = await Promise.all([
-    prisma.pendingAction.findMany({
-      where: { companyId: company.id },
-      orderBy: { createdAt: "desc" },
-      take: 50,
-    }),
-    getCompanyEntitlements(company.id),
+    safeRead(
+      "actions.pending",
+      () =>
+        prisma.pendingAction.findMany({
+          where: { companyId: company.id },
+          orderBy: { createdAt: "desc" },
+          take: 50,
+          select: {
+            id: true,
+            provider: true,
+            kind: true,
+            title: true,
+            description: true,
+            riskLevel: true,
+            status: true,
+            createdAt: true,
+            expiresAt: true,
+          },
+        }),
+      []
+    ),
+    safeRead(
+      "actions.entitlements",
+      () => getCompanyEntitlements(company.id),
+      { plan: "free", paid: false, canExecute: false, canUseFinancialAudit: false, seatLimit: 1 }
+    ),
   ]);
 
   const pending = actions.filter((action) => action.status === "pending");

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ShieldCheck, UserPlus, Users } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission, normalizeCompanyRole, COMPANY_ROLE_LABELS } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission, normalizeCompanyRole, COMPANY_ROLE_LABELS } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { getTeamOverview } from "@/lib/companies/team";
 import {
   inviteTeamMemberAction,
@@ -39,8 +40,23 @@ export default async function TeamPage({
 }: {
   searchParams: Promise<{ error?: string; invited?: string; ownership?: string }>;
 }) {
-  const access = await getCurrentCompanyAccess();
-  const overview = await getTeamOverview(access.company.id);
+  const access = await getDashboardShellAccess();
+  const overview = await safeRead(
+    "team.overview",
+    () => getTeamOverview(access.company.id),
+    {
+      capacity: {
+        seatLimit: 1,
+        activeMembers: 0,
+        pendingInvitations: 0,
+        reservedSeats: 0,
+        seatsAvailable: 0,
+        plan: "free",
+      },
+      members: [],
+      invitations: [],
+    }
+  );
   const params = await searchParams;
   const canManage = hasCompanyPermission(access.role, "manage_team");
   const assignableRoles = access.role === "owner" ? ["admin", "operator", "viewer"] as const : ["operator", "viewer"] as const;

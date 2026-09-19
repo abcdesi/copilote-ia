@@ -9,7 +9,9 @@ import {
   Target,
   UsersRound,
 } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { prisma } from "@/lib/db/client";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { getLatestMarketingKpiSnapshot, deriveMarketingKpis } from "@/lib/marketing/kpis";
 import {
   saveGoogleMarketingSettingsAction,
@@ -107,7 +109,16 @@ export default async function MarketingPage({
 }: {
   searchParams: Promise<{ google?: string }>;
 }) {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
+  const companyTools = await safeRead(
+    "marketing.company-tools",
+    () =>
+      prisma.companyTool.findMany({
+        where: { companyId: access.company.id },
+        select: { name: true },
+      }),
+    []
+  );
   const params = await searchParams;
   const [snapshot, googleState] = await Promise.all([
     getLatestMarketingKpiSnapshot(access.company.id).catch((error) => {
@@ -134,7 +145,7 @@ export default async function MarketingPage({
   const canEdit = hasCompanyPermission(access.role, "edit_company");
   const canManage = hasCompanyPermission(access.role, "manage_integrations");
   const canSync = hasCompanyPermission(access.role, "sync_integrations");
-  const knownTools = new Set(access.company.tools.map((tool) => tool.name));
+  const knownTools = new Set(companyTools.map((tool) => tool.name));
   const googleConfiguration = getGoogleConfigurationStatus();
   const redirectUri = googleConfiguration.configured ? googleRedirectUri() : null;
   const googleMessage = params.google ? GOOGLE_MESSAGES[params.google] : null;

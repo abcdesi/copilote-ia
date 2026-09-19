@@ -1,9 +1,10 @@
 import { notFound } from "next/navigation";
 import {
   canApproveRisk,
-  getCurrentCompanyAccess,
+  getDashboardShellAccess,
   hasCompanyPermission,
 } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { prisma } from "@/lib/db/client";
 import { Badge } from "@/components/ui/Badge";
 import { AutomationActions } from "@/components/automations/AutomationActions";
@@ -54,25 +55,141 @@ const AUDIT_LABELS: Record<string, string> = {
 
 export default async function AutomationDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
 
-  const automation = await prisma.automation.findFirst({
-    where: { id, companyId: company.id },
-    include: {
-      feedback: { orderBy: { createdAt: "desc" }, take: 5 },
-      runs: { orderBy: { startedAt: "desc" }, take: 10 },
-      auditEvents: { orderBy: { createdAt: "desc" }, take: 30 },
-      outcomes: { orderBy: { observedAt: "desc" }, take: 20 },
-    },
-  });
-  if (!automation) notFound();
+  const baseAutomation = await safeRead(
+    "automation-detail.core",
+    () =>
+      prisma.automation.findFirst({
+        where: { id, companyId: company.id },
+        select: {
+          id: true,
+          name: true,
+          businessGoal: true,
+          status: true,
+          health: true,
+          toolsUsed: true,
+          installedAt: true,
+          lastCheckedAt: true,
+          lastModifiedAt: true,
+          estimatedHoursPerMonth: true,
+          estimatedValueEur: true,
+          usageCount: true,
+          errorCount: true,
+        },
+      }),
+    null
+  );
+  if (!baseAutomation) notFound();
 
-  const tools = JSON.parse(automation.toolsUsed) as string[];
+  const [governance, feedback, runs, auditEvents, outcomes] = await Promise.all([
+    safeRead(
+      "automation-detail.governance",
+      () =>
+        prisma.automation.findUnique({
+          where: { id: baseAutomation.id },
+          select: {
+            templateId: true,
+            n8nWorkflowId: true,
+            messageSubject: true,
+            messageBody: true,
+            messageVersion: true,
+            approvalMode: true,
+            riskLevel: true,
+            cadenceDays: true,
+            maxSendsPerContact: true,
+            scheduleStartHour: true,
+            scheduleEndHour: true,
+            scheduleDays: true,
+            replyToEmail: true,
+            approvedConfigHash: true,
+            lastApprovedAt: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "automation-detail.feedback",
+      () =>
+        prisma.automationFeedback.findMany({
+          where: { automationId: baseAutomation.id },
+          orderBy: { createdAt: "desc" },
+          take: 5,
+        }),
+      []
+    ),
+    safeRead(
+      "automation-detail.runs",
+      () =>
+        prisma.automationRun.findMany({
+          where: { automationId: baseAutomation.id },
+          orderBy: { startedAt: "desc" },
+          take: 10,
+        }),
+      []
+    ),
+    safeRead(
+      "automation-detail.audit",
+      () =>
+        prisma.automationAuditEvent.findMany({
+          where: { automationId: baseAutomation.id },
+          orderBy: { createdAt: "desc" },
+          take: 30,
+        }),
+      []
+    ),
+    safeRead(
+      "automation-detail.outcomes",
+      () =>
+        prisma.automationOutcome.findMany({
+          where: { automationId: baseAutomation.id },
+          orderBy: { observedAt: "desc" },
+          take: 20,
+        }),
+      []
+    ),
+  ]);
+
+  const automation = {
+    ...baseAutomation,
+    templateId: governance?.templateId ?? null,
+    n8nWorkflowId: governance?.n8nWorkflowId ?? null,
+    messageSubject: governance?.messageSubject ?? null,
+    messageBody: governance?.messageBody ?? null,
+    messageVersion: governance?.messageVersion ?? 1,
+    approvalMode: governance?.approvalMode ?? "first_then_auto",
+    riskLevel: governance?.riskLevel ?? "low",
+    cadenceDays: governance?.cadenceDays ?? null,
+    maxSendsPerContact: governance?.maxSendsPerContact ?? null,
+    scheduleStartHour: governance?.scheduleStartHour ?? 10,
+    scheduleEndHour: governance?.scheduleEndHour ?? 18,
+    scheduleDays: governance?.scheduleDays ?? "Mon,Tue,Wed,Thu,Fri,Sat",
+    replyToEmail: governance?.replyToEmail ?? null,
+    approvedConfigHash: governance?.approvedConfigHash ?? null,
+    lastApprovedAt: governance?.lastApprovedAt ?? null,
+    feedback,
+    runs,
+    auditEvents,
+    outcomes,
+  };
+
+  const tools = (() => {
+    try {
+      const parsed = JSON.parse(automation.toolsUsed) as unknown;
+      return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+    } catch {
+      return [];
+    }
+  })();
   const templateId = automation.templateId ?? (automation.n8nWorkflowId ? "relance-prospects" : null);
   const realExecutionConfig = templateId ? getRealExecutionConfig(templateId) : undefined;
   const plan = realExecutionConfig
-    ? await buildAutomationExecutionPlan({ automationId: automation.id, companyId: company.id, includeIneligible: true })
+    ? await safeRead(
+        "automation-detail.execution-plan",
+        () => buildAutomationExecutionPlan({ automationId: automation.id, companyId: company.id, includeIneligible: true }),
+        null
+      )
     : null;
 
   const canConfigure = hasCompanyPermission(access.role, "configure_automations");

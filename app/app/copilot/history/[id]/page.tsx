@@ -1,7 +1,8 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { ArrowRight, Bot, ShieldCheck, User } from "lucide-react";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getDashboardShellAccess } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { getConversationForCompany } from "@/lib/companies/conversations";
 import { Button } from "@/components/ui/Button";
 import { cn } from "@/lib/utils/cn";
@@ -10,8 +11,12 @@ const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "l
 
 export default async function ArchivedConversationPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const access = await getCurrentCompanyAccess();
-  const conversation = await getConversationForCompany(id, access.company.id, access.session.user.id);
+  const access = await getDashboardShellAccess();
+  const conversation = await safeRead(
+    "copilot.archived-conversation",
+    () => getConversationForCompany(id, access.company.id, access.session.user.id),
+    null
+  );
   if (!conversation) notFound();
 
   return (

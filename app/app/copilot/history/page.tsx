@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArchiveX, Trash2 } from "lucide-react";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getDashboardShellAccess } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { listArchivedConversations } from "@/lib/companies/conversations";
 import { deleteConversationAction } from "@/lib/companies/conversation-actions";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -9,8 +10,12 @@ import { Button } from "@/components/ui/Button";
 const DATE_FORMAT = new Intl.DateTimeFormat("fr-FR", { day: "numeric", month: "long", year: "numeric" });
 
 export default async function CopilotHistoryPage() {
-  const access = await getCurrentCompanyAccess();
-  const conversations = await listArchivedConversations(access.company.id, access.session.user.id);
+  const access = await getDashboardShellAccess();
+  const conversations = await safeRead(
+    "copilot.archived-conversations",
+    () => listArchivedConversations(access.company.id, access.session.user.id),
+    []
+  );
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-8 sm:px-6 space-y-6">

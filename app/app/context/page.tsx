@@ -1,5 +1,6 @@
 import { AlertTriangle, CheckCircle2, Database, Network, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { getBusinessGraphContext } from "@/lib/business-graph";
 import { prisma } from "@/lib/db/client";
 import { rebuildBusinessGraphAction } from "@/lib/business-graph/actions";
@@ -52,16 +53,41 @@ function formatDate(value: string | null) {
 }
 
 export default async function ContextPage() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
   const canRebuild = hasCompanyPermission(access.role, "edit_company");
   const [graph, weeklyRefreshEvent] = await Promise.all([
-    getBusinessGraphContext(company.id),
-    prisma.event.findFirst({
-      where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true, metadata: true },
-    }),
+    safeRead(
+      "context.business-graph",
+      () => getBusinessGraphContext(company.id),
+      {
+        summary: {
+          readinessScore: 0,
+          entityCount: 0,
+          factCount: 0,
+          sourceCount: 0,
+          connectedSourceCount: 0,
+          freshSourceCount: 0,
+          staleSourceCount: 0,
+          entityTypes: [],
+          sources: [],
+          lastBuiltAt: null,
+        },
+        entities: [],
+        facts: [],
+        entityCount: 0,
+      }
+    ),
+    safeRead(
+      "context.weekly-refresh",
+      () =>
+        prisma.event.findFirst({
+          where: { companyId: company.id, type: "WEEKLY_REFRESH_COMPLETED" },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true, metadata: true },
+        }),
+      null
+    ),
   ]);
   const weeklyRefresh = parseWeeklyRefresh(weeklyRefreshEvent?.metadata ?? null);
   const entityById = new Map(graph.entities.map((entity) => [entity.id, entity]));

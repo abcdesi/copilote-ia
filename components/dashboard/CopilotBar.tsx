@@ -1,26 +1,55 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { usePathname, useRouter } from "next/navigation";
-import { ArrowRight, Bot } from "lucide-react";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { ArrowRight, Bot, Loader2 } from "lucide-react";
+
+function compactPreview(value: string) {
+  const cleaned = value
+    .replace(/\*\*/g, "")
+    .replace(/[`#>_*~-]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned.length <= 180) return cleaned;
+  return cleaned.slice(0, 177).trimEnd() + "…";
+}
 
 export function CopilotBar() {
   const pathname = usePathname();
-  const router = useRouter();
   const [prompt, setPrompt] = useState("");
+  const [reply, setReply] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
   if (pathname === "/app/copilot" || pathname.startsWith("/app/copilot/")) return null;
 
-  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const value = prompt.trim();
-    if (!value) {
-      router.push("/app/copilot");
-      return;
-    }
+    const message = prompt.trim();
+    if (!message || loading) return;
 
-    window.sessionStorage.setItem("pilotzia:copilot-draft", value);
-    router.push("/app/copilot");
+    setLoading(true);
+    setReply(null);
+
+    try {
+      const response = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ message }),
+      });
+      const data = (await response.json()) as { reply?: unknown };
+      setReply(
+        response.ok
+          ? compactPreview(String(data.reply ?? ""))
+          : "Le Copilote n'a pas pu répondre ici."
+      );
+    } catch {
+      setReply("Le Copilote n'a pas pu répondre ici.");
+    } finally {
+      setPrompt("");
+      setLoading(false);
+    }
   }
 
   return (
@@ -41,11 +70,27 @@ export function CopilotBar() {
         />
         <button
           type="submit"
-          className="inline-flex shrink-0 items-center gap-1.5 text-sm font-semibold text-accent transition-opacity hover:opacity-75"
+          disabled={loading || !prompt.trim()}
+          aria-label="Envoyer au Copilote"
+          className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-accent transition-colors hover:bg-accent-soft disabled:opacity-35"
         >
-          Continuer à lire dans Copilote <ArrowRight size={14} />
+          {loading ? <Loader2 size={15} className="animate-spin" /> : <ArrowRight size={15} />}
         </button>
       </form>
+
+      {reply && (
+        <div className="mx-auto mt-2 max-w-5xl px-1">
+          <p className="line-clamp-2 text-sm leading-5 text-foreground/85">
+            <span>{reply}</span>{" "}
+            <Link
+              href="/app/copilot"
+              className="font-semibold text-accent hover:underline"
+            >
+              Continuer à lire dans Copilote
+            </Link>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

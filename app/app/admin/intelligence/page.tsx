@@ -3,6 +3,8 @@ import { BarChart3, BrainCircuit, Building2, CheckCircle2, ShieldCheck, Sparkles
 import { auth } from "@/lib/auth";
 import { isPilotziaAdmin } from "@/lib/admin/access";
 import { buildAdminIntelligenceSummary } from "@/lib/admin/intelligence";
+import { safeRead } from "@/lib/runtime/safe-read";
+import { minimumBenchmarkCohortSize } from "@/lib/admin/access";
 import { formatEur, formatHours } from "@/lib/format";
 
 function percent(value: number) {
@@ -13,7 +15,30 @@ export default async function AdminIntelligencePage() {
   const session = await auth();
   if (!isPilotziaAdmin(session?.user?.email)) notFound();
 
-  const data = await buildAdminIntelligenceSummary();
+  const minimumCohort = minimumBenchmarkCohortSize();
+  const data = await safeRead(
+    "admin.intelligence",
+    () => buildAdminIntelligenceSummary(),
+    {
+      privacy: {
+        mode: "aggregated" as const,
+        minimumCohort,
+        note: "Les statistiques agrégées sont temporairement indisponibles. Aucune donnée brute cliente n'est exposée.",
+      },
+      totals: {
+        companies: 0,
+        paidCompanies: 0,
+        paidRate: 0,
+        opportunities: 0,
+        automations: 0,
+        activeAutomations: 0,
+      },
+      plans: [],
+      segments: { industry: [], country: [], size: [] },
+      topNeeds: [],
+      topSolutions: [],
+    }
+  );
 
   return (
     <div className="mx-auto max-w-6xl space-y-8 px-4 py-8 sm:px-6">

@@ -1,5 +1,6 @@
 import { AlertCircle, CheckCircle2, Cloud, LockKeyhole, Plus, RefreshCcw, ShieldCheck, Unplug, X } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
@@ -120,15 +121,41 @@ export default async function ToolsPage({
 }: {
   searchParams: Promise<{ google?: string }>;
 }) {
-  const access = await getCurrentCompanyAccess();
-  const company = access.company;
+  const access = await getDashboardShellAccess();
+  const companyTools = await safeRead(
+    "tools.company-tools",
+    () =>
+      prisma.companyTool.findMany({
+        where: { companyId: access.company.id },
+        select: { id: true, name: true, detected: true },
+        orderBy: { name: "asc" },
+      }),
+    []
+  );
+  const company = { ...access.company, tools: companyTools };
   const params = await searchParams;
   const googleMessage = params.google ? GOOGLE_MESSAGES[params.google] : null;
   const googleConfiguration = getGoogleConfigurationStatus();
   const canManageGoogle = hasCompanyPermission(access.role, "manage_integrations");
   const canSyncGoogle = hasCompanyPermission(access.role, "sync_integrations");
 
-  const connections = await prisma.integrationConnection.findMany({ where: { companyId: company.id } });
+  const connections = await safeRead(
+    "tools.connections",
+    () =>
+      prisma.integrationConnection.findMany({
+        where: { companyId: company.id },
+        select: {
+          id: true,
+          provider: true,
+          accountLabel: true,
+          status: true,
+          scopes: true,
+          lastSyncedAt: true,
+          lastError: true,
+        },
+      }),
+    []
+  );
   const google = connections.find((connection) => connection.provider === "google");
   const googleScopes = parseStoredGoogleScopes(google?.scopes);
   const workspaceRequiredScopes = GOOGLE_SCOPES.filter(
