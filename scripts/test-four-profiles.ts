@@ -285,6 +285,20 @@ function testAutomaticValueProofLoop() {
   );
 }
 
+function testEstimatedMonthlySavingsWording() {
+  const opportunityDetail = readFileSync("app/app/opportunities/[id]/page.tsx", "utf-8");
+  assert.ok(
+    opportunityDetail.includes('label="Économie mensuelle estimée"') &&
+      opportunityDetail.includes('formatEur(opportunity.estimatedValueEur)') &&
+      opportunityDetail.includes('/mois'),
+    "Le détail d'une automatisation doit expliciter que la valeur affichée est une économie mensuelle estimée."
+  );
+  assert.ok(
+    !opportunityDetail.includes('label="Valeur estimée"'),
+    "L'intitulé ambigu « Valeur estimée » ne doit plus être utilisé sur la fiche d'automatisation."
+  );
+}
+
 function testCoreViewsPreserveUiAndFailSoft() {
   const automations = readFileSync("app/app/automations/page.tsx", "utf-8");
   const opportunities = readFileSync("app/app/opportunities/page.tsx", "utf-8");
@@ -468,6 +482,7 @@ function main() {
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testAutomaticValueProofLoop();
+  testEstimatedMonthlySavingsWording();
   testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
   testDashboardViewsAreFailSoft();
