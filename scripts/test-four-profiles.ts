@@ -182,14 +182,18 @@ function testAutomaticValueProofLoop() {
       providerOutcomes.includes('"AUTOMATION_PROVIDER_OUTCOME_OBSERVED"') &&
       providerOutcomes.includes('"reply_observed"') &&
       providerOutcomes.includes('"meeting_booked"') &&
-      providerOutcomes.includes('"temporal_after_pilotzia_follow_up"'),
-    "Les réponses et rendez-vous fournisseur doivent produire des preuves traçables avec une attribution explicite."
+      providerOutcomes.includes('"temporal_after_pilotzia_follow_up"') &&
+      providerOutcomes.includes('"deal_won"') &&
+      providerOutcomes.includes('"payment_received"') &&
+      providerOutcomes.includes('"authenticated_n8n_callback"'),
+    "Les réponses, rendez-vous, deals et encaissements fournisseur doivent produire des preuves traçables avec une attribution explicite."
   );
   assert.ok(
     results.includes("Chaîne de preuve opérationnelle") &&
       results.includes("1 · Détecter") &&
       results.includes("4 · Mesurer") &&
-      results.includes("Résultat métier à mesurer"),
+      results.includes("Résultat métier à mesurer") &&
+      results.includes("Encaissements observés"),
     "Résultats doit matérialiser la boucle détection → décision → action → mesure sans confondre exécution et valeur."
   );
 }
