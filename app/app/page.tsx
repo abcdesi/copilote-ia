@@ -152,6 +152,14 @@ export default async function DashboardHomePage() {
       href: "/app/results",
     });
   }
+  if (googleSnapshot && googleSnapshot.prospectMeetingsObserved > 0) {
+    briefItems.push({
+      bucket: "handled",
+      tone: "success",
+      text: `${googleSnapshot.prospectMeetingsObserved} rendez-vous commercial${googleSnapshot.prospectMeetingsObserved > 1 ? " ont" : " a"} été détecté${googleSnapshot.prospectMeetingsObserved > 1 ? "s" : ""} dans Calendar après relance`,
+      href: "/app/results",
+    });
+  }
   if (marketingSnapshot && marketingKpis?.roas != null) {
     briefItems.push({
       bucket: "know",
