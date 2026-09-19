@@ -3,7 +3,11 @@ import { CREDIT_PACKS } from "../lib/billing/credit-packs";
 import { creditsRequiredForCost, normalizeUsageReservation, usageAlertLevel } from "../lib/billing/economics";
 import { PLAN_DEFINITIONS } from "../lib/billing/plans";
 import { identifyStripeSubscriptionPrice } from "../lib/billing/stripe";
-import { evaluateAutomationPurchaseQuantity } from "../lib/billing/automation-purchase-policy";
+import {
+  AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES,
+  evaluateAutomationPurchaseQuantity,
+} from "../lib/billing/automation-purchase-policy";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 
 assert.equal(creditsRequiredForCost(0), 0);
@@ -44,6 +48,12 @@ assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCoun
 assert.equal(evaluateAutomationPurchaseQuantity({ plan: "starter", committedCount: 2 }).reached, true);
 assert.equal(evaluateAutomationPurchaseQuantity({ plan: "pro", committedCount: 20 }).reached, false);
 assert.equal(evaluateAutomationPurchaseQuantity({ plan: "business", committedCount: 20 }).remaining, null);
+assert.equal(AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES.includes("payment_failed"), true);
+assert.equal(
+  (AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES as readonly string[]).includes("payment_failed"),
+  false,
+  "Un paiement échoué ne doit pas consommer une place Core tant qu'il n'est pas relancé avec une place disponible."
+);
 
 const maxAutomationPriceEur = Math.max(...AUTOMATION_CATALOG.map((template) => template.priceEur));
 assert.ok(
