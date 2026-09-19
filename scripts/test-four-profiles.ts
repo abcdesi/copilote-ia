@@ -171,13 +171,18 @@ function testAutomaticValueProofLoop() {
   const results = readFileSync("app/app/results/page.tsx", "utf-8");
 
   assert.ok(
-    observe.includes("observeProspectReplies") &&\n      observe.includes("prospectRepliesObserved") &&\n      observe.includes("observeProspectMeetings") &&\n      observe.includes("prospectMeetingsObserved"),
+    observe.includes("observeProspectReplies") &&
+      observe.includes("prospectRepliesObserved") &&
+      observe.includes("observeProspectMeetings") &&
+      observe.includes("prospectMeetingsObserved"),
     "La synchronisation Google doit observer les réponses prospects et les rendez-vous Calendar sans inventer de résultats."
   );
   assert.ok(
     providerOutcomes.includes('"provider_observed"') &&
       providerOutcomes.includes('"AUTOMATION_PROVIDER_OUTCOME_OBSERVED"') &&
-      providerOutcomes.includes('"reply_observed"') &&\n      providerOutcomes.includes('"meeting_booked"') &&\n      providerOutcomes.includes('"temporal_after_pilotzia_follow_up"'),
+      providerOutcomes.includes('"reply_observed"') &&
+      providerOutcomes.includes('"meeting_booked"') &&
+      providerOutcomes.includes('"temporal_after_pilotzia_follow_up"'),
     "Les réponses et rendez-vous fournisseur doivent produire des preuves traçables avec une attribution explicite."
   );
   assert.ok(
