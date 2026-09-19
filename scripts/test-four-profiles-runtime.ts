@@ -16,6 +16,7 @@ type Profile = {
   sizeRange: string;
   employeeCount: number;
   plan: "starter" | "pro" | "business";
+  role: "owner" | "admin";
   objective: string;
   painPoint: string;
   businessModel: string;
@@ -40,6 +41,7 @@ const PROFILES: Profile[] = [
     sizeRange: "21-50",
     employeeCount: 32,
     plan: "business",
+    role: "owner",
     objective: "Piloter la croissance, la marge et les priorités de direction.",
     painPoint: "Trop de décisions sont dispersées entre les équipes et les outils.",
     businessModel: "Abonnements et prestations B2B récurrentes.",
@@ -60,6 +62,7 @@ const PROFILES: Profile[] = [
     sizeRange: "51-200",
     employeeCount: 60,
     plan: "business",
+    role: "owner",
     objective: "Structurer l'exécution et la gouvernance entre plusieurs équipes.",
     painPoint: "Les relances, validations et suivis sont encore trop manuels.",
     businessModel: "Contrats B2B et prestations récurrentes.",
@@ -80,6 +83,7 @@ const PROFILES: Profile[] = [
     sizeRange: "6-20",
     employeeCount: 14,
     plan: "pro",
+    role: "owner",
     objective: "Suivre l'acquisition et automatiser le reporting marketing.",
     painPoint: "Les KPI sont répartis entre plusieurs régies et feuilles de calcul.",
     businessModel: "Agence avec forfaits mensuels.",
@@ -91,6 +95,27 @@ const PROFILES: Profile[] = [
     tools: ["Google Analytics 4", "Google Ads", "Meta Ads", "LinkedIn Ads"],
   },
   {
+    key: "operations-manager",
+    email: "e2e-operations-manager@pilotzia.local",
+    name: "Camille Operations",
+    companyName: "E2E Ops Coordination",
+    industry: "Services B2B",
+    country: "France métropolitaine",
+    sizeRange: "21-50",
+    employeeCount: 28,
+    plan: "pro",
+    role: "admin",
+    objective: "Transformer les priorités de direction en actions suivies et exécutées par les équipes.",
+    painPoint: "Les validations, incidents et relances opérationnelles se perdent entre plusieurs outils.",
+    businessModel: "Prestations récurrentes avec plusieurs équipes opérationnelles.",
+    customerProfile: "PME avec coordination commerciale, support et opérations.",
+    domainContext: {
+      salesContext: "Le COO suit les relances et les passages de relais entre commerce et opérations.",
+      operationsContext: "Revue quotidienne des actions à valider, incidents, responsables et preuves d'exécution.",
+    },
+    tools: ["Gmail", "Google Calendar", "HubSpot", "Slack"],
+  },
+  {
     key: "solopreneur",
     email: "e2e-solo@pilotzia.local",
     name: "Sam Solo",
@@ -100,6 +125,7 @@ const PROFILES: Profile[] = [
     sizeRange: "1-5",
     employeeCount: 1,
     plan: "starter",
+    role: "owner",
     objective: "Réduire le temps administratif et mieux relancer les prospects.",
     painPoint: "Je gère seul les demandes clients, les relances et l'administratif.",
     businessModel: "Prestations de conseil au forfait.",
@@ -184,8 +210,8 @@ async function ensureProfile(profile: Profile) {
 
   await prisma.companyMembership.upsert({
     where: { companyId_userId: { companyId: company.id, userId: user.id } },
-    update: { role: "owner", status: "active" },
-    create: { companyId: company.id, userId: user.id, role: "owner", status: "active" },
+    update: { role: profile.role, status: "active" },
+    create: { companyId: company.id, userId: user.id, role: profile.role, status: "active" },
   });
 
   const subscription = await prisma.subscription.findFirst({
@@ -207,6 +233,34 @@ async function ensureProfile(profile: Profile) {
   await prisma.companyTool.createMany({
     data: profile.tools.map((name) => ({ companyId: company.id, name, detected: true })),
   });
+
+  if (profile.key === "operations-manager") {
+    await prisma.pendingAction.deleteMany({ where: { companyId: company.id } });
+    await prisma.pendingAction.createMany({
+      data: [
+        {
+          companyId: company.id,
+          provider: "Gmail",
+          kind: "follow_up",
+          title: "Relancer les dossiers en attente",
+          description: "Prépare une relance opérationnelle contrôlée sur les dossiers sans réponse.",
+          payloadJson: JSON.stringify({ testProfile: "operations-manager", risk: "medium" }),
+          riskLevel: "medium",
+          status: "pending",
+        },
+        {
+          companyId: company.id,
+          provider: "HubSpot",
+          kind: "bulk_update",
+          title: "Modifier un lot de dossiers sensibles",
+          description: "Action volontairement sensible pour vérifier l'escalade vers le propriétaire.",
+          payloadJson: JSON.stringify({ testProfile: "operations-manager", risk: "high" }),
+          riskLevel: "high",
+          status: "pending",
+        },
+      ],
+    });
+  }
 
   if (profile.key === "marketing") {
     await prisma.event.deleteMany({ where: { companyId: company.id, type: "MARKETING_KPI_SNAPSHOT" } });
@@ -328,6 +382,36 @@ async function testRuntimeProfile(profile: Profile) {
     assert.match(await team.text(), /Membres actifs/i, "[company-60] team governance surface should render");
   }
 
+  if (profile.key === "operations-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "admin", "[operations-manager] runtime role should be admin");
+
+    const actions = await request("/app/actions");
+    const actionsHtml = await actions.text();
+    assert.match(actionsHtml, /Actions préparées/i, "[operations-manager] actions cockpit should render");
+    assert.match(actionsHtml, /Relancer les dossiers en attente/i, "[operations-manager] medium-risk action should render");
+    assert.match(actionsHtml, /Modifier un lot de dossiers sensibles/i, "[operations-manager] high-risk action should render");
+    assert.match(actionsHtml, /Confirmer et exécuter/i, "[operations-manager] admin should be able to approve medium risk");
+    assert.match(
+      actionsHtml,
+      /Votre rôle ne peut pas approuver ce niveau de risque/i,
+      "[operations-manager] high-risk action should require owner escalation"
+    );
+
+    const automations = await request("/app/automations");
+    assert.match(await automations.text(), /Automatisations/i, "[operations-manager] automations cockpit should render");
+
+    const team = await request("/app/team");
+    assert.match(await team.text(), /Membres actifs/i, "[operations-manager] team governance should render");
+  }
+
   if (profile.key === "marketing") {
     const tools = await request("/app/tools");
     const html = await tools.text();
@@ -354,7 +438,7 @@ async function main() {
   for (const profile of PROFILES) {
     await testRuntimeProfile(profile);
   }
-  console.log("Four-profile authenticated runtime smoke tests: OK");
+  console.log("Five-profile authenticated runtime smoke tests: OK");
 }
 
 main()
