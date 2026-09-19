@@ -1,5 +1,5 @@
 import { ArrowRight, Clock, Sparkles, TrendingUp, Zap } from "lucide-react";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getDashboardShellAccess } from "@/lib/companies/access";
 import { getCompanyKnowledgeCoverage } from "@/lib/companies/knowledge-coverage";
 import { getBusinessRhythmReminders } from "@/lib/business-graph/rhythms";
 import { prisma } from "@/lib/db/client";
@@ -16,10 +16,30 @@ import { TrialJourney } from "@/components/dashboard/TrialJourney";
 import { IMPACT_RANK, formatEur, formatHours, relativeTime } from "@/lib/format";
 
 export default async function DashboardHomePage() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   const company = access.company;
 
-  const [automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh, marketingSnapshot] = await Promise.all([
+  const [dashboardProfile, automations, opportunities, pendingActions, googleSnapshot, trialJourney, knowledge, outcomes, lastWeeklyRefresh, marketingSnapshot] = await Promise.all([
+    prisma.company
+      .findUnique({
+        where: { id: company.id },
+        select: {
+          automationScore: true,
+          financeContext: true,
+          accountingContext: true,
+          salesContext: true,
+          marketingContext: true,
+          hrContext: true,
+          operationsContext: true,
+          localContext: true,
+          objectives: true,
+          painPoints: true,
+        },
+      })
+      .catch((error) => {
+        console.error("Dashboard profile unavailable", error);
+        return null;
+      }),
     prisma.automation
       .findMany({ where: { companyId: company.id }, orderBy: { installedAt: "desc" } })
       .catch((error) => {
@@ -112,7 +132,7 @@ export default async function DashboardHomePage() {
   const topOpportunity = opportunities[0];
   const moreOpportunities = opportunities.slice(1, 3);
   const firstName = access.session.user.name?.trim().split(/\s+/)[0] || access.session.user.email?.split("@")[0] || company.name;
-  const rhythmReminders = getBusinessRhythmReminders(company);
+  const rhythmReminders = getBusinessRhythmReminders(dashboardProfile ?? {});
 
   const attentionCount = healthCounts.orange + healthCounts.red;
   const healthRate = countable.length ? Math.round((healthCounts.green / countable.length) * 100) : null;
@@ -364,7 +384,7 @@ export default async function DashboardHomePage() {
           </CardHeader>
           <CardContent>
             <div className="flex items-end gap-2">
-              <span className="text-3xl font-semibold">{company.automationScore}</span>
+              <span className="text-3xl font-semibold">{dashboardProfile?.automationScore ?? 0}</span>
               <span className="pb-1 text-sm text-muted-foreground">/100</span>
             </div>
             <p className="mt-2 text-xs leading-5 text-muted-foreground">
