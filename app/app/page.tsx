@@ -1,19 +1,43 @@
+"use client";
+
 import Link from "next/link";
-import { getDashboardShellAccess } from "@/lib/companies/access";
-import { prisma } from "@/lib/db/client";
-import { deriveMarketingKpis, getLatestMarketingKpiSnapshot } from "@/lib/marketing/kpis";
+import { useEffect, useState } from "react";
 
-function safeNumber(value: unknown) {
-  return typeof value === "number" && Number.isFinite(value) ? value : 0;
-}
+type DashboardSummary = {
+  ok: boolean;
+  companyName?: string;
+  firstName?: string;
+  automationScore?: number;
+  pendingActions?: Array<{ id: string; title: string; riskLevel: string }>;
+  opportunities?: Array<{
+    id: string;
+    title: string;
+    impactLevel: string;
+    estimatedHoursPerMonth: number;
+    estimatedValueEur: number;
+  }>;
+  activeAutomations?: number;
+  healthyAutomations?: number;
+  observedHoursPerMonth?: number;
+  observedValue30d?: number;
+  estimatedHoursPerMonth?: number;
+  estimatedValuePerMonth?: number;
+  marketing?: {
+    source: string;
+    spendEur: number | null;
+    revenueEur: number | null;
+    roas: number | null;
+    sessions: number | null;
+  } | null;
+};
 
-function formatHours(value: unknown) {
-  const hours = safeNumber(value);
+function formatHours(value: number | null | undefined) {
+  const hours = typeof value === "number" && Number.isFinite(value) ? value : 0;
   return (hours % 1 === 0 ? String(hours) : hours.toFixed(1)) + " h";
 }
 
-function formatEur(value: unknown) {
-  const amount = safeNumber(value);
+function formatEur(value: number | null | undefined) {
+  const amount = typeof value === "number" && Number.isFinite(value) ? value : 0;
   return new Intl.NumberFormat("fr-FR", {
     style: "currency",
     currency: "EUR",
@@ -21,175 +45,83 @@ function formatEur(value: unknown) {
   }).format(amount);
 }
 
-export default async function DashboardHomePage() {
-  const access = await getDashboardShellAccess();
-  const company = access.company;
+export default function DashboardHomePage() {
+  const [summary, setSummary] = useState<DashboardSummary | null>(null);
+  const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
 
-  const [profile, automations, opportunities, pendingActions, outcomes, marketingSnapshot] =
-    await Promise.all([
-      prisma.company
-        .findUnique({
-          where: { id: company.id },
-          select: { automationScore: true },
-        })
-        .catch((error) => {
-          console.error("Dashboard profile unavailable", error);
-          return null;
-        }),
-      prisma.automation
-        .findMany({
-          where: { companyId: company.id },
-          orderBy: { installedAt: "desc" },
-          take: 100,
-          select: {
-            id: true,
-            name: true,
-            status: true,
-            health: true,
-            estimatedHoursPerMonth: true,
-            estimatedValueEur: true,
-          },
-        })
-        .catch((error) => {
-          console.error("Dashboard automations unavailable", error);
-          return [];
-        }),
-      prisma.opportunity
-        .findMany({
-          where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
-          orderBy: { createdAt: "desc" },
-          take: 3,
-          select: {
-            id: true,
-            title: true,
-            impactLevel: true,
-            estimatedHoursPerMonth: true,
-            estimatedValueEur: true,
-          },
-        })
-        .catch((error) => {
-          console.error("Dashboard opportunities unavailable", error);
-          return [];
-        }),
-      prisma.pendingAction
-        .findMany({
-          where: { companyId: company.id, status: "pending" },
-          orderBy: { createdAt: "desc" },
-          take: 5,
-          select: {
-            id: true,
-            title: true,
-            riskLevel: true,
-          },
-        })
-        .catch((error) => {
-          console.error("Dashboard pending actions unavailable", error);
-          return [];
-        }),
-      prisma.automationOutcome
-        .findMany({
-          where: { automation: { companyId: company.id } },
-          orderBy: { observedAt: "desc" },
-          take: 100,
-          select: {
-            automationId: true,
-            kind: true,
-            value: true,
-          },
-        })
-        .catch((error) => {
-          console.error("Dashboard outcomes unavailable", error);
-          return [];
-        }),
-      getLatestMarketingKpiSnapshot(company.id).catch((error) => {
-        console.error("Dashboard marketing snapshot unavailable", error);
-        return null;
-      }),
-    ]);
+  useEffect(() => {
+    let active = true;
 
-  const activeAutomations = automations.filter((item) => item.status === "active");
-  const healthyAutomations = activeAutomations.filter((item) => item.health === "green").length;
-  const estimatedHours = activeAutomations.reduce(
-    (sum, item) => sum + safeNumber(item.estimatedHoursPerMonth),
-    0
-  );
-  const estimatedValue = activeAutomations.reduce(
-    (sum, item) => sum + safeNumber(item.estimatedValueEur),
-    0
-  );
+    fetch("/api/dashboard/summary", { cache: "no-store" })
+      .then(async (response) => {
+        const data = (await response.json()) as DashboardSummary;
+        if (!response.ok || !data.ok) throw new Error("dashboard_summary_unavailable");
+        return data;
+      })
+      .then((data) => {
+        if (!active) return;
+        setSummary(data);
+        setLoadState("ready");
+      })
+      .catch((error) => {
+        console.error("Dashboard summary unavailable", error);
+        if (!active) return;
+        setLoadState("error");
+      });
 
-  const latestOutcomeByMetric = new Map<string, (typeof outcomes)[number]>();
-  for (const outcome of outcomes) {
-    const key = outcome.automationId + ":" + outcome.kind;
-    if (!latestOutcomeByMetric.has(key)) latestOutcomeByMetric.set(key, outcome);
-  }
-  const latestOutcomes = [...latestOutcomeByMetric.values()];
-  const observedHoursPerWeek = latestOutcomes
-    .filter((item) => item.kind === "time_saved_weekly_hours")
-    .reduce((sum, item) => sum + safeNumber(item.value), 0);
-  const observedValue30d = latestOutcomes
-    .filter((item) => item.kind === "value_observed_eur_30d")
-    .reduce((sum, item) => sum + safeNumber(item.value), 0);
+    return () => {
+      active = false;
+    };
+  }, []);
 
-  const marketingKpis = marketingSnapshot ? deriveMarketingKpis(marketingSnapshot) : null;
-  const firstName =
-    access.session.user.name?.trim().split(/\s+/)[0] ||
-    access.session.user.email?.split("@")[0] ||
-    company.name;
+  const pendingActions = summary?.pendingActions ?? [];
+  const opportunities = summary?.opportunities ?? [];
+  const activeAutomations = summary?.activeAutomations ?? 0;
+  const healthyAutomations = summary?.healthyAutomations ?? 0;
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
       <section className="rounded-2xl border border-accent/20 bg-accent-soft p-5 sm:p-6">
         <p className="text-xs font-semibold uppercase tracking-[0.16em] text-accent">Tableau de bord</p>
-        <h1 className="mt-2 text-2xl font-semibold tracking-tight">Bonjour, {firstName}</h1>
+        <h1 className="mt-2 text-2xl font-semibold tracking-tight">
+          {summary?.firstName ? `Bonjour, ${summary.firstName}` : "Pilotzia"}
+        </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-foreground/80">
-          Voici les signaux essentiels disponibles pour {company.name}. Les blocs restent indépendants :
-          une source indisponible ne doit plus empêcher l&apos;accès au reste de Pilotzia.
+          {summary?.companyName
+            ? `Voici les signaux essentiels disponibles pour ${summary.companyName}.`
+            : "Vos principaux accès restent disponibles même si une source de données tarde à répondre."}
         </p>
+        {loadState === "error" && (
+          <p className="mt-3 rounded-xl border border-warning/20 bg-card px-3 py-2 text-xs text-muted-foreground">
+            Certaines données du tableau de bord sont temporairement indisponibles. La navigation et les écrans métier restent accessibles.
+          </p>
+        )}
       </section>
 
       <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric
-          label="Décisions à valider"
-          value={String(pendingActions.length)}
-          href="/app/actions"
-        />
-        <Metric
-          label="Automatisations actives"
-          value={String(activeAutomations.length)}
-          href="/app/automations"
-        />
+        <Metric label="Décisions à valider" value={loadState === "loading" ? "…" : String(pendingActions.length)} href="/app/actions" />
+        <Metric label="Automatisations actives" value={loadState === "loading" ? "…" : String(activeAutomations)} href="/app/automations" />
         <Metric
           label="Santé automatisations"
-          value={
-            activeAutomations.length > 0
-              ? healthyAutomations + "/" + activeAutomations.length
-              : "Aucune active"
-          }
+          value={loadState === "loading" ? "…" : activeAutomations > 0 ? `${healthyAutomations}/${activeAutomations}` : "Aucune active"}
           href="/app/automations"
         />
         <Metric
           label="Maturité automatisation"
-          value={String(profile?.automationScore ?? 0) + "/100"}
+          value={loadState === "loading" ? "…" : `${summary?.automationScore ?? 0}/100`}
           href="/app/company"
         />
       </section>
 
-      {(observedHoursPerWeek > 0 || observedValue30d > 0) && (
+      {summary && ((summary.observedHoursPerMonth ?? 0) > 0 || (summary.observedValue30d ?? 0) > 0) && (
         <section className="rounded-2xl border border-success/20 bg-card p-5">
           <h2 className="text-base font-semibold">Résultats observés</h2>
           <p className="mt-1 text-sm text-muted-foreground">
-            Ces valeurs proviennent de résultats déclarés ou observés, distincts des estimations.
+            Ces valeurs restent séparées des estimations de potentiel.
           </p>
           <div className="mt-4 grid gap-3 sm:grid-cols-2">
-            <SimpleStat
-              label="Temps observé / mois"
-              value={observedHoursPerWeek > 0 ? "~" + formatHours(observedHoursPerWeek * 4.33) : "À mesurer"}
-            />
-            <SimpleStat
-              label="Impact observé · 30 j"
-              value={observedValue30d > 0 ? formatEur(observedValue30d) : "À mesurer"}
-            />
+            <SimpleStat label="Temps observé / mois" value={formatHours(summary.observedHoursPerMonth)} />
+            <SimpleStat label="Impact observé · 30 j" value={formatEur(summary.observedValue30d)} />
           </div>
         </section>
       )}
@@ -199,34 +131,24 @@ export default async function DashboardHomePage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">Décisions requises</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Actions préparées qui attendent votre validation.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Actions préparées qui attendent votre validation.</p>
             </div>
-            <Link href="/app/actions" className="text-sm font-semibold text-accent hover:underline">
-              Voir tout
-            </Link>
+            <Link href="/app/actions" className="text-sm font-semibold text-accent hover:underline">Voir tout</Link>
           </div>
           {pendingActions.length > 0 ? (
             <div className="mt-4 space-y-3">
               {pendingActions.map((action) => (
-                <Link
-                  key={action.id}
-                  href="/app/actions"
-                  className="block rounded-xl border border-border p-3 transition-colors hover:border-accent/40"
-                >
+                <Link key={action.id} href="/app/actions" className="block rounded-xl border border-border p-3 transition-colors hover:border-accent/40">
                   <div className="flex items-center justify-between gap-3">
                     <p className="text-sm font-medium">{action.title}</p>
-                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                      {action.riskLevel}
-                    </span>
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">{action.riskLevel}</span>
                   </div>
                 </Link>
               ))}
             </div>
           ) : (
             <p className="mt-4 text-sm text-muted-foreground">
-              Aucune décision n&apos;attend votre validation.
+              {loadState === "loading" ? "Chargement…" : "Aucune décision n'attend votre validation."}
             </p>
           )}
         </section>
@@ -235,16 +157,9 @@ export default async function DashboardHomePage() {
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">Opportunités</h2>
-              <p className="mt-1 text-sm text-muted-foreground">
-                Les prochaines pistes détectées par Pilotzia.
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">Les prochaines pistes détectées par Pilotzia.</p>
             </div>
-            <Link
-              href="/app/opportunities"
-              className="text-sm font-semibold text-accent hover:underline"
-            >
-              Voir tout
-            </Link>
+            <Link href="/app/opportunities" className="text-sm font-semibold text-accent hover:underline">Voir tout</Link>
           </div>
           {opportunities.length > 0 ? (
             <div className="mt-4 space-y-3">
@@ -266,12 +181,9 @@ export default async function DashboardHomePage() {
           ) : (
             <div className="mt-4">
               <p className="text-sm text-muted-foreground">
-                Aucune opportunité n&apos;est actuellement en attente.
+                {loadState === "loading" ? "Chargement…" : "Aucune opportunité n'est actuellement en attente."}
               </p>
-              <Link
-                href="/app/copilot"
-                className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline"
-              >
+              <Link href="/app/copilot" className="mt-3 inline-flex text-sm font-semibold text-accent hover:underline">
                 Demander une recommandation au Copilote
               </Link>
             </div>
@@ -279,50 +191,24 @@ export default async function DashboardHomePage() {
         </section>
       </div>
 
-      {marketingSnapshot && (
+      {summary?.marketing && (
         <section className="rounded-2xl border border-accent/20 bg-card p-5">
           <div className="flex items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-semibold">Marketing</h2>
               <p className="mt-1 text-sm text-muted-foreground">
-                {marketingSnapshot.source === "google_marketing"
+                {summary.marketing.source === "google_marketing"
                   ? "Dernier instantané Google synchronisé."
                   : "Dernier instantané saisi manuellement."}
               </p>
             </div>
-            <Link href="/app/marketing" className="text-sm font-semibold text-accent hover:underline">
-              Ouvrir
-            </Link>
+            <Link href="/app/marketing" className="text-sm font-semibold text-accent hover:underline">Ouvrir</Link>
           </div>
           <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <SimpleStat
-              label="Dépenses Ads"
-              value={
-                marketingSnapshot.spendEur == null
-                  ? "—"
-                  : formatEur(marketingSnapshot.spendEur)
-              }
-            />
-            <SimpleStat
-              label="Revenu"
-              value={
-                marketingSnapshot.revenueEur == null
-                  ? "—"
-                  : formatEur(marketingSnapshot.revenueEur)
-              }
-            />
-            <SimpleStat
-              label="ROAS"
-              value={marketingKpis?.roas == null ? "—" : marketingKpis.roas.toFixed(2) + "×"}
-            />
-            <SimpleStat
-              label="Sessions GA4"
-              value={
-                marketingSnapshot.sessions == null
-                  ? "—"
-                  : Math.round(marketingSnapshot.sessions).toLocaleString("fr-FR")
-              }
-            />
+            <SimpleStat label="Dépenses Ads" value={summary.marketing.spendEur == null ? "—" : formatEur(summary.marketing.spendEur)} />
+            <SimpleStat label="Revenu" value={summary.marketing.revenueEur == null ? "—" : formatEur(summary.marketing.revenueEur)} />
+            <SimpleStat label="ROAS" value={summary.marketing.roas == null ? "—" : summary.marketing.roas.toFixed(2) + "×"} />
+            <SimpleStat label="Sessions GA4" value={summary.marketing.sessions == null ? "—" : Math.round(summary.marketing.sessions).toLocaleString("fr-FR")} />
           </div>
         </section>
       )}
@@ -333,8 +219,8 @@ export default async function DashboardHomePage() {
           Estimations liées aux automatisations actives — elles ne sont pas présentées comme des gains réalisés.
         </p>
         <div className="mt-4 grid gap-3 sm:grid-cols-2">
-          <SimpleStat label="Temps potentiel / mois" value={formatHours(estimatedHours)} />
-          <SimpleStat label="Valeur potentielle / mois" value={formatEur(estimatedValue)} />
+          <SimpleStat label="Temps potentiel / mois" value={loadState === "loading" ? "…" : formatHours(summary?.estimatedHoursPerMonth)} />
+          <SimpleStat label="Valeur potentielle / mois" value={loadState === "loading" ? "…" : formatEur(summary?.estimatedValuePerMonth)} />
         </div>
       </section>
 
@@ -350,10 +236,7 @@ export default async function DashboardHomePage() {
 
 function Metric({ label, value, href }: { label: string; value: string; href: string }) {
   return (
-    <Link
-      href={href}
-      className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-accent/40"
-    >
+    <Link href={href} className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-accent/40">
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-1 text-xl font-semibold">{value}</p>
     </Link>
@@ -369,20 +252,9 @@ function SimpleStat({ label, value }: { label: string; value: string }) {
   );
 }
 
-function QuickLink({
-  href,
-  title,
-  description,
-}: {
-  href: string;
-  title: string;
-  description: string;
-}) {
+function QuickLink({ href, title, description }: { href: string; title: string; description: string }) {
   return (
-    <Link
-      href={href}
-      className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-accent/40"
-    >
+    <Link href={href} className="rounded-2xl border border-border bg-card p-4 transition-colors hover:border-accent/40">
       <p className="text-sm font-semibold">{title}</p>
       <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
     </Link>
