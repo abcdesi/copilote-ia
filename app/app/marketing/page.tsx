@@ -137,7 +137,6 @@ export default async function MarketingPage({
         },
         analyticsAuthorized: false,
         adsAuthorized: false,
-        adsServerConfigured: Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()),
       };
     }),
   ]);
@@ -159,9 +158,7 @@ export default async function MarketingPage({
 
   const hasConfiguredSource =
     (googleState.analyticsAuthorized && Boolean(googleState.settings.ga4PropertyId)) ||
-    (googleState.adsAuthorized &&
-      googleState.adsServerConfigured &&
-      Boolean(googleState.settings.googleAdsCustomerId));
+    (googleState.adsAuthorized && Boolean(googleState.settings.googleAdsCustomerId));
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
@@ -227,16 +224,12 @@ export default async function MarketingPage({
             <ConnectionState
               title="Google Ads"
               connected={
-                googleState.adsAuthorized &&
-                googleState.adsServerConfigured &&
-                Boolean(googleState.settings.googleAdsCustomerId)
+                googleState.adsAuthorized && Boolean(googleState.settings.googleAdsCustomerId)
               }
               detail={
-                !googleState.adsServerConfigured
-                  ? "Developer token serveur manquant"
-                  : googleState.settings.googleAdsCustomerId
-                    ? `Client ${googleState.settings.googleAdsCustomerId}`
-                    : "Autorisation reçue + identifiant client à renseigner"
+                googleState.settings.googleAdsCustomerId
+                  ? `Client ${googleState.settings.googleAdsCustomerId}`
+                  : "Autorisation reçue + identifiant client à renseigner"
               }
             />
           </div>
@@ -474,9 +467,7 @@ export default async function MarketingPage({
               tool === "Google Analytics 4"
                 ? googleState.analyticsAuthorized && Boolean(googleState.settings.ga4PropertyId)
                 : tool === "Google Ads"
-                  ? googleState.adsAuthorized &&
-                    googleState.adsServerConfigured &&
-                    Boolean(googleState.settings.googleAdsCustomerId)
+                  ? googleState.adsAuthorized && Boolean(googleState.settings.googleAdsCustomerId)
                   : false;
             return (
               <div key={tool} className="rounded-xl border border-border bg-background p-4">
