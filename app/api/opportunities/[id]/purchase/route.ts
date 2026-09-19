@@ -11,7 +11,8 @@ import {
   acceptsCurrentAutomationPurchaseTerms,
 } from "@/lib/billing/purchase-terms";
 import {
-  AUTOMATION_PURCHASE_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES,
+  AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES,
   evaluateAutomationPurchaseQuantity,
   getAutomationPurchaseMonthWindow,
 } from "@/lib/billing/automation-purchase-policy";
@@ -92,54 +93,65 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           immediateFulfillmentRequestedAt: termsAcceptedAt,
         };
 
-        const requiresNewMonthlySlot = !existing || existing.status === "void";
-        if (requiresNewMonthlySlot) {
+        const requiresQuantitySlot =
+          !existing || existing.status === "void" || existing.status === "payment_failed";
+        const requiresFinancialCommitment = !existing || existing.status === "void";
+        if (requiresQuantitySlot || requiresFinancialCommitment) {
           const company = await tx.company.findUnique({
             where: { id: companyId },
             select: { automationPurchaseMonthlyCapEur: true },
           });
           const monthlyCapEur = Math.max(0, company?.automationPurchaseMonthlyCapEur ?? 0);
           const { start: monthStart, nextStart } = getAutomationPurchaseMonthWindow();
-          const monthlyWhere = {
+          const periodFilter = {
             companyId,
-            status: { in: [...AUTOMATION_PURCHASE_COMMITTED_STATUSES] },
             OR: [
               { createdAt: { gte: monthStart } },
               { termsAcceptedAt: { gte: monthStart } },
             ],
           };
 
-          const [committed, committedCount] = await Promise.all([
-            tx.purchase.aggregate({
-              where: monthlyWhere,
-              _sum: { amountEur: true },
-            }),
-            tx.purchase.count({ where: monthlyWhere }),
-          ]);
-          const committedEur = committed._sum.amountEur ?? 0;
-          const quantity = evaluateAutomationPurchaseQuantity({
-            plan: entitlements.plan,
-            committedCount,
-          });
+          if (requiresQuantitySlot) {
+            const committedCount = await tx.purchase.count({
+              where: {
+                ...periodFilter,
+                status: { in: [...AUTOMATION_PURCHASE_QUANTITY_COMMITTED_STATUSES] },
+              },
+            });
+            const quantity = evaluateAutomationPurchaseQuantity({
+              plan: entitlements.plan,
+              committedCount,
+            });
 
-          if (quantity.reached) {
-            return {
-              blocked: true as const,
-              blockKind: "quantity" as const,
-              monthlyAutomationLimit: quantity.limit,
-              committedAutomationCount: quantity.committedCount,
-              nextAvailableAt: nextStart.toISOString(),
-            };
+            if (quantity.reached) {
+              return {
+                blocked: true as const,
+                blockKind: "quantity" as const,
+                monthlyAutomationLimit: quantity.limit,
+                committedAutomationCount: quantity.committedCount,
+                nextAvailableAt: nextStart.toISOString(),
+              };
+            }
           }
 
-          if (committedEur + template.priceEur > monthlyCapEur) {
-            return {
-              blocked: true as const,
-              blockKind: "amount" as const,
-              monthlyCapEur,
-              committedEur,
-              requestedEur: template.priceEur,
-            };
+          if (requiresFinancialCommitment) {
+            const committed = await tx.purchase.aggregate({
+              where: {
+                ...periodFilter,
+                status: { in: [...AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES] },
+              },
+              _sum: { amountEur: true },
+            });
+            const committedEur = committed._sum.amountEur ?? 0;
+            if (committedEur + template.priceEur > monthlyCapEur) {
+              return {
+                blocked: true as const,
+                blockKind: "amount" as const,
+                monthlyCapEur,
+                committedEur,
+                requestedEur: template.priceEur,
+              };
+            }
           }
         }
 
