@@ -1,10 +1,84 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 import { prisma } from "../lib/db/client";
 import { observeProspectMeetings, observeProspectReplies, recordTrustedProviderOutcome } from "../lib/automations/provider-outcomes";
 import { findCalendarMeetingAfter } from "../lib/integrations/observe";
+import { verifyHubSpotWebhookSignatureV3 } from "../lib/integrations/hubspot";
+import { verifyStripeWebhookSignature } from "../lib/integrations/stripe-business";
+import { findAttributedContactEvent } from "../lib/integrations/provider-attribution";
+import { buildProviderOutcomeRelayWorkflow } from "../lib/n8n/provider-outcome-workflows";
 
 async function main() {
+  const previousHubSpotSecret = process.env.HUBSPOT_CLIENT_SECRET;
+  const previousN8nSecret = process.env.N8N_CALLBACK_SECRET;
+  const previousAppUrl = process.env.APP_URL;
+  process.env.HUBSPOT_CLIENT_SECRET = "hubspot-test-secret";
+  process.env.N8N_CALLBACK_SECRET = "n8n-test-secret";
+  process.env.APP_URL = "https://pilotzia.example";
+
+  const hubspotBody = JSON.stringify([{ eventId: 42, portalId: 7 }]);
+  const hubspotTimestamp = String(Date.now());
+  const hubspotUrl = "https://pilotzia.example/api/integrations/hubspot/webhook";
+  const hubspotSignature = createHmac("sha256", process.env.HUBSPOT_CLIENT_SECRET)
+    .update(`POST${hubspotUrl}${hubspotBody}${hubspotTimestamp}`, "utf8")
+    .digest("base64");
+  assert.equal(
+    verifyHubSpotWebhookSignatureV3({
+      method: "POST",
+      url: hubspotUrl,
+      rawBody: hubspotBody,
+      timestamp: hubspotTimestamp,
+      signature: hubspotSignature,
+    }),
+    true,
+    "Une signature HubSpot v3 valide doit être acceptée."
+  );
+  assert.equal(
+    verifyHubSpotWebhookSignatureV3({
+      method: "POST",
+      url: hubspotUrl,
+      rawBody: hubspotBody + "x",
+      timestamp: hubspotTimestamp,
+      signature: hubspotSignature,
+    }),
+    false,
+    "Une modification du payload HubSpot doit invalider la signature."
+  );
+
+  const stripeBody = JSON.stringify({ id: "evt_test", type: "invoice.paid" });
+  const stripeTimestamp = String(Math.floor(Date.now() / 1000));
+  const stripeSecret = "whsec_test_provider_outcomes";
+  const stripeSignature = createHmac("sha256", stripeSecret)
+    .update(`${stripeTimestamp}.${stripeBody}`)
+    .digest("hex");
+  assert.equal(
+    verifyStripeWebhookSignature({
+      rawBody: stripeBody,
+      signatureHeader: `t=${stripeTimestamp},v1=${stripeSignature}`,
+      secret: stripeSecret,
+    }),
+    true,
+    "Une signature Stripe valide doit être acceptée."
+  );
+  assert.equal(
+    verifyStripeWebhookSignature({
+      rawBody: stripeBody + "x",
+      signatureHeader: `t=${stripeTimestamp},v1=${stripeSignature}`,
+      secret: stripeSecret,
+    }),
+    false,
+    "Une modification du payload Stripe doit invalider la signature."
+  );
+
+  for (const provider of ["hubspot", "stripe"] as const) {
+    const workflow = buildProviderOutcomeRelayWorkflow(provider);
+    const serialized = JSON.stringify(workflow);
+    assert.ok(serialized.includes(`pilotzia-${provider}-outcomes-v1`));
+    assert.ok(serialized.includes("PILOTZIA_PROVIDER_OUTCOME_RELAY_V1"));
+    assert.ok(serialized.includes("/api/automation-engine/outcomes/provider"));
+    assert.ok(serialized.includes("n8n-test-secret"), "Le workflow doit authentifier les deux sens du relais.");
+  }
+
   const suffix = randomUUID();
   const user = await prisma.user.create({
     data: {
@@ -97,6 +171,25 @@ async function main() {
         createdAt: sentAt,
       },
     });
+
+    const attributed = await findAttributedContactEvent({
+      companyId: company.id,
+      prospectEmail: prospect.email.toUpperCase(),
+      templateId: "relance-prospects",
+      observedAt: new Date(sentAt.getTime() + 1_000),
+    });
+    assert.equal(attributed?.prospect.id, prospect.id);
+    assert.equal(attributed?.contactEvent.id, sentEvent.id);
+    assert.equal(
+      await findAttributedContactEvent({
+        companyId: company.id,
+        prospectEmail: prospect.email,
+        templateId: "relance-factures",
+        observedAt: new Date(sentAt.getTime() + 1_000),
+      }),
+      null,
+      "Une preuve fournisseur ne doit pas être attribuée à un autre type d'automatisation."
+    );
 
     let searches = 0;
     const observedAt = new Date(sentAt.getTime() + 30_000);
@@ -350,6 +443,12 @@ async function main() {
     await prisma.company.delete({ where: { id: company.id } }).catch(() => undefined);
     await prisma.user.delete({ where: { id: user.id } }).catch(() => undefined);
     await prisma.$disconnect();
+    if (previousHubSpotSecret === undefined) delete process.env.HUBSPOT_CLIENT_SECRET;
+    else process.env.HUBSPOT_CLIENT_SECRET = previousHubSpotSecret;
+    if (previousN8nSecret === undefined) delete process.env.N8N_CALLBACK_SECRET;
+    else process.env.N8N_CALLBACK_SECRET = previousN8nSecret;
+    if (previousAppUrl === undefined) delete process.env.APP_URL;
+    else process.env.APP_URL = previousAppUrl;
   }
 }
 
