@@ -145,16 +145,16 @@ function testLegacyCompanyAccessCompatibility() {
 function testCopilotTopBarHandoff() {
   const source = readFileSync("components/dashboard/CopilotBar.tsx", "utf-8");
   assert.ok(
-    !source.includes('fetch("/api/chat"'),
-    "La barre haute ne doit jamais appeler le chat ni injecter une réponse longue dans la page courante."
+    source.includes('fetch("/api/chat"'),
+    "La barre haute doit pouvoir afficher un aperçu court de la réponse."
   );
   assert.ok(
-    source.includes("pilotzia:copilot-draft"),
-    "La barre haute doit transmettre le prompt au Copilote complet."
+    source.includes("line-clamp-2") && source.includes("compactPreview"),
+    "L'aperçu du Copilote doit rester limité à une ou deux lignes."
   );
   assert.ok(
-    source.includes("Continuer à lire dans Copilote"),
-    "La barre haute doit conserver le lien explicite vers le Copilote."
+    source.includes("<span>{reply}</span>") && source.includes("Continuer à lire dans Copilote"),
+    "Le lien vers le Copilote doit apparaître juste après le texte de réponse."
   );
 }
 
