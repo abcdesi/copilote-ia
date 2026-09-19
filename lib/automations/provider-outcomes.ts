@@ -318,3 +318,123 @@ export async function observeProspectMeetings(input: {
 
   return { checked, meetingsObserved, errors };
 }
+
+
+export type TrustedProviderOutcomeKind = "deal_won" | "payment_received";
+export type TrustedProviderName = "hubspot" | "stripe";
+
+export async function recordTrustedProviderOutcome(input: {
+  companyId: string;
+  automationId: string;
+  prospectId?: string | null;
+  provider: TrustedProviderName;
+  providerEventId: string;
+  kind: TrustedProviderOutcomeKind;
+  observedAt: Date;
+  amountEur?: number | null;
+  externalEntityRef?: string | null;
+  note?: string | null;
+}) {
+  return prisma.$transaction(async (tx) => {
+    await tx.$queryRaw`SELECT id FROM "Automation" WHERE id = ${input.automationId} FOR UPDATE`;
+
+    const automation = await tx.automation.findFirst({
+      where: { id: input.automationId, companyId: input.companyId },
+      select: { id: true, messageVersion: true },
+    });
+    if (!automation) return { ok: false as const, reason: "automation_not_found" as const };
+
+    let prospect: { id: string; name: string; email: string } | null = null;
+    if (input.prospectId) {
+      prospect = await tx.prospect.findFirst({
+        where: { id: input.prospectId, companyId: input.companyId },
+        select: { id: true, name: true, email: true },
+      });
+      if (!prospect) return { ok: false as const, reason: "prospect_not_found" as const };
+    }
+
+    const evidence = {
+      provider: input.provider,
+      providerEventId: input.providerEventId,
+      externalEntityRef: input.externalEntityRef ?? null,
+      prospectId: prospect?.id ?? null,
+      observedAt: input.observedAt.toISOString(),
+      ingestion: "authenticated_n8n_callback",
+    };
+    const evidenceJson = JSON.stringify(evidence);
+
+    const existing = await tx.automationOutcome.findFirst({
+      where: {
+        automationId: automation.id,
+        source: "provider_observed",
+        evidenceJson,
+      },
+      select: { id: true },
+    });
+    if (existing) {
+      return { ok: true as const, created: false as const, outcomeId: existing.id };
+    }
+
+    const value = input.kind === "payment_received" ? input.amountEur ?? 0 : 1;
+    const unit = input.kind === "payment_received" ? "eur" : "count";
+    const providerName = input.provider === "hubspot" ? "HubSpot" : "Stripe";
+
+    const outcome = await tx.automationOutcome.create({
+      data: {
+        automationId: automation.id,
+        kind: input.kind,
+        value,
+        unit,
+        source: "provider_observed",
+        confidence: input.provider === "stripe" ? 0.99 : 0.98,
+        note: input.note ?? null,
+        evidenceJson,
+        actorName: providerName,
+        actorRole: "provider",
+        observedAt: input.observedAt,
+      },
+    });
+
+    if (prospect && input.kind === "deal_won") {
+      await tx.prospect.update({
+        where: { id: prospect.id },
+        data: { lastOutcome: "deal_won" },
+      });
+      await tx.automationContactEvent.create({
+        data: {
+          automationId: automation.id,
+          prospectId: prospect.id,
+          kind: "deal_won_observed",
+          status: "observed",
+          recipientName: prospect.name,
+          recipientEmail: prospect.email,
+          provider: input.provider,
+          providerMessageId: input.providerEventId,
+          messageVersion: automation.messageVersion,
+          evidenceJson,
+        },
+      });
+    }
+
+    await tx.event.create({
+      data: {
+        companyId: input.companyId,
+        type: "AUTOMATION_PROVIDER_OUTCOME_OBSERVED",
+        metadata: JSON.stringify({
+          automationId: automation.id,
+          prospectId: prospect?.id ?? null,
+          kind: input.kind,
+          provider: input.provider,
+          providerEventId: input.providerEventId,
+          externalEntityRef: input.externalEntityRef ?? null,
+          value,
+          unit,
+          observedAt: input.observedAt.toISOString(),
+          ingestion: "authenticated_n8n_callback",
+        }),
+      },
+    });
+
+    return { ok: true as const, created: true as const, outcomeId: outcome.id };
+  });
+}
