@@ -10,6 +10,8 @@ import {
   googleRedirectUri,
   parseStoredGoogleScopes,
 } from "@/lib/integrations/google";
+import { getHubSpotConfigurationStatus, hubspotRedirectUri, hubspotWebhookUrl } from "@/lib/integrations/hubspot";
+import { stripeBusinessWebhookUrl } from "@/lib/integrations/stripe-business";
 import { prisma } from "@/lib/db/client";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
@@ -116,10 +118,35 @@ const GOOGLE_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" |
   },
 };
 
+const HUBSPOT_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string }> = {
+  connected: { tone: "success", title: "HubSpot est connecté", body: "Pilotzia peut lire les contacts et les deals pour observer les opportunités gagnées reliées à une relance." },
+  disconnected: { tone: "accent", title: "HubSpot est déconnecté", body: "Les jetons HubSpot locaux ont été supprimés et ne seront plus utilisés." },
+  cancelled: { tone: "accent", title: "Connexion HubSpot annulée", body: "Aucune nouvelle autorisation n'a été enregistrée." },
+  "permission-denied": { tone: "danger", title: "Permission Pilotzia insuffisante", body: "Seul un propriétaire ou un administrateur peut gérer HubSpot." },
+  "config-error": { tone: "danger", title: "Configuration HubSpot incomplète", body: "Les identifiants OAuth ou le chiffrement serveur ne sont pas prêts." },
+  "secure-storage-error": { tone: "danger", title: "Stockage sécurisé indisponible", body: "Pilotzia a refusé de conserver les jetons HubSpot sans chiffrement valide." },
+  "token-error": { tone: "danger", title: "Autorisation HubSpot non finalisée", body: "L'échange du code OAuth avec HubSpot a échoué." },
+  "state-error": { tone: "danger", title: "Session OAuth HubSpot invalide", body: "Recommencez la connexion depuis cette page." },
+  "account-error": { tone: "danger", title: "Compte HubSpot non identifié", body: "L'autorisation a réussi mais le portail HubSpot n'a pas pu être identifié." },
+  "provider-error": { tone: "danger", title: "HubSpot a refusé la connexion", body: "Le fournisseur OAuth a renvoyé une erreur." },
+  "invalid-response": { tone: "danger", title: "Réponse HubSpot incomplète", body: "Aucun code OAuth exploitable n'a été reçu." },
+  "start-error": { tone: "danger", title: "Impossible de démarrer HubSpot", body: "Pilotzia a bloqué la connexion avant toute autorisation." },
+  "callback-error": { tone: "danger", title: "Connexion HubSpot non finalisée", body: "Une erreur inattendue est survenue pendant le retour OAuth." },
+  "disconnect-error": { tone: "danger", title: "Déconnexion HubSpot incomplète", body: "Réessayez la déconnexion ou contactez l'assistance." },
+};
+
+const STRIPE_BUSINESS_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string }> = {
+  connected: { tone: "success", title: "Stripe métier est connecté", body: "Les factures payées signées peuvent maintenant fermer la boucle de preuve des relances de factures." },
+  disconnected: { tone: "accent", title: "Stripe métier est déconnecté", body: "Pilotzia n'accepte plus les événements de ce webhook." },
+  "permission-denied": { tone: "danger", title: "Permission Pilotzia insuffisante", body: "Seul un propriétaire ou un administrateur peut gérer Stripe métier." },
+  "config-error": { tone: "danger", title: "Secret Stripe métier invalide", body: "Utilisez le secret de signature whsec_ du webhook dédié aux factures payées." },
+  "disconnect-error": { tone: "danger", title: "Déconnexion Stripe métier incomplète", body: "Réessayez ou contactez l'assistance." },
+};
+
 export default async function ToolsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string }>;
+  searchParams: Promise<{ google?: string; hubspot?: string; stripeBusiness?: string }>;
 }) {
   const access = await getDashboardShellAccess();
   const companyTools = await safeRead(
@@ -135,8 +162,12 @@ export default async function ToolsPage({
   const company = { ...access.company, tools: companyTools };
   const params = await searchParams;
   const googleMessage = params.google ? GOOGLE_MESSAGES[params.google] : null;
+  const hubspotMessage = params.hubspot ? HUBSPOT_MESSAGES[params.hubspot] : null;
+  const stripeBusinessMessage = params.stripeBusiness ? STRIPE_BUSINESS_MESSAGES[params.stripeBusiness] : null;
   const googleConfiguration = getGoogleConfigurationStatus();
+  const hubspotConfiguration = getHubSpotConfigurationStatus();
   const canManageGoogle = hasCompanyPermission(access.role, "manage_integrations");
+  const canManageIntegrations = hasCompanyPermission(access.role, "manage_integrations");
   const canSyncGoogle = hasCompanyPermission(access.role, "sync_integrations");
 
   const connections = await safeRead(
@@ -166,6 +197,13 @@ export default async function ToolsPage({
     workspaceRequiredScopes.every((scope) => googleScopes.includes(scope));
   const googleNeedsReauth = google?.status === "needs_reauth";
   const googleRedirect = googleConfiguration.configured ? googleRedirectUri() : null;
+  const hubspot = connections.find((connection) => connection.provider === "hubspot");
+  const hubspotConnected = hubspot?.status === "connected";
+  const hubspotNeedsReauth = hubspot?.status === "needs_reauth";
+  const hubspotRedirect = hubspotConfiguration.configured ? hubspotRedirectUri() : null;
+  const stripeBusiness = connections.find((connection) => connection.provider === "stripe_business");
+  const stripeBusinessConnected = stripeBusiness?.status === "connected";
+  const stripeWebhook = stripeBusinessWebhookUrl(company.id);
   const currentNames = new Set(company.tools.map((t) => t.name));
   const suggestions = KNOWN_TOOLS.filter((t) => !currentNames.has(t));
 
