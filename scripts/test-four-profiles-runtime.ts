@@ -332,60 +332,6 @@ async function ensureProfile(profile: Profile) {
     });
   }
 
-  if (profile.key === "finance-manager") {
-    const membership = await prisma.companyMembership.findUniqueOrThrow({
-      where: {
-        companyId_userId: {
-          companyId: company.id,
-          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
-        },
-      },
-    });
-    assert.equal(membership.role, "admin", "[finance-manager] runtime role should be admin");
-
-    const finance = await request("/app/finance");
-    const financeHtml = await finance.text();
-    assert.match(financeHtml, /Intelligence financière/i, "[finance-manager] finance cockpit should render");
-    assert.match(
-      financeHtml,
-      /Importer un bilan ou un compte de résultat/i,
-      "[finance-manager] Scale financial audit upload should be available"
-    );
-    assert.ok(
-      !financeHtml.includes("Voir Scale à 399 €/mois"),
-      "[finance-manager] active Scale profile must not see the financial audit upsell"
-    );
-  }
-
-  if (profile.key === "sales-manager") {
-    const membership = await prisma.companyMembership.findUniqueOrThrow({
-      where: {
-        companyId_userId: {
-          companyId: company.id,
-          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
-        },
-      },
-    });
-    assert.equal(membership.role, "operator", "[sales-manager] runtime role should be operator");
-
-    const actions = await request("/app/actions");
-    const actionsHtml = await actions.text();
-    assert.match(actionsHtml, /Relancer un prospect silencieux/i, "[sales-manager] low-risk commercial action should render");
-    assert.match(actionsHtml, /Modifier plusieurs étapes du pipeline/i, "[sales-manager] medium-risk commercial action should render");
-    assert.match(actionsHtml, /Confirmer et exécuter/i, "[sales-manager] operator should be able to execute low risk");
-    assert.match(
-      actionsHtml,
-      /Votre rôle ne peut pas approuver ce niveau de risque/i,
-      "[sales-manager] medium-risk action should require escalation"
-    );
-
-    const opportunities = await request("/app/opportunities");
-    assert.match(await opportunities.text(), /Opportunités/i, "[sales-manager] opportunities cockpit should render");
-
-    const automations = await request("/app/automations");
-    assert.match(await automations.text(), /Automatisations/i, "[sales-manager] automations cockpit should render");
-  }
-
   if (profile.key === "marketing") {
     await prisma.event.deleteMany({ where: { companyId: company.id, type: "MARKETING_KPI_SNAPSHOT" } });
     await prisma.event.create({
@@ -534,6 +480,60 @@ async function testRuntimeProfile(profile: Profile) {
 
     const team = await request("/app/team");
     assert.match(await team.text(), /Membres actifs/i, "[operations-manager] team governance should render");
+  }
+
+  if (profile.key === "finance-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "admin", "[finance-manager] runtime role should be admin");
+
+    const finance = await request("/app/finance");
+    const financeHtml = await finance.text();
+    assert.match(financeHtml, /Intelligence financière/i, "[finance-manager] finance cockpit should render");
+    assert.match(
+      financeHtml,
+      /Importer un bilan ou un compte de résultat/i,
+      "[finance-manager] Scale financial audit upload should be available"
+    );
+    assert.ok(
+      !financeHtml.includes("Voir Scale à 399 €/mois"),
+      "[finance-manager] active Scale profile must not see the financial audit upsell"
+    );
+  }
+
+  if (profile.key === "sales-manager") {
+    const membership = await prisma.companyMembership.findUniqueOrThrow({
+      where: {
+        companyId_userId: {
+          companyId: company.id,
+          userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id,
+        },
+      },
+    });
+    assert.equal(membership.role, "operator", "[sales-manager] runtime role should be operator");
+
+    const actions = await request("/app/actions");
+    const actionsHtml = await actions.text();
+    assert.match(actionsHtml, /Relancer un prospect silencieux/i, "[sales-manager] low-risk commercial action should render");
+    assert.match(actionsHtml, /Modifier plusieurs étapes du pipeline/i, "[sales-manager] medium-risk commercial action should render");
+    assert.match(actionsHtml, /Confirmer et exécuter/i, "[sales-manager] operator should be able to execute low risk");
+    assert.match(
+      actionsHtml,
+      /Votre rôle ne peut pas approuver ce niveau de risque/i,
+      "[sales-manager] medium-risk action should require escalation"
+    );
+
+    const opportunities = await request("/app/opportunities");
+    assert.match(await opportunities.text(), /Opportunités/i, "[sales-manager] opportunities cockpit should render");
+
+    const automations = await request("/app/automations");
+    assert.match(await automations.text(), /Automatisations/i, "[sales-manager] automations cockpit should render");
   }
 
   if (profile.key === "marketing") {
