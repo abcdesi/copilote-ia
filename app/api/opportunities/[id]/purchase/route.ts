@@ -95,7 +95,8 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
         const requiresQuantitySlot =
           !existing || existing.status === "void" || existing.status === "payment_failed";
-        const requiresFinancialCommitment = !existing || existing.status === "void";
+        const requiresFinancialCommitment =
+          !existing || existing.status === "void" || existing.status === "payment_failed";
         if (requiresQuantitySlot || requiresFinancialCommitment) {
           const company = await tx.company.findUnique({
             where: { id: companyId },
@@ -138,6 +139,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             const committed = await tx.purchase.aggregate({
               where: {
                 ...periodFilter,
+                ...(existing ? { id: { not: existing.id } } : {}),
                 status: { in: [...AUTOMATION_PURCHASE_FINANCIAL_COMMITTED_STATUSES] },
               },
               _sum: { amountEur: true },
