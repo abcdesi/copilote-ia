@@ -34,10 +34,50 @@ export default async function ResultsPage() {
         where: { companyId: company.id },
         select: {
           id: true,
+          name: true,
           status: true,
           health: true,
+          installedAt: true,
           estimatedHoursPerMonth: true,
           estimatedValueEur: true,
+          opportunity: {
+            select: {
+              id: true,
+              title: true,
+              createdAt: true,
+              purchases: {
+                orderBy: { createdAt: "desc" },
+                take: 1,
+                select: {
+                  status: true,
+                  paidAt: true,
+                  deliveredAt: true,
+                  firstUsedAt: true,
+                },
+              },
+            },
+          },
+          runs: {
+            orderBy: { startedAt: "desc" },
+            take: 1,
+            select: {
+              status: true,
+              itemsProcessed: true,
+              finishedAt: true,
+              startedAt: true,
+            },
+          },
+          outcomes: {
+            orderBy: { observedAt: "desc" },
+            take: 1,
+            select: {
+              kind: true,
+              value: true,
+              unit: true,
+              source: true,
+              observedAt: true,
+            },
+          },
         },
       })
       .catch((error) => {
@@ -207,6 +247,88 @@ export default async function ResultsPage() {
 
       <Card>
         <CardHeader>
+          <CardTitle>Chaîne de preuve opérationnelle</CardTitle>
+          <CardDescription>
+            Pour chaque automatisation, Pilotzia montre où s'arrête la preuve : détection, décision, exécution puis résultat métier.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {automations.length ? (
+            automations.slice(0, 8).map((automation) => {
+              const purchase = automation.opportunity?.purchases[0] ?? null;
+              const latestRun = automation.runs[0] ?? null;
+              const latestOutcome = automation.outcomes[0] ?? null;
+              const decisionBody = purchase?.firstUsedAt
+                ? `Livrée et utilisée depuis le ${formatProofDate(purchase.firstUsedAt)}`
+                : purchase?.deliveredAt
+                  ? `Livrée le ${formatProofDate(purchase.deliveredAt)} · premier usage à confirmer`
+                  : purchase?.paidAt
+                    ? `Payée le ${formatProofDate(purchase.paidAt)} · livraison à confirmer`
+                    : purchase
+                      ? `Achat ${purchase.status} · aucune livraison prouvée`
+                      : "Installation historique ou sans achat numérique lié";
+
+              return (
+                <div key={automation.id} className="rounded-2xl border border-border bg-card p-5">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div>
+                      <p className="font-semibold">{automation.name}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">
+                        La valeur n'est considérée comme obtenue que lorsqu'un résultat observé ou déclaré ferme la boucle.
+                      </p>
+                    </div>
+                    <Badge tone={latestOutcome ? "success" : latestRun ? "accent" : "neutral"}>
+                      {latestOutcome ? "Résultat enregistré" : latestRun ? "Action exécutée" : "À activer"}
+                    </Badge>
+                  </div>
+
+                  <div className="mt-4 grid gap-3 md:grid-cols-4">
+                    <ProofStep
+                      title="1 · Détecter"
+                      body={
+                        automation.opportunity
+                          ? `${automation.opportunity.title} · ${formatProofDate(automation.opportunity.createdAt)}`
+                          : `Automatisation installée le ${formatProofDate(automation.installedAt)}`
+                      }
+                      complete={Boolean(automation.opportunity)}
+                    />
+                    <ProofStep
+                      title="2 · Décider & livrer"
+                      body={decisionBody}
+                      complete={Boolean(purchase?.deliveredAt || purchase?.firstUsedAt)}
+                    />
+                    <ProofStep
+                      title="3 · Agir"
+                      body={
+                        latestRun
+                          ? `${runStatusLabel(latestRun.status)} · ${latestRun.itemsProcessed} élément${latestRun.itemsProcessed > 1 ? "s" : ""} traité${latestRun.itemsProcessed > 1 ? "s" : ""} · ${formatProofDate(latestRun.finishedAt ?? latestRun.startedAt)}`
+                          : "Aucune exécution enregistrée"
+                      }
+                      complete={Boolean(latestRun && ["success", "partial"].includes(latestRun.status))}
+                    />
+                    <ProofStep
+                      title="4 · Mesurer"
+                      body={
+                        latestOutcome
+                          ? `${outcomeLabel(latestOutcome.kind, latestOutcome.value, latestOutcome.unit)} · ${outcomeSourceLabel(latestOutcome.source)} · ${formatProofDate(latestOutcome.observedAt)}`
+                          : "Résultat métier à mesurer — l'exécution technique ne suffit pas"
+                      }
+                      complete={Boolean(latestOutcome)}
+                    />
+                  </div>
+                </div>
+              );
+            })
+          ) : (
+            <div className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">
+              Installez une automatisation pour commencer à construire une chaîne de preuve de bout en bout.
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
           <CardTitle>Automation Review</CardTitle>
         </CardHeader>
         <CardContent>
@@ -267,6 +389,30 @@ function outcomeLabel(kind: string, value: number, unit: string) {
   if (kind === "deal_won") return "Opportunité gagnée enregistrée";
   if (kind === "deal_lost") return "Opportunité perdue enregistrée";
   return `${value} ${unit}`;
+}
+
+function formatProofDate(value: Date) {
+  return new Intl.DateTimeFormat("fr-FR", { dateStyle: "short" }).format(value);
+}
+
+function runStatusLabel(status: string) {
+  if (status === "success") return "Exécution réussie";
+  if (status === "partial") return "Exécution partielle";
+  if (status === "failed") return "Exécution en échec";
+  if (status === "running") return "Exécution en cours";
+  return status;
+}
+
+function ProofStep({ title, body, complete }: { title: string; body: string; complete: boolean }) {
+  return (
+    <div className="rounded-xl border border-border bg-muted/20 p-4">
+      <div className="flex items-center gap-2">
+        {complete ? <CheckCircle2 size={14} className="text-success" /> : <Clock3 size={14} className="text-muted-foreground" />}
+        <p className="text-xs font-semibold">{title}</p>
+      </div>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">{body}</p>
+    </div>
+  );
 }
 
 function Metric({ icon: Icon, label, value }: { icon: React.ElementType; label: string; value: string }) {
