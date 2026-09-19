@@ -10,6 +10,7 @@ export interface PlanDefinition {
   monthlyCredits: number;
   variableCostCapEur: number;
   includedSeats: number;
+  monthlyAutomationPurchaseLimit: number | null;
   features: string[];
 }
 
@@ -31,6 +32,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     monthlyCredits: envAtMost("PILOTZIA_TRIAL_CREDITS", 100),
     variableCostCapEur: envAtMost("PILOTZIA_TRIAL_COST_CAP_EUR", 3),
     includedSeats: 1,
+    monthlyAutomationPurchaseLimit: 0,
     features: [
       "Diagnostic public gratuit",
       "14 jours d'essai après le premier usage IA réel",
@@ -47,12 +49,14 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     monthlyCredits: envAtMost("PILOTZIA_CORE_MONTHLY_CREDITS", 700),
     variableCostCapEur: envAtMost("PILOTZIA_CORE_COST_CAP_EUR", 7),
     includedSeats: 1,
+    monthlyAutomationPurchaseLimit: 2,
     features: [
       "Business Graph vivant",
       "Rafraîchissement hebdomadaire automatique du contexte",
       "Copilote de direction et Morning Brief",
       "Recommandations continues avec niveau de preuve",
       "Historique du contexte et des décisions",
+      "Jusqu'à 2 nouvelles automatisations par mois, achetées à l'unité",
       "1 utilisateur",
     ],
   },
@@ -65,9 +69,10 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     monthlyCredits: envAtMost("PILOTZIA_ACTION_MONTHLY_CREDITS", 2000),
     variableCostCapEur: envAtMost("PILOTZIA_ACTION_COST_CAP_EUR", 20),
     includedSeats: 3,
+    monthlyAutomationPurchaseLimit: null,
     features: [
       "Tout Core",
-      "Accès au moteur d'exécution et aux automatisations achetées à l'unité",
+      "Automatisations achetées à l'unité sans la limite Core de 2 nouvelles / mois",
       "Confirmations pour les actions sensibles",
       "Monitoring, incidents et suivi des résultats",
       "3 utilisateurs avec rôles et traçabilité",
@@ -82,6 +87,7 @@ export const PLAN_DEFINITIONS: Record<PlanKey, PlanDefinition> = {
     monthlyCredits: envAtMost("PILOTZIA_SCALE_MONTHLY_CREDITS", 5000),
     variableCostCapEur: envAtMost("PILOTZIA_SCALE_COST_CAP_EUR", 50),
     includedSeats: 10,
+    monthlyAutomationPurchaseLimit: null,
     features: [
       "Tout Action",
       "Audit avancé et intelligence financière",
