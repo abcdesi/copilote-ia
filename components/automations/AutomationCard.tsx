@@ -21,8 +21,17 @@ const STATUS_TONE: Record<string, "success" | "warning" | "danger" | "neutral"> 
   inactive: "neutral",
 };
 
+function parseToolsUsed(value: string) {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    return [];
+  }
+}
+
 export function AutomationCard({ automation }: { automation: AutomationCardData }) {
-  const tools = JSON.parse(automation.toolsUsed) as string[];
+  const tools = parseToolsUsed(automation.toolsUsed);
 
   return (
     <div className="rounded-2xl border border-border bg-card p-5">

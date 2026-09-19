@@ -8,10 +8,26 @@ import { Button } from "@/components/ui/Button";
 export default async function AutomationsPage() {
   const company = await getCurrentCompany();
 
-  const automations = await prisma.automation.findMany({
-    where: { companyId: company.id },
-    orderBy: { installedAt: "desc" },
-  });
+  const automations = await prisma.automation
+    .findMany({
+      where: { companyId: company.id },
+      orderBy: { installedAt: "desc" },
+      select: {
+        id: true,
+        name: true,
+        businessGoal: true,
+        status: true,
+        health: true,
+        toolsUsed: true,
+        estimatedHoursPerMonth: true,
+        lastCheckedAt: true,
+        n8nWorkflowId: true,
+      },
+    })
+    .catch((error) => {
+      console.error("Automations view unavailable", error);
+      return [];
+    });
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-8 sm:px-6 space-y-6">

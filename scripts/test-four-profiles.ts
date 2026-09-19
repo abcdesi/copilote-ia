@@ -103,6 +103,31 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testProfileGuideCanCollapseAndMove() {
+  const source = readFileSync("components/company/ProfileCompletionGuide.tsx", "utf-8");
+  assert.ok(source.includes("Réduire la fenêtre"), "Le guide profil doit pouvoir être réduit.");
+  assert.ok(source.includes("Déplacer la fenêtre"), "Le guide profil doit pouvoir être déplacé.");
+  assert.ok(source.includes("onPointerMove={drag}"), "Le déplacement doit fonctionner à la souris ou au pointeur.");
+}
+
+function testCoreViewsPreserveUiAndFailSoft() {
+  const automations = readFileSync("app/app/automations/page.tsx", "utf-8");
+  const opportunities = readFileSync("app/app/opportunities/page.tsx", "utf-8");
+  const results = readFileSync("app/app/results/page.tsx", "utf-8");
+
+  for (const [name, source] of [
+    ["automations", automations],
+    ["opportunities", opportunities],
+    ["results", results],
+  ] as const) {
+    assert.ok(source.includes(".catch((error) =>"), `${name} doit rester affichable si une source historique échoue.`);
+  }
+
+  assert.ok(automations.includes("<AutomationCard"), "La présentation Automatisations doit rester inchangée.");
+  assert.ok(opportunities.includes("<OpportunityCard"), "La présentation Opportunités doit rester inchangée.");
+  assert.ok(results.includes("Résultats constatés ou déclarés"), "Le contenu Résultats doit rester inchangé.");
+}
+
 function testLegacyCompanyAccessCompatibility() {
   const current = readFileSync("lib/companies/current.ts", "utf-8");
   const access = readFileSync("lib/companies/access.ts", "utf-8");
@@ -197,6 +222,8 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testProfileGuideCanCollapseAndMove();
+  testCoreViewsPreserveUiAndFailSoft();
   testLegacyCompanyAccessCompatibility();
   testCopilotTopBarHandoff();
   testCopilotRecommendationActions();
