@@ -12,8 +12,8 @@ function compactPreview(value: string) {
     .replace(/\s+/g, " ")
     .trim();
 
-  if (cleaned.length <= 180) return cleaned;
-  return cleaned.slice(0, 177).trimEnd() + "…";
+  if (cleaned.length <= 120) return cleaned;
+  return cleaned.slice(0, 117).trimEnd() + "…";
 }
 
 export function CopilotBar() {
