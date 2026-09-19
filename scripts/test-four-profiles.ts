@@ -114,20 +114,22 @@ function testDashboardHomeIsFailSoft() {
     "L'accueil de secours doit rester découplé des composants enrichis qui dépendent de données historiques."
   );
   assert.ok(
-    source.includes('.catch((error) =>'),
-    "Les blocs de données de l'accueil doivent échouer localement plutôt que faire tomber toute la vue."
+    source.includes('fetch("/api/dashboard/summary"') && source.includes(".catch((error) =>"),
+    "L'accueil doit charger les données hors du rendu serveur et afficher un fallback local en cas d'échec."
   );
 }
 
 function testDashboardHomeUsesMinimalAccess() {
   const source = readFileSync("app/app/page.tsx", "utf-8");
   assert.ok(
-    source.includes("getDashboardShellAccess"),
-    "Le tableau de bord doit utiliser l'accès minimal pour rester disponible avec des données historiques."
+    source.includes('"use client"') && source.includes("/api/dashboard/summary"),
+    "Le tableau de bord doit rendre son shell côté client avant de charger les données."
   );
   assert.ok(
-    !source.includes("getCurrentCompanyAccess"),
-    "Le tableau de bord ne doit plus dépendre du chargement enrichi de l'entreprise avant de rendre la page."
+    !source.includes("@/lib/db/client") &&
+      !source.includes("getDashboardShellAccess") &&
+      !source.includes("getCurrentCompanyAccess"),
+    "La page d'accueil ne doit effectuer aucune lecture serveur directe susceptible de casser le rendu."
   );
 }
 
