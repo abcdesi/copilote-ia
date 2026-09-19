@@ -39,6 +39,27 @@ function testSixtyEmployeeCompany() {
   assert.equal(hasCompanyPermission("viewer", "operate_automations"), false);
 }
 
+function testFinancialManager() {
+  assert.equal(hasCompanyPermission("admin", "view"), true);
+  assert.equal(hasCompanyPermission("admin", "manage_documents"), true);
+  assert.equal(hasCompanyPermission("admin", "manage_billing"), false, "Le DAF admin ne doit pas pouvoir gérer l'abonnement.");
+  assert.ok(
+    PLAN_DEFINITIONS.business.features.some((feature) => /audit|intelligence financière/i.test(feature)),
+    "Le profil DAF doit être couvert par la profondeur financière de Scale."
+  );
+}
+
+function testSalesManager() {
+  assert.equal(hasCompanyPermission("operator", "view"), true);
+  assert.equal(hasCompanyPermission("operator", "manage_contacts"), true);
+  assert.equal(hasCompanyPermission("operator", "operate_automations"), true);
+  assert.equal(hasCompanyPermission("operator", "configure_automations"), false);
+  assert.equal(hasCompanyPermission("operator", "manage_billing"), false);
+  assert.equal(canApproveRisk("operator", "low"), true, "Le commercial doit pouvoir valider une action faible risque.");
+  assert.equal(canApproveRisk("operator", "medium"), false, "Le risque moyen doit être escaladé vers un admin ou propriétaire.");
+  assert.equal(canApproveRisk("operator", "high"), false);
+}
+
 function testOperationsManager() {
   assert.equal(hasCompanyPermission("admin", "operate_automations"), true);
   assert.equal(hasCompanyPermission("admin", "configure_automations"), true);
@@ -297,6 +318,8 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testOperationsManager();
+  testFinancialManager();
+  testSalesManager();
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testProfileGuideCanCollapseAndMove();
@@ -308,7 +331,7 @@ function main() {
   testTerritoriesAndCopilotAutomationProposals();
   testSolopreneur();
   testCopilotRecommendationGovernance();
-  console.log("Five-profile product acceptance tests: OK");
+  console.log("Seven-profile product acceptance tests: OK");
 }
 
 main();
