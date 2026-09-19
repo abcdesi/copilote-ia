@@ -49,6 +49,15 @@ function testFinancialManager() {
   );
 }
 
+function testLiveBusinessOutcomeConnectors() {
+  const hubspot = getIntegrationDefinition("HubSpot");
+  const stripe = getIntegrationDefinition("Stripe");
+  assert.equal(hubspot.mvpPriority, "now", "HubSpot doit être présenté comme connecteur live pour les outcomes commerciaux.");
+  assert.equal(hubspot.permissionMode, "read_only");
+  assert.equal(stripe.mvpPriority, "now", "Stripe métier doit être présenté comme connecteur live pour les factures payées.");
+  assert.equal(stripe.permissionMode, "read_only");
+}
+
 function testSalesManager() {
   assert.equal(hasCompanyPermission("operator", "view"), true);
   assert.equal(hasCompanyPermission("operator", "manage_contacts"), true);
@@ -169,6 +178,9 @@ function testAutomaticValueProofLoop() {
   const observe = readFileSync("lib/integrations/observe.ts", "utf-8");
   const providerOutcomes = readFileSync("lib/automations/provider-outcomes.ts", "utf-8");
   const providerOutcomeRoute = readFileSync("app/api/automation-engine/outcomes/provider/route.ts", "utf-8");
+  const hubspotWebhook = readFileSync("app/api/integrations/hubspot/webhook/route.ts", "utf-8");
+  const stripeWebhook = readFileSync("app/api/integrations/stripe-business/webhook/[companyId]/route.ts", "utf-8");
+  const providerWorkflows = readFileSync("lib/n8n/provider-outcome-workflows.ts", "utf-8");
   const results = readFileSync("app/app/results/page.tsx", "utf-8");
 
   assert.ok(
@@ -194,6 +206,25 @@ function testAutomaticValueProofLoop() {
       providerOutcomeRoute.includes('z.enum(["hubspot", "stripe"])') &&
       providerOutcomeRoute.includes('z.enum(["deal_won", "payment_received"])'),
     "Les résultats CRM et paiement doivent entrer uniquement par un callback n8n authentifié et borné."
+  );
+  assert.ok(
+    hubspotWebhook.includes("verifyHubSpotWebhookSignatureV3") &&
+      hubspotWebhook.includes("hs_is_closed_won") &&
+      hubspotWebhook.includes('triggerProviderOutcomeRelay("hubspot"'),
+    "Un deal gagné HubSpot doit être signé, résolu puis relayé par n8n avant d'être compté."
+  );
+  assert.ok(
+    stripeWebhook.includes("verifyStripeWebhookSignature") &&
+      stripeWebhook.includes('"invoice.paid"') &&
+      stripeWebhook.includes('"relance-factures"') &&
+      stripeWebhook.includes('triggerProviderOutcomeRelay("stripe"'),
+    "Un encaissement Stripe métier doit venir d'un invoice.paid signé et d'une relance facture attribuable."
+  );
+  assert.ok(
+    providerWorkflows.includes("PILOTZIA_PROVIDER_OUTCOME_RELAY_V1") &&
+      providerWorkflows.includes("ensureProviderOutcomeRelayWorkflow") &&
+      providerWorkflows.includes("/api/automation-engine/outcomes/provider"),
+    "Les observations HubSpot et Stripe doivent traverser des workflows n8n publiés et authentifiés."
   );
   assert.ok(
     results.includes("Chaîne de preuve opérationnelle") &&
@@ -360,6 +391,7 @@ function main() {
   testOperationsManager();
   testFinancialManager();
   testSalesManager();
+  testLiveBusinessOutcomeConnectors();
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testAutomaticValueProofLoop();
