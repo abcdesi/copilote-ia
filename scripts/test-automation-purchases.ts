@@ -264,8 +264,9 @@ async function main() {
       "L'installation Core/Action/Scale doit exiger un achat payé puis tracer la livraison."
     );
     assert.ok(
-      executionSource.includes("recordFirstDigitalProductUse"),
-      "L'exécution réelle doit tracer le premier usage du produit numérique."
+      executionSource.includes("recordFirstDigitalProductUse") &&
+        executionSource.includes("Core, Action ou Scale active"),
+      "L'exécution réelle doit accepter Core/Action/Scale et tracer le premier usage du produit numérique."
     );
     assert.ok(
       feedbackRoute.includes("automationOutcome.create") &&
