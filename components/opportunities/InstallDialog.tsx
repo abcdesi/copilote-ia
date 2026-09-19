@@ -159,7 +159,7 @@ export function InstallDialog({
               )}
             </Button>
             <p className="mt-3 text-center text-[11px] leading-4 text-muted-foreground">
-              L'abonnement Action ou Scale donne accès au moteur d'exécution. L'achat de l'automatisation est séparé ; son usage courant consomme ensuite les crédits de votre plan.
+              Core, Action ou Scale donne accès au moteur d'exécution pour les automatisations achetées. Core permet jusqu'à 2 nouvelles automatisations par mois ; l'usage courant consomme ensuite les crédits de votre plan.
             </p>
           </div>
         )}
