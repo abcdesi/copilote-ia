@@ -157,6 +157,9 @@ export default async function ResultsPage() {
   const wonDeals = outcomes
     .filter((outcome) => outcome.kind === "deal_won")
     .reduce((sum, outcome) => sum + outcome.value, 0);
+  const paymentsReceivedEur = outcomes
+    .filter((outcome) => outcome.kind === "payment_received")
+    .reduce((sum, outcome) => sum + outcome.value, 0);
 
   const hasMeasuredOrReportedResult = outcomes.length > 0;
 
@@ -181,7 +184,7 @@ export default async function ResultsPage() {
         <CardContent>
           {hasMeasuredOrReportedResult ? (
             <>
-              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-6">
                 <Metric
                   icon={Clock3}
                   label="Temps déclaré économisé"
@@ -195,6 +198,7 @@ export default async function ResultsPage() {
                 <Metric icon={MessageCircleReply} label="Réponses enregistrées" value={String(replies)} />
                 <Metric icon={Target} label="Rendez-vous enregistrés" value={String(meetings)} />
                 <Metric icon={Trophy} label="Opportunités gagnées" value={String(wonDeals)} />
+                <Metric icon={Euro} label="Encaissements observés" value={formatEur(paymentsReceivedEur)} />
               </div>
 
               <div className="mt-5 divide-y divide-border rounded-xl border border-border">
@@ -385,8 +389,9 @@ function outcomeLabel(kind: string, value: number, unit: string) {
   if (kind === "time_saved_weekly_hours") return `${value} h / semaine déclarées comme économisées`;
   if (kind === "value_observed_eur_30d") return `${formatEur(value)} déclarés sur 30 jours`;
   if (kind === "prospect_reply") return "Réponse prospect enregistrée";
-  if (kind === "meeting_booked") return "Rendez-vous obtenu enregistré";
+  if (kind === "meeting_booked") return "Rendez-vous enregistré";
   if (kind === "deal_won") return "Opportunité gagnée enregistrée";
+  if (kind === "payment_received") return `${formatEur(value)} encaissés observés`;
   if (kind === "deal_lost") return "Opportunité perdue enregistrée";
   return `${value} ${unit}`;
 }

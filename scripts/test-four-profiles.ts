@@ -168,23 +168,39 @@ function testProfileGuideCanCollapseAndMove() {
 function testAutomaticValueProofLoop() {
   const observe = readFileSync("lib/integrations/observe.ts", "utf-8");
   const providerOutcomes = readFileSync("lib/automations/provider-outcomes.ts", "utf-8");
+  const providerOutcomeRoute = readFileSync("app/api/automation-engine/outcomes/provider/route.ts", "utf-8");
   const results = readFileSync("app/app/results/page.tsx", "utf-8");
 
   assert.ok(
-    observe.includes("observeProspectReplies") && observe.includes("prospectRepliesObserved"),
-    "La synchronisation Google doit observer les réponses prospects et remonter le signal au produit."
+    observe.includes("observeProspectReplies") &&
+      observe.includes("prospectRepliesObserved") &&
+      observe.includes("observeProspectMeetings") &&
+      observe.includes("prospectMeetingsObserved"),
+    "La synchronisation Google doit observer les réponses prospects et les rendez-vous Calendar sans inventer de résultats."
   );
   assert.ok(
     providerOutcomes.includes('"provider_observed"') &&
       providerOutcomes.includes('"AUTOMATION_PROVIDER_OUTCOME_OBSERVED"') &&
-      providerOutcomes.includes('"reply_observed"'),
-    "Une réponse fournisseur doit produire une preuve métier, une preuve contact et un événement traçable."
+      providerOutcomes.includes('"reply_observed"') &&
+      providerOutcomes.includes('"meeting_booked"') &&
+      providerOutcomes.includes('"temporal_after_pilotzia_follow_up"') &&
+      providerOutcomes.includes('"deal_won"') &&
+      providerOutcomes.includes('"payment_received"') &&
+      providerOutcomes.includes('"authenticated_n8n_callback"'),
+    "Les réponses, rendez-vous, deals et encaissements fournisseur doivent produire des preuves traçables avec une attribution explicite."
+  );
+  assert.ok(
+    providerOutcomeRoute.includes("verifyN8nCallback") &&
+      providerOutcomeRoute.includes('z.enum(["hubspot", "stripe"])') &&
+      providerOutcomeRoute.includes('z.enum(["deal_won", "payment_received"])'),
+    "Les résultats CRM et paiement doivent entrer uniquement par un callback n8n authentifié et borné."
   );
   assert.ok(
     results.includes("Chaîne de preuve opérationnelle") &&
       results.includes("1 · Détecter") &&
       results.includes("4 · Mesurer") &&
-      results.includes("Résultat métier à mesurer"),
+      results.includes("Résultat métier à mesurer") &&
+      results.includes("Encaissements observés"),
     "Résultats doit matérialiser la boucle détection → décision → action → mesure sans confondre exécution et valeur."
   );
 }

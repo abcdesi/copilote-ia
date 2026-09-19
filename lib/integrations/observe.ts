@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db/client";
 import { googleApi } from "@/lib/integrations/google";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
-import { observeProspectReplies } from "@/lib/automations/provider-outcomes";
+import { observeProspectMeetings, observeProspectReplies } from "@/lib/automations/provider-outcomes";
 
 interface GmailListResponse {
   resultSizeEstimate?: number;
@@ -14,7 +14,13 @@ interface GmailMessageResponse {
 }
 
 interface CalendarEventsResponse {
-  items?: Array<{ id: string; status?: string; start?: unknown }>;
+  items?: Array<{
+    id?: string;
+    status?: string;
+    created?: string;
+    start?: { dateTime?: string; date?: string };
+    attendees?: Array<{ email?: string; responseStatus?: string }>;
+  }>;
 }
 
 export interface GoogleOperationalSnapshot {
@@ -24,6 +30,7 @@ export interface GoogleOperationalSnapshot {
   unreadInboxIsEstimate: boolean;
   upcomingEventsNext7Days: number;
   prospectRepliesObserved: number;
+  prospectMeetingsObserved: number;
   observedAt: string;
 }
 
@@ -62,6 +69,41 @@ async function findGmailReplyAfter(companyId: string, input: {
   return null;
 }
 
+function calendarStartAt(event: NonNullable<CalendarEventsResponse["items"]>[number]) {
+  const raw = event.start?.dateTime ?? event.start?.date;
+  if (!raw) return null;
+  const value = new Date(raw);
+  return Number.isFinite(value.getTime()) ? value : null;
+}
+
+export function findCalendarMeetingAfter(
+  events: NonNullable<CalendarEventsResponse["items"]>,
+  input: { prospectEmail: string; sentAt: Date }
+) {
+  const prospectEmail = input.prospectEmail.trim().toLowerCase();
+  const matches = events
+    .filter((event) => {
+      if (!event.id || event.status === "cancelled" || !event.created) return false;
+      const createdAt = new Date(event.created);
+      const startAt = calendarStartAt(event);
+      if (!Number.isFinite(createdAt.getTime()) || !startAt) return false;
+      if (createdAt.getTime() <= input.sentAt.getTime() || startAt.getTime() <= input.sentAt.getTime()) return false;
+      return (event.attendees ?? []).some(
+        (attendee) =>
+          attendee.responseStatus !== "declined" &&
+          attendee.email?.trim().toLowerCase() === prospectEmail
+      );
+    })
+    .map((event) => ({
+      eventId: event.id!,
+      createdAt: new Date(event.created!),
+      startAt: calendarStartAt(event)!,
+    }))
+    .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+
+  return matches[0] ?? null;
+}
+
 export async function syncGoogleOperationalSnapshot(
   companyId: string,
   actorUserId?: string | null,
@@ -69,6 +111,8 @@ export async function syncGoogleOperationalSnapshot(
 ): Promise<GoogleOperationalSnapshot> {
   const now = new Date();
   const inSevenDays = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+  const calendarLookback = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const calendarHorizon = new Date(now.getTime() + 90 * 24 * 60 * 60 * 1000);
 
   const [gmail, calendar] = await Promise.all([
     googleApi<GmailListResponse>(
@@ -77,9 +121,9 @@ export async function syncGoogleOperationalSnapshot(
     ),
     googleApi<CalendarEventsResponse>(
       companyId,
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=50&timeMin=${encodeURIComponent(
-        now.toISOString()
-      )}&timeMax=${encodeURIComponent(inSevenDays.toISOString())}`
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?singleEvents=true&orderBy=startTime&maxResults=250&timeMin=${encodeURIComponent(
+        calendarLookback.toISOString()
+      )}&timeMax=${encodeURIComponent(calendarHorizon.toISOString())}`
     ),
   ]);
 
@@ -93,11 +137,26 @@ export async function syncGoogleOperationalSnapshot(
     return { checked: 0, repliesObserved: 0, errors: 1 };
   });
 
+  const meetingObservation = await observeProspectMeetings({
+    companyId,
+    actorUserId,
+    source,
+    searchMeeting: async (input) => findCalendarMeetingAfter(calendar.items ?? [], input),
+  }).catch((error) => {
+    console.error("Prospect meeting observation unavailable", error);
+    return { checked: 0, meetingsObserved: 0, errors: 1 };
+  });
+
   const snapshot: GoogleOperationalSnapshot = {
     unreadInboxLast7Days: gmail.resultSizeEstimate ?? gmail.messages?.length ?? 0,
     unreadInboxIsEstimate: typeof gmail.resultSizeEstimate === "number",
-    upcomingEventsNext7Days: (calendar.items ?? []).filter((event) => event.status !== "cancelled").length,
+    upcomingEventsNext7Days: (calendar.items ?? []).filter((event) => {
+      if (event.status === "cancelled") return false;
+      const startAt = calendarStartAt(event);
+      return Boolean(startAt && startAt >= now && startAt <= inSevenDays);
+    }).length,
     prospectRepliesObserved: replyObservation.repliesObserved,
+    prospectMeetingsObserved: meetingObservation.meetingsObserved,
     observedAt: now.toISOString(),
   };
 

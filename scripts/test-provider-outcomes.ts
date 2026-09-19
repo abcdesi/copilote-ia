@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../lib/db/client";
-import { observeProspectReplies } from "../lib/automations/provider-outcomes";
+import { observeProspectMeetings, observeProspectReplies, recordTrustedProviderOutcome } from "../lib/automations/provider-outcomes";
+import { findCalendarMeetingAfter } from "../lib/integrations/observe";
 
 async function main() {
   const suffix = randomUUID();
@@ -156,6 +157,193 @@ async function main() {
       where: { automationId: automation.id, kind: "prospect_reply" },
     });
     assert.equal(outcomeCount, 1, "Une réponse fournisseur ne doit être comptée qu'une seule fois.");
+
+    const ignoredCalendarEvents = [
+      {
+        id: "created-before-follow-up",
+        status: "confirmed",
+        created: new Date(sentAt.getTime() - 1_000).toISOString(),
+        start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+        attendees: [{ email: prospect.email, responseStatus: "accepted" }],
+      },
+      {
+        id: "declined-after-follow-up",
+        status: "confirmed",
+        created: new Date(sentAt.getTime() + 1_000).toISOString(),
+        start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+        attendees: [{ email: prospect.email, responseStatus: "declined" }],
+      },
+    ];
+    assert.equal(
+      findCalendarMeetingAfter(ignoredCalendarEvents, { prospectEmail: prospect.email, sentAt }),
+      null,
+      "Calendar ne doit pas attribuer un rendez-vous préexistant ou refusé à la relance."
+    );
+
+    const matchingCalendarEvent = {
+      id: `calendar-match-${suffix}`,
+      status: "confirmed",
+      created: new Date(sentAt.getTime() + 2_000).toISOString(),
+      start: { dateTime: new Date(sentAt.getTime() + 86_400_000).toISOString() },
+      attendees: [{ email: prospect.email.toUpperCase(), responseStatus: "accepted" }],
+    };
+    const matchedCalendarMeeting = findCalendarMeetingAfter(
+      [...ignoredCalendarEvents, matchingCalendarEvent],
+      { prospectEmail: prospect.email, sentAt }
+    );
+    assert.equal(matchedCalendarMeeting?.eventId, matchingCalendarEvent.id);
+    assert.equal(matchedCalendarMeeting?.createdAt.toISOString(), matchingCalendarEvent.created);
+
+    let meetingSearches = 0;
+    const meetingCreatedAt = new Date(sentAt.getTime() + 45_000);
+    const meetingStartAt = new Date(sentAt.getTime() + 24 * 60 * 60 * 1000);
+    const meeting = await observeProspectMeetings({
+      companyId: company.id,
+      actorUserId: user.id,
+      source: "manual",
+      searchMeeting: async ({ prospectEmail, sentAt: searchedSentAt }) => {
+        meetingSearches += 1;
+        assert.equal(prospectEmail, prospect.email);
+        assert.equal(searchedSentAt.getTime(), sentEvent.createdAt.getTime());
+        return {
+          eventId: `calendar-meeting-${suffix}`,
+          createdAt: meetingCreatedAt,
+          startAt: meetingStartAt,
+        };
+      },
+    });
+
+    assert.deepEqual(meeting, { checked: 1, meetingsObserved: 1, errors: 0 });
+    assert.equal(meetingSearches, 1);
+
+    const meetingProspect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospect.id } });
+    assert.equal(meetingProspect.lastOutcome, "meeting_booked");
+
+    const meetingOutcome = await prisma.automationOutcome.findFirstOrThrow({
+      where: { automationId: automation.id, kind: "meeting_booked" },
+    });
+    assert.equal(meetingOutcome.value, 1);
+    assert.equal(meetingOutcome.unit, "count");
+    assert.equal(meetingOutcome.source, "provider_observed");
+    assert.equal(meetingOutcome.confidence, 0.85);
+    const meetingEvidence = JSON.parse(meetingOutcome.evidenceJson ?? "{}");
+    assert.equal(meetingEvidence.calendarEventId, `calendar-meeting-${suffix}`);
+    assert.equal(meetingEvidence.attribution, "temporal_after_pilotzia_follow_up");
+    assert.equal(meetingEvidence.sourceContactEventId, sentEvent.id);
+
+    const meetingContactEvent = await prisma.automationContactEvent.findFirstOrThrow({
+      where: { automationId: automation.id, prospectId: prospect.id, kind: "meeting_observed" },
+    });
+    assert.equal(meetingContactEvent.provider, "google_calendar");
+    assert.equal(meetingContactEvent.providerMessageId, `calendar-meeting-${suffix}`);
+
+    const secondMeeting = await observeProspectMeetings({
+      companyId: company.id,
+      searchMeeting: async () => {
+        meetingSearches += 1;
+        return {
+          eventId: `calendar-meeting-${suffix}`,
+          createdAt: meetingCreatedAt,
+          startAt: meetingStartAt,
+        };
+      },
+    });
+    assert.deepEqual(secondMeeting, { checked: 0, meetingsObserved: 0, errors: 0 });
+    assert.equal(meetingSearches, 1, "Un rendez-vous déjà observé ne doit pas être recherché ou compté deux fois.");
+
+    const meetingOutcomeCount = await prisma.automationOutcome.count({
+      where: { automationId: automation.id, kind: "meeting_booked" },
+    });
+    assert.equal(meetingOutcomeCount, 1, "Un rendez-vous Calendar ne doit produire qu'un seul résultat métier.");
+
+    const hubspotObservedAt = new Date(sentAt.getTime() + 2 * 24 * 60 * 60 * 1000);
+    const hubspot = await recordTrustedProviderOutcome({
+      companyId: company.id,
+      automationId: automation.id,
+      prospectId: prospect.id,
+      provider: "hubspot",
+      providerEventId: `hubspot-deal-${suffix}`,
+      kind: "deal_won",
+      observedAt: hubspotObservedAt,
+      externalEntityRef: `deal-${suffix}`,
+      note: "Deal marqué gagné par HubSpot.",
+    });
+    assert.equal(hubspot.ok, true);
+    assert.equal(hubspot.created, true);
+
+    const wonProspect = await prisma.prospect.findUniqueOrThrow({ where: { id: prospect.id } });
+    assert.equal(wonProspect.lastOutcome, "deal_won");
+
+    const dealOutcome = await prisma.automationOutcome.findFirstOrThrow({
+      where: { automationId: automation.id, kind: "deal_won", source: "provider_observed" },
+    });
+    assert.equal(dealOutcome.value, 1);
+    assert.equal(dealOutcome.unit, "count");
+    assert.equal(dealOutcome.confidence, 0.98);
+
+    const duplicateHubspot = await recordTrustedProviderOutcome({
+      companyId: company.id,
+      automationId: automation.id,
+      prospectId: prospect.id,
+      provider: "hubspot",
+      providerEventId: `hubspot-deal-${suffix}`,
+      kind: "deal_won",
+      observedAt: hubspotObservedAt,
+      externalEntityRef: `deal-${suffix}`,
+      note: "Deal marqué gagné par HubSpot.",
+    });
+    assert.equal(duplicateHubspot.ok, true);
+    assert.equal(duplicateHubspot.created, false);
+    assert.equal(
+      await prisma.automationOutcome.count({
+        where: { automationId: automation.id, kind: "deal_won", source: "provider_observed" },
+      }),
+      1,
+      "Un même événement HubSpot ne doit jamais doubler le résultat."
+    );
+
+    const stripeObservedAt = new Date(sentAt.getTime() + 3 * 24 * 60 * 60 * 1000);
+    const stripe = await recordTrustedProviderOutcome({
+      companyId: company.id,
+      automationId: automation.id,
+      provider: "stripe",
+      providerEventId: `stripe-invoice-paid-${suffix}`,
+      kind: "payment_received",
+      observedAt: stripeObservedAt,
+      amountEur: 2400,
+      externalEntityRef: `in_${suffix}`,
+      note: "Facture payée observée via Stripe métier.",
+    });
+    assert.equal(stripe.ok, true);
+    assert.equal(stripe.created, true);
+
+    const paymentOutcome = await prisma.automationOutcome.findFirstOrThrow({
+      where: { automationId: automation.id, kind: "payment_received", source: "provider_observed" },
+    });
+    assert.equal(paymentOutcome.value, 2400);
+    assert.equal(paymentOutcome.unit, "eur");
+    assert.equal(paymentOutcome.confidence, 0.99);
+
+    const duplicateStripe = await recordTrustedProviderOutcome({
+      companyId: company.id,
+      automationId: automation.id,
+      provider: "stripe",
+      providerEventId: `stripe-invoice-paid-${suffix}`,
+      kind: "payment_received",
+      observedAt: stripeObservedAt,
+      amountEur: 2400,
+      externalEntityRef: `in_${suffix}`,
+      note: "Facture payée observée via Stripe métier.",
+    });
+    assert.equal(duplicateStripe.ok, true);
+    assert.equal(duplicateStripe.created, false);
+    assert.equal(
+      await prisma.automationOutcome.count({
+        where: { automationId: automation.id, kind: "payment_received", source: "provider_observed" },
+      }),
+      1,
+      "Un même événement Stripe ne doit jamais doubler l'encaissement observé."
+    );
 
     console.log("Provider-observed automation outcome tests: OK");
   } finally {
