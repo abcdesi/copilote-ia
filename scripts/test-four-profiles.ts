@@ -13,6 +13,7 @@ import { BUSINESS_TERRITORY_GROUPS, BUSINESS_TERRITORIES } from "../lib/companie
 import { mentionedAutomationTemplateIds } from "../lib/automations/recommendation-match";
 import { AUTOMATION_CATALOG } from "../lib/automations/catalog";
 import { findRecommendedTemplateMatch } from "../lib/ai/advisor-policy";
+import { extractAnthropicText } from "../lib/ai/anthropic-response";
 import { isRealExecutionTemplate } from "../lib/n8n/real-execution-config";
 import { deriveMarketingKpis } from "../lib/marketing/kpis";
 
@@ -359,6 +360,8 @@ function testLegacyCompanyAccessCompatibility() {
 
 function testCopilotTopBarHandoff() {
   const source = readFileSync("components/dashboard/CopilotBar.tsx", "utf-8");
+  const chatView = readFileSync("components/dashboard/ChatView.tsx", "utf-8");
+
   assert.ok(
     source.includes('fetch("/api/chat"'),
     "La barre haute doit pouvoir afficher un aperçu court de la réponse."
@@ -370,6 +373,21 @@ function testCopilotTopBarHandoff() {
   assert.ok(
     source.includes("<span>{reply}</span>") && source.includes("Continuer à lire dans Copilote"),
     "Le lien vers le Copilote doit apparaître juste après le texte de réponse."
+  );
+  assert.ok(
+    chatView.includes("<RichMessage content={m.content} />") && !chatView.includes("compactPreview"),
+    "Dans la page Copilote, la réponse complète doit être rendue sans compactage ni line-clamp."
+  );
+
+  const complete = extractAnthropicText([
+    { type: "thinking", thinking: "raisonnement interne" },
+    { type: "text", text: "Première partie de la réponse. " },
+    { type: "text", text: "Deuxième partie, qui doit rester visible." },
+  ]);
+  assert.equal(
+    complete,
+    "Première partie de la réponse. Deuxième partie, qui doit rester visible.",
+    "Pilotzia doit recomposer tous les blocs texte renvoyés par le fournisseur avant d'enregistrer la réponse."
   );
 }
 
