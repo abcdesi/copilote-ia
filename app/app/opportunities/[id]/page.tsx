@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import { CheckCircle2, ShieldCheck } from "lucide-react";
-import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { getDashboardShellAccess, hasCompanyPermission } from "@/lib/companies/access";
+import { safeRead } from "@/lib/runtime/safe-read";
 import { prisma } from "@/lib/db/client";
 import { getTemplateById } from "@/lib/automations/catalog";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
@@ -15,32 +16,81 @@ import { getCompanyEntitlements } from "@/lib/billing/entitlements";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
-  const access = await getCurrentCompanyAccess();
-  const company = access.company;
+  const access = await getDashboardShellAccess();
+  const companyTools = await safeRead(
+    "opportunity-detail.company-tools",
+    () =>
+      prisma.companyTool.findMany({
+        where: { companyId: access.company.id },
+        select: { id: true, name: true, detected: true },
+      }),
+    []
+  );
+  const company = { ...access.company, tools: companyTools };
   const canConfigure = hasCompanyPermission(access.role, "configure_automations");
   const canManageBilling = hasCompanyPermission(access.role, "manage_billing");
 
   const [opportunity, entitlements, purchase, copilotProvenance] = await Promise.all([
-    prisma.opportunity.findFirst({ where: { id, companyId: company.id } }),
-    getCompanyEntitlements(company.id),
-    prisma.purchase.findUnique({
-      where: { companyId_opportunityId: { companyId: company.id, opportunityId: id } },
-    }),
-    prisma.event.findFirst({
-      where: {
-        companyId: company.id,
-        type: "COPILOT_AUTOMATION_LINKED",
-        metadata: { contains: `"opportunityId":"${id}"` },
-      },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true },
-    }),
+    safeRead(
+      "opportunity-detail.opportunity",
+      () =>
+        prisma.opportunity.findFirst({
+          where: { id, companyId: company.id },
+          select: {
+            id: true,
+            templateId: true,
+            title: true,
+            description: true,
+            category: true,
+            impactLevel: true,
+            complexity: true,
+            estimatedHoursPerMonth: true,
+            estimatedValueEur: true,
+            priceEur: true,
+            status: true,
+          },
+        }),
+      null
+    ),
+    safeRead(
+      "opportunity-detail.entitlements",
+      () => getCompanyEntitlements(company.id),
+      { plan: "free", paid: false, canExecute: false, canUseFinancialAudit: false, seatLimit: 1 }
+    ),
+    safeRead(
+      "opportunity-detail.purchase",
+      () =>
+        prisma.purchase.findUnique({
+          where: { companyId_opportunityId: { companyId: company.id, opportunityId: id } },
+          select: { status: true },
+        }),
+      null
+    ),
+    safeRead(
+      "opportunity-detail.provenance",
+      () =>
+        prisma.event.findFirst({
+          where: {
+            companyId: company.id,
+            type: "COPILOT_AUTOMATION_LINKED",
+            metadata: { contains: `"opportunityId":"${id}"` },
+          },
+          orderBy: { createdAt: "desc" },
+          select: { createdAt: true },
+        }),
+      null
+    ),
   ]);
   if (!opportunity) notFound();
 
   if (opportunity.status === "detected") {
-    await prisma.opportunity.update({ where: { id: opportunity.id }, data: { status: "viewed" } });
-    await track(EVENTS.AUTOMATION_VIEWED, { companyId: company.id, metadata: { opportunityId: opportunity.id } });
+    await prisma.opportunity
+      .update({ where: { id: opportunity.id }, data: { status: "viewed" } })
+      .catch((error) => console.error("Opportunity view status unavailable", error));
+    await track(EVENTS.AUTOMATION_VIEWED, {
+      companyId: company.id,
+      metadata: { opportunityId: opportunity.id },
+    }).catch((error) => console.error("Opportunity analytics unavailable", error));
   }
 
   const template = getTemplateById(opportunity.templateId);
@@ -48,7 +98,16 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const relevantTools = template?.relevantTools ?? [];
   const alreadyInstalled = opportunity.status === "installed";
   const installedAutomation = alreadyInstalled
-    ? await prisma.automation.findFirst({ where: { companyId: company.id, opportunityId: opportunity.id }, orderBy: { createdAt: "desc" } })
+    ? await safeRead(
+        "opportunity-detail.installed-automation",
+        () =>
+          prisma.automation.findFirst({
+            where: { companyId: company.id, opportunityId: opportunity.id },
+            orderBy: { createdAt: "desc" },
+            select: { id: true, status: true },
+          }),
+        null
+      )
     : null;
   const isReal = isRealExecutionTemplate(opportunity.templateId);
   const priceEur = template?.priceEur ?? opportunity.priceEur;
