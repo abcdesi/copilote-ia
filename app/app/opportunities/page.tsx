@@ -7,10 +7,26 @@ import { Lightbulb } from "lucide-react";
 export default async function OpportunitiesPage() {
   const company = await getCurrentCompany();
 
-  const opportunities = await prisma.opportunity.findMany({
-    where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
-    orderBy: { estimatedValueEur: "desc" },
-  });
+  const opportunities = await prisma.opportunity
+    .findMany({
+      where: { companyId: company.id, status: { in: ["detected", "viewed"] } },
+      orderBy: { estimatedValueEur: "desc" },
+      select: {
+        id: true,
+        templateId: true,
+        title: true,
+        description: true,
+        category: true,
+        impactLevel: true,
+        complexity: true,
+        estimatedHoursPerMonth: true,
+        priceEur: true,
+      },
+    })
+    .catch((error) => {
+      console.error("Opportunities view unavailable", error);
+      return [];
+    });
 
   const highPriority = opportunities.filter((o) => o.impactLevel === "high");
   const rest = opportunities.filter((o) => o.impactLevel !== "high");

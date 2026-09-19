@@ -29,14 +29,50 @@ export default async function ResultsPage() {
   const company = await getCurrentCompany();
 
   const [automations, pendingOpportunities, outcomes] = await Promise.all([
-    prisma.automation.findMany({ where: { companyId: company.id } }),
-    prisma.opportunity.count({ where: { companyId: company.id, status: { in: ["detected", "viewed"] } } }),
-    prisma.automationOutcome.findMany({
-      where: { automation: { companyId: company.id } },
-      include: { automation: { select: { id: true, name: true } } },
-      orderBy: { observedAt: "desc" },
-      take: 300,
-    }),
+    prisma.automation
+      .findMany({
+        where: { companyId: company.id },
+        select: {
+          id: true,
+          status: true,
+          health: true,
+          estimatedHoursPerMonth: true,
+          estimatedValueEur: true,
+        },
+      })
+      .catch((error) => {
+        console.error("Results automation summary unavailable", error);
+        return [];
+      }),
+    prisma.opportunity
+      .count({ where: { companyId: company.id, status: { in: ["detected", "viewed"] } } })
+      .catch((error) => {
+        console.error("Results opportunity count unavailable", error);
+        return 0;
+      }),
+    prisma.automationOutcome
+      .findMany({
+        where: { automation: { companyId: company.id } },
+        select: {
+          id: true,
+          automationId: true,
+          kind: true,
+          value: true,
+          unit: true,
+          source: true,
+          note: true,
+          actorName: true,
+          actorEmail: true,
+          observedAt: true,
+          automation: { select: { id: true, name: true } },
+        },
+        orderBy: { observedAt: "desc" },
+        take: 300,
+      })
+      .catch((error) => {
+        console.error("Results outcomes unavailable", error);
+        return [];
+      }),
   ]);
 
   const active = automations.filter((automation) => automation.status === "active");
