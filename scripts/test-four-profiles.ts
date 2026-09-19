@@ -103,6 +103,13 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testProfileGuideCanCollapseAndMove() {
+  const source = readFileSync("components/company/ProfileCompletionGuide.tsx", "utf-8");
+  assert.ok(source.includes("Réduire la fenêtre"), "Le guide profil doit pouvoir être réduit.");
+  assert.ok(source.includes("Déplacer la fenêtre"), "Le guide profil doit pouvoir être déplacé.");
+  assert.ok(source.includes("onPointerMove={drag}"), "Le déplacement doit fonctionner à la souris ou au pointeur.");
+}
+
 function testCoreViewsPreserveUiAndFailSoft() {
   const automations = readFileSync("app/app/automations/page.tsx", "utf-8");
   const opportunities = readFileSync("app/app/opportunities/page.tsx", "utf-8");
@@ -215,6 +222,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
   testLegacyCompanyAccessCompatibility();
   testCopilotTopBarHandoff();
