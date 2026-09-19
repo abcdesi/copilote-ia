@@ -103,6 +103,22 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
+function testDashboardHomeIsFailSoft() {
+  const source = readFileSync("app/app/page.tsx", "utf-8");
+  assert.ok(
+    !source.includes("MorningBrief") &&
+      !source.includes("OpportunityCard") &&
+      !source.includes("PilotziaFeed") &&
+      !source.includes("TrialJourney") &&
+      !source.includes("RadarChart"),
+    "L'accueil de secours doit rester découplé des composants enrichis qui dépendent de données historiques."
+  );
+  assert.ok(
+    source.includes('.catch((error) =>'),
+    "Les blocs de données de l'accueil doivent échouer localement plutôt que faire tomber toute la vue."
+  );
+}
+
 function testDashboardHomeUsesMinimalAccess() {
   const source = readFileSync("app/app/page.tsx", "utf-8");
   assert.ok(
@@ -195,6 +211,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
+  testDashboardHomeIsFailSoft();
   testDashboardHomeUsesMinimalAccess();
   testCopilotTopBarHandoff();
   testCopilotRecommendationActions();
