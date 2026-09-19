@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/lib/auth";
-import { getCurrentCompanyAccess } from "@/lib/companies/access";
+import { getDashboardShellAccess } from "@/lib/companies/access";
 
 export async function requireSession() {
   const session = await auth();
@@ -9,6 +9,6 @@ export async function requireSession() {
 }
 
 export async function getCurrentCompany() {
-  const access = await getCurrentCompanyAccess();
+  const access = await getDashboardShellAccess();
   return access.company;
 }

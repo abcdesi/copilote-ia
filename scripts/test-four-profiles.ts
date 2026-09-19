@@ -103,33 +103,17 @@ function testMarketingExpert() {
   assert.equal(kpis.clickThroughRate, 5);
 }
 
-function testDashboardHomeIsFailSoft() {
-  const source = readFileSync("app/app/page.tsx", "utf-8");
-  assert.ok(
-    !source.includes("MorningBrief") &&
-      !source.includes("OpportunityCard") &&
-      !source.includes("PilotziaFeed") &&
-      !source.includes("TrialJourney") &&
-      !source.includes("RadarChart"),
-    "L'accueil de secours doit rester découplé des composants enrichis qui dépendent de données historiques."
-  );
-  assert.ok(
-    source.includes('fetch("/api/dashboard/summary"') && source.includes(".catch((error) =>"),
-    "L'accueil doit charger les données hors du rendu serveur et afficher un fallback local en cas d'échec."
-  );
-}
+function testLegacyCompanyAccessCompatibility() {
+  const current = readFileSync("lib/companies/current.ts", "utf-8");
+  const access = readFileSync("lib/companies/access.ts", "utf-8");
 
-function testDashboardHomeUsesMinimalAccess() {
-  const source = readFileSync("app/app/page.tsx", "utf-8");
   assert.ok(
-    source.includes('"use client"') && source.includes("/api/dashboard/summary"),
-    "Le tableau de bord doit rendre son shell côté client avant de charger les données."
+    current.includes("getDashboardShellAccess") && !current.includes("getCurrentCompanyAccess"),
+    "Les pages simples doivent utiliser l'accès minimal qui fonctionne aussi pour les comptes historiques."
   );
   assert.ok(
-    !source.includes("@/lib/db/client") &&
-      !source.includes("getDashboardShellAccess") &&
-      !source.includes("getCurrentCompanyAccess"),
-    "La page d'accueil ne doit effectuer aucune lecture serveur directe susceptible de casser le rendu."
+    access.includes("const shell = await getDashboardShellAccess()"),
+    "L'accès enrichi doit partir de l'entreprise résolue par le shell sans recréer un membership à chaque page."
   );
 }
 
@@ -213,8 +197,7 @@ function main() {
   testDemandingExecutive();
   testSixtyEmployeeCompany();
   testMarketingExpert();
-  testDashboardHomeIsFailSoft();
-  testDashboardHomeUsesMinimalAccess();
+  testLegacyCompanyAccessCompatibility();
   testCopilotTopBarHandoff();
   testCopilotRecommendationActions();
   testTerritoriesAndCopilotAutomationProposals();

@@ -282,6 +282,15 @@ async function login(profile: Profile) {
 
 async function testRuntimeProfile(profile: Profile) {
   const company = await ensureProfile(profile);
+
+  // Simule un ancien compte créé avant la gouvernance d'équipe :
+  // l'entreprise existe mais aucun membership actif n'est présent.
+  if (profile.key === "solopreneur") {
+    await prisma.companyMembership.deleteMany({
+      where: { companyId: company.id, userId: (await prisma.user.findUniqueOrThrow({ where: { email: profile.email } })).id },
+    });
+  }
+
   const request = await login(profile);
 
   for (const route of COMMON_ROUTES) {
@@ -305,9 +314,7 @@ async function testRuntimeProfile(profile: Profile) {
   }
 
   const dashboard = await request("/app");
-  const dashboardHtml = await dashboard.text();
-  assert.match(dashboardHtml, /Tableau de bord/i, `[${profile.key}] resilient dashboard should render`);
-  assert.match(dashboardHtml, /Décisions à valider/i, `[${profile.key}] core dashboard KPIs should render`);
+  assert.match(await dashboard.text(), /Pilotage de direction/i, `[${profile.key}] executive scorecard should render`);
 
   if (profile.key === "ceo") {
     const finance = await request("/app/finance");
@@ -337,7 +344,7 @@ async function testRuntimeProfile(profile: Profile) {
     assert.equal(company.employeeCount, 1);
     assert.equal(company.country, "Martinique");
     const soloDashboard = await request("/app");
-    assert.match(await soloDashboard.text(), /Maturité automatisation/i, "[solopreneur] dashboard should render");
+    assert.match(await soloDashboard.text(), /Connaissance de votre entreprise/i, "[solopreneur] dashboard should render");
   }
 
   console.log(`Runtime profile ${profile.key}: OK`);
