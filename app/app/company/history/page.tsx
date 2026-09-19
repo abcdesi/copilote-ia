@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ArrowLeft, ChevronLeft, ChevronRight, History } from "lucide-react";
 import { getCurrentCompany } from "@/lib/companies/current";
 import { getCompanyContextHistoryPage } from "@/lib/companies/history";
+import { safeRead } from "@/lib/runtime/safe-read";
 
 const SECTION_LABELS: Record<string, string> = {
   activity: "Activité",
@@ -49,7 +50,11 @@ export default async function CompanyHistoryPage({ searchParams }: { searchParam
   const company = await getCurrentCompany();
   const params = await searchParams;
   const page = Math.max(1, Number(params.page ?? "1") || 1);
-  const history = await getCompanyContextHistoryPage(company.id, page, 40);
+  const history = await safeRead(
+    "company.history",
+    () => getCompanyContextHistoryPage(company.id, page, 40),
+    { items: [], total: 0, page, pageSize: 40, pageCount: 1 }
+  );
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 px-4 py-8 sm:px-6">
