@@ -45,10 +45,10 @@ const DEFINITIONS: IntegrationDefinition[] = [
   {
     name: "HubSpot",
     category: "crm",
-    permissionMode: "read_action_confirm",
-    permissionLabel: "Lecture + actions avec confirmation",
+    permissionMode: "read_only",
+    permissionLabel: "OAuth lecture seule · deals gagnés observés",
     sensitiveActions: ["modifier un contact", "changer une étape du pipeline", "envoyer une communication"],
-    mvpPriority: "next",
+    mvpPriority: "now",
   },
   {
     name: "Google Analytics 4",
@@ -86,9 +86,9 @@ const DEFINITIONS: IntegrationDefinition[] = [
     name: "Stripe",
     category: "payments",
     permissionMode: "read_only",
-    permissionLabel: "Lecture seule recommandée par défaut",
+    permissionLabel: "Webhook signé · factures payées uniquement",
     sensitiveActions: ["rembourser", "annuler", "déplacer de l'argent"],
-    mvpPriority: "next",
+    mvpPriority: "now",
   },
   {
     name: "Shopify",
