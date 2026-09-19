@@ -77,6 +77,74 @@ export async function getCompanyChoices(userId: string) {
   }));
 }
 
+export async function getDashboardShellAccess() {
+  const session = await requireAuthenticatedSession();
+  const cookieStore = await cookies();
+  const preferredCompanyId = cookieStore.get(ACTIVE_COMPANY_COOKIE)?.value ?? null;
+
+  let memberships: Array<{
+    id: string;
+    companyId: string;
+    role: string;
+    company: { id: string; name: string };
+  }> = [];
+
+  try {
+    memberships = await prisma.companyMembership.findMany({
+      where: { userId: session.user.id, status: "active" },
+      select: {
+        id: true,
+        companyId: true,
+        role: true,
+        company: { select: { id: true, name: true } },
+      },
+      orderBy: { joinedAt: "desc" },
+    });
+  } catch (error) {
+    console.error("Company memberships unavailable in dashboard shell", error);
+  }
+
+  const membership =
+    (preferredCompanyId ? memberships.find((item) => item.companyId === preferredCompanyId) : null) ??
+    memberships[0] ??
+    null;
+
+  if (membership) {
+    return {
+      session,
+      company: membership.company,
+      membershipId: membership.id,
+      role: normalizeCompanyRole(membership.role),
+      companyChoices: memberships.map((item) => ({
+        companyId: item.companyId,
+        companyName: item.company.name,
+        role: normalizeCompanyRole(item.role),
+      })),
+    };
+  }
+
+  const legacyCompany = await prisma.company
+    .findFirst({
+      where: { userId: session.user.id },
+      select: { id: true, name: true },
+      orderBy: { createdAt: "desc" },
+    })
+    .catch((error) => {
+      console.error("Legacy company lookup unavailable in dashboard shell", error);
+      return null;
+    });
+
+  if (!legacyCompany) redirect("/onboarding");
+
+  return {
+    session,
+    company: legacyCompany,
+    membershipId: null,
+    role: "owner" as const,
+    companyChoices: [{ companyId: legacyCompany.id, companyName: legacyCompany.name, role: "owner" as const }],
+  };
+}
+
 export async function getCurrentCompanyAccess() {
   const session = await requireAuthenticatedSession();
   const cookieStore = await cookies();
