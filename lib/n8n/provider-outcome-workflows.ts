@@ -58,7 +58,7 @@ const result = await this.helpers.httpRequest({
   method: "POST",
   url: ${JSON.stringify(`${appUrl()}/api/automation-engine/outcomes/provider`)},
   headers: {
-    Authorization: `Bearer ${${JSON.stringify(secret)}}`,
+    Authorization: ${JSON.stringify(`Bearer ${secret}`)},
     "Content-Type": "application/json",
   },
   body: input,
