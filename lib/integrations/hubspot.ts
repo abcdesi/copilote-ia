@@ -146,11 +146,25 @@ function grantedScopes(tokens: HubSpotTokenResponse) {
   return HUBSPOT_SCOPES;
 }
 
+async function getHubSpotAccountInfo(accessToken: string) {
+  const res = await fetch("https://api.hubapi.com/account-info/v3/details", {
+    headers: { authorization: `Bearer ${accessToken}` },
+  });
+  if (!res.ok) throw new Error(`Compte HubSpot inaccessible (${res.status}).`);
+  return res.json() as Promise<{ portalId: number; timeZone?: string; companyCurrency?: string }>;
+}
+
 export async function upsertHubSpotConnection(companyId: string, tokens: HubSpotTokenResponse) {
   const existing = await prisma.integrationConnection.findUnique({
     where: { companyId_provider: { companyId, provider: "hubspot" } },
   });
-  const hubId = tokens.hub_id != null ? String(tokens.hub_id) : existing?.externalAccountId ?? null;
+  const accountInfo = tokens.hub_id == null ? await getHubSpotAccountInfo(tokens.access_token) : null;
+  const hubId =
+    tokens.hub_id != null
+      ? String(tokens.hub_id)
+      : accountInfo?.portalId != null
+        ? String(accountInfo.portalId)
+        : existing?.externalAccountId ?? null;
   if (!hubId) throw new Error("HubSpot n'a pas renvoyé l'identifiant du portail autorisé.");
 
   return prisma.integrationConnection.upsert({
