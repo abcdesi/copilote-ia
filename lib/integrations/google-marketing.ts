@@ -8,7 +8,7 @@ import { MARKETING_KPI_EVENT, type MarketingKpiSnapshot } from "@/lib/marketing/
 
 const GA4_SCOPE = "https://www.googleapis.com/auth/analytics.readonly";
 const GOOGLE_ADS_SCOPE = "https://www.googleapis.com/auth/adwords";
-const GOOGLE_ADS_API_VERSION = "v24";
+const GOOGLE_ADS_API_VERSION = "v25";
 
 export interface GoogleMarketingSettings {
   ga4PropertyId?: string;
@@ -93,7 +93,6 @@ export async function getGoogleMarketingState(companyId: string) {
     settings,
     analyticsAuthorized: Boolean(connection?.status === "connected" && scopes.includes(GA4_SCOPE)),
     adsAuthorized: Boolean(connection?.status === "connected" && scopes.includes(GOOGLE_ADS_SCOPE)),
-    adsServerConfigured: Boolean(process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim()),
   };
 }
 
@@ -187,16 +186,13 @@ async function fetchGoogleAdsMetrics(
   companyId: string,
   settings: GoogleMarketingSettings
 ) {
-  const developerToken = process.env.GOOGLE_ADS_DEVELOPER_TOKEN?.trim();
   const customerId = cleanDigits(settings.googleAdsCustomerId);
-  if (!developerToken) throw new Error("GOOGLE_ADS_DEVELOPER_TOKEN manquant.");
   if (!customerId) throw new Error("Identifiant client Google Ads manquant.");
 
   const token = await getValidGoogleAccessToken(companyId);
   const headers: Record<string, string> = {
     authorization: `Bearer ${token}`,
     "content-type": "application/json",
-    "developer-token": developerToken,
   };
   const loginCustomerId = cleanDigits(settings.googleAdsLoginCustomerId);
   if (loginCustomerId) headers["login-customer-id"] = loginCustomerId;
@@ -270,11 +266,7 @@ export async function syncGoogleMarketingSnapshot(
     }
   }
 
-  if (
-    state.adsAuthorized &&
-    state.adsServerConfigured &&
-    state.settings.googleAdsCustomerId
-  ) {
+  if (state.adsAuthorized && state.settings.googleAdsCustomerId) {
     try {
       ads = await fetchGoogleAdsMetrics(companyId, state.settings);
       providers.push("google_ads");
