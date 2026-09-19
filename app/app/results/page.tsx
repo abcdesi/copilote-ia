@@ -278,7 +278,7 @@ export default async function ResultsPage() {
                       </p>
                     </div>
                     <Badge tone={latestOutcome ? "success" : latestRun ? "accent" : "neutral"}>
-                      {latestOutcome ? "Résultat observé" : latestRun ? "Action exécutée" : "À activer"}
+                      {latestOutcome ? "Résultat enregistré" : latestRun ? "Action exécutée" : "À activer"}
                     </Badge>
                   </div>
 
