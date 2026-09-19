@@ -156,7 +156,7 @@ export async function getCurrentCompanyAccess() {
         return null;
       }),
     prisma.companyTool
-      .findMany({ where: { companyId: shell.company.id }, orderBy: { createdAt: "asc" } })
+      .findMany({ where: { companyId: shell.company.id } })
       .catch((error) => {
         console.error("Company tools unavailable in enriched access", error);
         return [];
