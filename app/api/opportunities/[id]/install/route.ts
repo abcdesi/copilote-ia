@@ -127,6 +127,7 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
       }
       await activateWorkflow(workflowId);
 
+      const deliveredAt = new Date();
       await prisma.$transaction([
         prisma.automation.update({
           where: { id: automation.id },
@@ -139,6 +140,26 @@ export async function POST(_req: NextRequest, { params }: { params: Promise<{ id
           },
         }),
         prisma.opportunity.update({ where: { id: opportunity.id }, data: { status: "installed" } }),
+        prisma.purchase.update({
+          where: { id: purchase.id },
+          data: { deliveredAt },
+        }),
+        prisma.event.create({
+          data: {
+            companyId: company.id,
+            userId: access.session.user.id,
+            type: "AUTOMATION_DIGITAL_PRODUCT_DELIVERED",
+            metadata: JSON.stringify({
+              purchaseId: purchase.id,
+              opportunityId: opportunity.id,
+              automationId: automation.id,
+              templateId: opportunity.templateId,
+              deliveredAt: deliveredAt.toISOString(),
+              actorRole: access.role,
+              actorEmail: access.session.user.email ?? null,
+            }),
+          },
+        }),
         prisma.company.update({
           where: { id: company.id },
           data: { automationScore: Math.min(95, company.automationScore + 5) },
