@@ -13,6 +13,7 @@ import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
 import { isRealExecutionTemplate } from "@/lib/n8n/real-execution-config";
 import { getCompanyEntitlements } from "@/lib/billing/entitlements";
+import { getPlanDefinition } from "@/lib/billing/plans";
 
 export default async function OpportunityDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -112,6 +113,7 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
   const isReal = isRealExecutionTemplate(opportunity.templateId);
   const priceEur = template?.priceEur ?? opportunity.priceEur;
   const purchased = purchase?.status === "paid";
+  const planDefinition = getPlanDefinition(entitlements.plan);
 
   return (
     <div className="mx-auto max-w-3xl space-y-6 px-4 py-8 sm:px-6">
@@ -246,11 +248,11 @@ export default async function OpportunityDetailPage({ params }: { params: Promis
         ) : !entitlements.canExecute ? (
           <Button href="/app/settings#plans">Choisir un abonnement</Button>
         ) : purchased && canConfigure ? (
-          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased />
+          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased planLabel={planDefinition.label} monthlyAutomationLimit={planDefinition.monthlyAutomationPurchaseLimit} relevantTools={relevantTools} />
         ) : purchased ? (
           <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">Administrateur requis pour installer</span>
         ) : canManageBilling ? (
-          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased={false} />
+          <InstallDialog opportunityId={opportunity.id} title={opportunity.title} priceEur={priceEur} purchased={false} planLabel={planDefinition.label} monthlyAutomationLimit={planDefinition.monthlyAutomationPurchaseLimit} relevantTools={relevantTools} />
         ) : (
           <span className="rounded-xl border border-border px-4 py-2 text-sm text-muted-foreground">
             Achat par le Propriétaire requis · {formatEur(priceEur)} HT
