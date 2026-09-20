@@ -14,11 +14,17 @@ export function InstallDialog({
   title,
   priceEur,
   purchased,
+  planLabel,
+  monthlyAutomationLimit,
+  relevantTools,
 }: {
   opportunityId: string;
   title: string;
   priceEur: number;
   purchased: boolean;
+  planLabel: string;
+  monthlyAutomationLimit: number | null;
+  relevantTools: string[];
 }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -104,6 +110,37 @@ export function InstallDialog({
           <div>
             {!purchased ? (
               <div className="space-y-3">
+                <div className="rounded-xl border border-accent/20 bg-accent-soft px-4 py-4">
+                  <p className="text-sm font-semibold">Avant de confirmer : ce que vous achetez</p>
+                  <div className="mt-3 space-y-2 text-xs leading-5 text-foreground/80">
+                    <p>
+                      <strong>Cette automatisation : {formatEur(priceEur)} HT, une seule fois.</strong> Ce paiement correspond à 1 automatisation Pilotzia : « {title} ».
+                    </p>
+                    <p>
+                      <strong>Abonnement Pilotzia séparé :</strong> votre offre {planLabel} reste nécessaire. Après installation, les exécutions consomment les crédits de votre plan ; il n&apos;y a pas de nouvel abonnement mensuel propre à cette automatisation.
+                    </p>
+                    <p>
+                      <strong>Quota de nouvelles automatisations :</strong>{" "}
+                      {monthlyAutomationLimit == null
+                        ? "votre offre n'applique pas la limite Core de 2 nouvelles automatisations par mois."
+                        : `cet achat compte comme 1 des ${monthlyAutomationLimit} nouvelles automatisations autorisées par mois sur votre offre.`}
+                      {" "}Les automatisations déjà installées continuent de fonctionner et ne sont pas recomptées chaque mois.
+                    </p>
+                    <p>
+                      <strong>Observations de suivi incluses :</strong> les signaux lus via vos connecteurs pour mesurer le résultat — par exemple une réponse, un rendez-vous, un deal gagné ou un paiement lorsqu&apos;ils sont pertinents — ne sont pas facturés comme de nouvelles automatisations et ne consomment pas le quota Core.
+                    </p>
+                    <p>
+                      <strong>Vos outils restent à votre charge :</strong>{" "}
+                      {relevantTools.length > 0
+                        ? `${relevantTools.join(", ")} restent vos comptes et abonnements auprès de leurs fournisseurs.`
+                        : "aucun abonnement fournisseur supplémentaire n'est inclus dans cet achat."}
+                      {" "}Pilotzia ne souscrit pas ces services à votre place.
+                    </p>
+                    <p>
+                      <strong>Parcours multi-automatisations :</strong> si un besoin nécessite plusieurs automatisations payantes, chacune doit être présentée avec son prix et validée avant achat. Les étapes d&apos;observation seules ne sont pas vendues comme des automatisations supplémentaires.
+                    </p>
+                  </div>
+                </div>
                 <div className="flex items-start gap-3 rounded-xl bg-muted px-4 py-3">
                   <CreditCard size={18} className="mt-0.5 shrink-0 text-accent" />
                   <div>
@@ -127,7 +164,7 @@ export function InstallDialog({
                     className="mt-1 h-4 w-4 shrink-0"
                   />
                   <span className="text-xs leading-5 text-foreground/80">
-                    Je confirme cet achat professionnel de produit numérique et demande sa livraison / exécution immédiate après paiement. Une fois livré, installé, activé ou utilisé, l&apos;achat est ferme et non remboursable, sous réserve des droits impératifs applicables et des cas de non-fourniture, défaut, erreur de facturation ou opération non autorisée. J&apos;accepte les{" "}
+                    J&apos;ai pris connaissance du prix unique de cette automatisation, de mon abonnement Pilotzia séparé, de l&apos;impact éventuel sur le quota Core, de la consommation de crédits à l&apos;usage et du fait que mes abonnements fournisseurs restent à ma charge. Je confirme cet achat professionnel de produit numérique et demande sa livraison / exécution immédiate après paiement. Une fois livré, installé, activé ou utilisé, l&apos;achat est ferme et non remboursable, sous réserve des droits impératifs applicables et des cas de non-fourniture, défaut, erreur de facturation ou opération non autorisée. J&apos;accepte les{" "}
                     <Link href="/cgv" target="_blank" className="font-semibold text-accent hover:underline">
                       CGV Pilotzia
                     </Link>.
