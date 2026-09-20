@@ -285,6 +285,37 @@ function testAutomaticValueProofLoop() {
   );
 }
 
+function testAutomationPurchaseTransparency() {
+  const dialog = readFileSync("components/opportunities/InstallDialog.tsx", "utf-8");
+  const terms = readFileSync("lib/billing/purchase-terms.ts", "utf-8");
+
+  for (const wording of [
+    "Avant de confirmer : ce que vous achetez",
+    "Abonnement Pilotzia séparé",
+    "Quota de nouvelles automatisations",
+    "Observations de suivi incluses",
+    "Vos outils restent à votre charge",
+    "Parcours multi-automatisations",
+    "Pilotzia ne souscrit pas ces services à votre place",
+  ]) {
+    assert.ok(dialog.includes(wording), `Le récapitulatif avant achat doit afficher : ${wording}`);
+  }
+
+  assert.ok(
+    dialog.includes("ne sont pas facturés comme de nouvelles automatisations") &&
+      dialog.includes("ne consomment pas le quota Core"),
+    "Les observations doivent être distinguées des automatisations payantes avant engagement."
+  );
+  assert.ok(
+    dialog.includes("chacune doit être présentée avec son prix et validée avant achat"),
+    "Un parcours multi-automatisations doit annoncer chaque composant payant avant engagement."
+  );
+  assert.ok(
+    terms.includes('AUTOMATION_PURCHASE_TERMS_VERSION = "2026-09-19-v3"'),
+    "La preuve d'acceptation doit pointer vers la version de conditions qui inclut la transparence tarifaire."
+  );
+}
+
 function testEstimatedMonthlySavingsWording() {
   const opportunityDetail = readFileSync("app/app/opportunities/[id]/page.tsx", "utf-8");
   assert.ok(
@@ -482,6 +513,7 @@ function main() {
   testMarketingExpert();
   testGoogleAdsV25AccessModel();
   testAutomaticValueProofLoop();
+  testAutomationPurchaseTransparency();
   testEstimatedMonthlySavingsWording();
   testProfileGuideCanCollapseAndMove();
   testCoreViewsPreserveUiAndFailSoft();
