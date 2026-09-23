@@ -456,7 +456,7 @@ export async function getBusinessGraphSummary(companyId: string): Promise<Busine
   const connected = connections.filter((item) => item.status === "connected");
   const isFreshConnection = (item: (typeof connections)[number]) => {
     if (!item.lastSyncedAt) return false;
-    const maxAgeMs = item.provider === "google" ? 24 * 60 * 60 * 1000 : 7 * 24 * 60 * 60 * 1000;
+    const maxAgeMs = item.provider === "hubspot" ? 8 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     return item.lastSyncedAt.getTime() >= Date.now() - maxAgeMs;
   };
   const fresh = connected.filter(isFreshConnection);
