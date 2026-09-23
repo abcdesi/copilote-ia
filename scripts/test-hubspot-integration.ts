@@ -3,7 +3,7 @@ import {
   buildHubSpotAuthorizationUrl,
   createHubSpotState,
   getHubSpotConfigurationStatus,
-  HUBSPOT_READ_SCOPES,
+  HUBSPOT_SCOPES,
   verifyHubSpotState,
 } from "../lib/integrations/hubspot";
 import { getIntegrationDefinition } from "../lib/integrations/registry";
@@ -37,12 +37,13 @@ function main() {
   assert.deepEqual(
     requestedScopes,
     new Set([
+      "oauth",
       "crm.objects.contacts.read",
       "crm.objects.companies.read",
       "crm.objects.deals.read",
     ])
   );
-  assert.deepEqual(new Set(HUBSPOT_READ_SCOPES), requestedScopes);
+  assert.deepEqual(new Set(HUBSPOT_SCOPES), requestedScopes);
   assert.equal([...requestedScopes].some((scope) => scope.endsWith(".write")), false);
 
   const definition = getIntegrationDefinition("HubSpot");
