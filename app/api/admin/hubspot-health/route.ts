@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireSession } from "@/lib/companies/current";
 import { isPilotziaAdmin } from "@/lib/admin/access";
-import { getHubSpotConfigurationStatus, hubSpotRedirectUri, HUBSPOT_READ_SCOPES } from "@/lib/integrations/hubspot";
+import { getHubSpotConfigurationStatus, hubspotRedirectUri, HUBSPOT_SCOPES } from "@/lib/integrations/hubspot";
 
 export async function GET() {
   const session = await requireSession();
@@ -13,7 +13,7 @@ export async function GET() {
   let redirectUri: string | null = null;
   if (process.env.APP_URL) {
     try {
-      redirectUri = hubSpotRedirectUri();
+      redirectUri = hubspotRedirectUri();
     } catch {
       redirectUri = null;
     }
@@ -24,7 +24,7 @@ export async function GET() {
     configured: configuration.configured,
     missing: configuration.missing,
     redirectUri,
-    scopes: HUBSPOT_READ_SCOPES,
+    scopes: HUBSPOT_SCOPES,
     permissionMode: "read_only",
   });
 }
