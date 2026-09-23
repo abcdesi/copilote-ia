@@ -45,10 +45,10 @@ const DEFINITIONS: IntegrationDefinition[] = [
   {
     name: "HubSpot",
     category: "crm",
-    permissionMode: "read_action_confirm",
-    permissionLabel: "Lecture + actions avec confirmation",
+    permissionMode: "read_only",
+    permissionLabel: "Lecture seule · contacts, sociétés et deals",
     sensitiveActions: ["modifier un contact", "changer une étape du pipeline", "envoyer une communication"],
-    mvpPriority: "next",
+    mvpPriority: "now",
   },
   {
     name: "Google Analytics 4",
