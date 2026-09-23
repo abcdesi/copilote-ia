@@ -408,20 +408,26 @@ function testCopilotTopBarHandoff() {
   const chatView = readFileSync("components/dashboard/ChatView.tsx", "utf-8");
 
   assert.ok(
-    source.includes('fetch("/api/chat"'),
-    "La barre haute doit pouvoir afficher un aperçu court de la réponse."
+    !source.includes('fetch("/api/chat"') &&
+      !source.includes("compactPreview") &&
+      !source.includes("line-clamp-2"),
+    "La barre haute ne doit plus afficher de réponse IA dans l'Accueil ou les autres pages."
   );
   assert.ok(
-    source.includes("line-clamp-2") && source.includes("compactPreview"),
-    "L'aperçu du Copilote doit rester limité à une ou deux lignes."
+    source.includes('sessionStorage.setItem("pilotzia:copilot-draft"') &&
+      source.includes('router.push("/app/copilot")') &&
+      source.includes("Ouvrir dans Copilote"),
+    "La barre haute doit transférer la question vers la page Copilote."
   );
   assert.ok(
-    source.includes("<span>{reply}</span>") && source.includes("Continuer à lire dans Copilote"),
-    "Le lien vers le Copilote doit apparaître juste après le texte de réponse."
+    chatView.includes('sessionStorage.getItem("pilotzia:copilot-draft")') &&
+      chatView.includes('sessionStorage.removeItem("pilotzia:copilot-draft")') &&
+      chatView.includes("void send(pending)"),
+    "La page Copilote doit reprendre et envoyer automatiquement la question venant de la barre."
   );
   assert.ok(
-    chatView.includes("<RichMessage content={m.content} />") && !chatView.includes("compactPreview"),
-    "Dans la page Copilote, la réponse complète doit être rendue sans compactage ni line-clamp."
+    chatView.includes("<RichMessage content={m.content} />"),
+    "Dans la page Copilote, la réponse complète doit être rendue sans compactage."
   );
 
   const complete = extractAnthropicText([
@@ -445,6 +451,22 @@ function testCopilotRecommendationActions() {
     "support-questions-frequentes",
     "sync-crm-facturation",
   ]);
+
+  const route = readFileSync("app/api/chat/route.ts", "utf-8");
+  const copilotPage = readFileSync("app/app/copilot/page.tsx", "utf-8");
+  const historyPage = readFileSync("app/app/copilot/history/[id]/page.tsx", "utf-8");
+
+  assert.ok(
+    route.includes("mentionedAutomationTemplateIds(reply)") &&
+      route.includes('"COPILOT_AUTOMATION_LINKED"') &&
+      route.includes("actionsJson: JSON.stringify(actions)"),
+    "Une recommandation formulée par Pilotzia doit créer une proposition d'automatisation traçable et persistée."
+  );
+  assert.ok(
+    copilotPage.includes("parseActions(m.actionsJson)") &&
+      historyPage.includes("parseActions(m.actionsJson)"),
+    "Les propositions d'automatisation du Copilote doivent rester visibles après rechargement et dans l'historique."
+  );
 }
 
 function testTerritoriesAndCopilotAutomationProposals() {
