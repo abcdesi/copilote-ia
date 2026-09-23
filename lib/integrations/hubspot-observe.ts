@@ -121,6 +121,6 @@ export async function syncHubSpotOperationalSnapshot(
     }),
   ]);
 
-  await rebuildBusinessGraph(companyId);
+  if (source !== "scheduled") await rebuildBusinessGraph(companyId);
   return snapshot;
 }
