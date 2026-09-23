@@ -67,6 +67,9 @@ jobs:
       - name: Team governance tests
         run: npm run test:team
 
+      - name: Integration OAuth and Copilot recommendation tests
+        run: npm run test:integrations
+
       - name: Lint
         run: npm run lint
 

@@ -3,6 +3,7 @@ import { getCurrentCompanyAccess, hasCompanyPermission } from "@/lib/companies/a
 import { prisma } from "@/lib/db/client";
 import { exchangeHubSpotCode, upsertHubSpotConnection, verifyHubSpotState } from "@/lib/integrations/hubspot";
 import { ensureProviderOutcomeRelayWorkflow } from "@/lib/n8n/provider-outcome-workflows";
+import { syncHubSpotOperationalSnapshot } from "@/lib/integrations/hubspot-observe";
 
 function appUrl() {
   return (process.env.APP_URL || "http://localhost:3000").replace(/\/$/, "");
@@ -64,7 +65,13 @@ export async function GET(req: NextRequest) {
       }),
     ]);
 
-    return NextResponse.redirect(`${appUrl()}/app/tools?hubspot=connected`);
+    try {
+      await syncHubSpotOperationalSnapshot(access.company.id, access.session.user.id, "oauth_callback");
+      return NextResponse.redirect(`${appUrl()}/app/tools?hubspot=connected`);
+    } catch (syncError) {
+      console.error("HubSpot first sync failed after OAuth", syncError);
+      return NextResponse.redirect(`${appUrl()}/app/tools?hubspot=connected-sync-error`);
+    }
   } catch (error) {
     console.error("HubSpot OAuth callback failed", error);
     return NextResponse.redirect(`${appUrl()}/app/tools?hubspot=${errorCode(error)}`);

@@ -3,6 +3,7 @@ import { prisma } from "@/lib/db/client";
 import { runMockDiagnostic } from "@/lib/ai/mock-engine";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
 import { syncGoogleOperationalSnapshot } from "@/lib/integrations/observe";
+import { syncHubSpotOperationalSnapshot } from "@/lib/integrations/hubspot-observe";
 import { GOOGLE_SCOPES, parseStoredGoogleScopes } from "@/lib/integrations/google";
 import { getGoogleMarketingState, syncGoogleMarketingSnapshot } from "@/lib/integrations/google-marketing";
 
@@ -276,6 +277,17 @@ export async function runWeeklyBusinessRefresh(companyId: string) {
           const message = error instanceof Error ? error.message.slice(0, 240) : "Erreur Google Marketing";
           (summary.providerErrors as string[]).push("google_marketing:" + message);
         }
+      }
+    }
+
+    const hubspot = connections.find((connection) => connection.provider === "hubspot");
+    if (hubspot) {
+      try {
+        await syncHubSpotOperationalSnapshot(companyId, null, "scheduled");
+        (summary.providerSyncs as string[]).push("hubspot");
+      } catch (error) {
+        const message = error instanceof Error ? error.message.slice(0, 240) : "Erreur HubSpot";
+        (summary.providerErrors as string[]).push("hubspot:" + message);
       }
     }
 

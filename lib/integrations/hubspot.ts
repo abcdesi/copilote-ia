@@ -8,6 +8,7 @@ const HUBSPOT_TOKEN_URL = "https://api.hubapi.com/oauth/2026-03/token";
 export const HUBSPOT_SCOPES = [
   "oauth",
   "crm.objects.contacts.read",
+  "crm.objects.companies.read",
   "crm.objects.deals.read",
 ];
 

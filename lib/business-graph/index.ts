@@ -135,16 +135,30 @@ async function addFact(companyId: string, input: FactInput) {
  * Les futurs faits importés/validés manuellement restent intacts.
  */
 export async function rebuildBusinessGraph(companyId: string) {
-  const [company, automations, opportunities, connections, latestGoogleSnapshot] = await Promise.all([
+  const [company, automations, opportunities, connections, integrationSnapshots] = await Promise.all([
     prisma.company.findUniqueOrThrow({ where: { id: companyId }, include: { tools: true } }),
     prisma.automation.findMany({ where: { companyId } }),
     prisma.opportunity.findMany({ where: { companyId } }),
     prisma.integrationConnection.findMany({ where: { companyId } }),
-    prisma.event.findFirst({
+    prisma.event.findMany({
       where: { companyId, type: "INTEGRATION_SNAPSHOT" },
       orderBy: { createdAt: "desc" },
+      take: 30,
     }),
   ]);
+
+  const snapshotsByProvider = new Map<string, (typeof integrationSnapshots)[number]>();
+  for (const event of integrationSnapshots) {
+    if (!event.metadata) continue;
+    try {
+      const parsed = JSON.parse(event.metadata) as { provider?: string };
+      if (parsed.provider && !snapshotsByProvider.has(parsed.provider)) snapshotsByProvider.set(parsed.provider, event);
+    } catch {
+      // Snapshot invalide : il reste exclu du graphe.
+    }
+  }
+  const latestGoogleSnapshot = snapshotsByProvider.get("google");
+  const latestHubSpotSnapshot = snapshotsByProvider.get("hubspot");
 
   await prisma.businessFact.deleteMany({
     where: { companyId, sourceRef: { startsWith: "graph:" } },
@@ -363,6 +377,57 @@ export async function rebuildBusinessGraph(companyId: string) {
     }
   }
 
+
+  if (latestHubSpotSnapshot?.metadata) {
+    try {
+      const snapshot = JSON.parse(latestHubSpotSnapshot.metadata) as {
+        provider?: string;
+        contactsTotal?: number;
+        companiesTotal?: number;
+        dealsTotal?: number;
+        openDeals?: number;
+        wonDeals?: number;
+        lostDeals?: number;
+        observedAt?: string;
+      };
+      if (snapshot.provider === "hubspot") {
+        const observedAt = snapshot.observedAt ? new Date(snapshot.observedAt) : latestHubSpotSnapshot.createdAt;
+        const expiresAt = new Date(observedAt.getTime() + 8 * 24 * 60 * 60 * 1000);
+        const connectionEntity = await upsertEntity(companyId, {
+          type: "connection",
+          canonicalKey: "hubspot",
+          name: connections.find((item) => item.provider === "hubspot")?.accountLabel || "HubSpot CRM",
+          status: connections.find((item) => item.provider === "hubspot")?.status || "connected",
+          seenAt: observedAt,
+        });
+
+        const metrics: Array<[string, number | undefined]> = [
+          ["contacts_total", snapshot.contactsTotal],
+          ["companies_total", snapshot.companiesTotal],
+          ["deals_total", snapshot.dealsTotal],
+          ["open_deals", snapshot.openDeals],
+          ["won_deals", snapshot.wonDeals],
+          ["lost_deals", snapshot.lostDeals],
+        ];
+        for (const [predicate, value] of metrics) {
+          if (typeof value !== "number") continue;
+          await addFact(companyId, {
+            subjectEntityId: connectionEntity.id,
+            predicate,
+            value,
+            sourceProvider: "hubspot",
+            sourceRef: `graph:hubspot:snapshot:${predicate}`,
+            observedAt,
+            expiresAt,
+            provenance: { method: "api_observation", source: "hubspot_crm", contentStored: false },
+          });
+        }
+      }
+    } catch {
+      // Snapshot HubSpot invalide : on conserve le reste du graphe sans inventer de donnée.
+    }
+  }
+
   await prisma.event.create({
     data: {
       companyId,
@@ -388,9 +453,13 @@ export async function getBusinessGraphSummary(companyId: string): Promise<Busine
     prisma.event.findFirst({ where: { companyId, type: "BUSINESS_GRAPH_REBUILT" }, orderBy: { createdAt: "desc" } }),
   ]);
 
-  const freshThreshold = Date.now() - 24 * 60 * 60 * 1000;
   const connected = connections.filter((item) => item.status === "connected");
-  const fresh = connected.filter((item) => item.lastSyncedAt && item.lastSyncedAt.getTime() >= freshThreshold);
+  const isFreshConnection = (item: (typeof connections)[number]) => {
+    if (!item.lastSyncedAt) return false;
+    const maxAgeMs = item.provider === "hubspot" ? 8 * 24 * 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
+    return item.lastSyncedAt.getTime() >= Date.now() - maxAgeMs;
+  };
+  const fresh = connected.filter(isFreshConnection);
   const profileFields = [
     company.industry,
     company.country,
@@ -430,7 +499,7 @@ export async function getBusinessGraphSummary(companyId: string): Promise<Busine
       status: item.status,
       accountLabel: item.accountLabel,
       lastSyncedAt: item.lastSyncedAt?.toISOString() ?? null,
-      fresh: Boolean(item.lastSyncedAt && item.lastSyncedAt.getTime() >= freshThreshold),
+      fresh: isFreshConnection(item),
     })),
     lastBuiltAt: lastBuilt?.createdAt.toISOString() ?? null,
   };

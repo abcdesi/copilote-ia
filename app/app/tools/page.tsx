@@ -125,7 +125,10 @@ const GOOGLE_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" |
 };
 
 const HUBSPOT_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string }> = {
-  connected: { tone: "success", title: "HubSpot est connecté", body: "Pilotzia peut lire les contacts et les deals pour observer les opportunités gagnées reliées à une relance." },
+  connected: { tone: "success", title: "HubSpot est connecté", body: "Pilotzia peut lire les contacts, sociétés et deals utiles au contexte commercial, sans modifier le CRM." },
+  synced: { tone: "success", title: "HubSpot est synchronisé", body: "Les signaux CRM agrégés ont été actualisés et transmis au Business Graph." },
+  "connected-sync-error": { tone: "warning", title: "HubSpot est connecté mais la première synchronisation a échoué", body: "La connexion est conservée. Relancez la synchronisation ou vérifiez les scopes CRM autorisés." },
+  "sync-error": { tone: "warning", title: "Synchronisation HubSpot impossible", body: "La connexion est conservée mais les signaux CRM n'ont pas été actualisés." },
   disconnected: { tone: "accent", title: "HubSpot est déconnecté", body: "Les jetons HubSpot locaux ont été supprimés et ne seront plus utilisés." },
   cancelled: { tone: "accent", title: "Connexion HubSpot annulée", body: "Aucune nouvelle autorisation n'a été enregistrée." },
   "permission-denied": { tone: "danger", title: "Permission Pilotzia insuffisante", body: "Seul un propriétaire ou un administrateur peut gérer HubSpot." },
@@ -175,6 +178,7 @@ export default async function ToolsPage({
   const canManageGoogle = hasCompanyPermission(access.role, "manage_integrations");
   const canManageIntegrations = hasCompanyPermission(access.role, "manage_integrations");
   const canSyncGoogle = hasCompanyPermission(access.role, "sync_integrations");
+  const canSyncIntegrations = hasCompanyPermission(access.role, "sync_integrations");
 
   const connections = await safeRead(
     "tools.connections",
@@ -345,12 +349,13 @@ export default async function ToolsPage({
               <ConnectionStateBadge state={hubspotState} connectedLabel="Connecté · lecture seule" />
             </div>
             <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-              Pilotzia lit uniquement les contacts et les deals nécessaires pour confirmer qu&apos;une opportunité est réellement gagnée après une relance.
-              Aucune modification du CRM n&apos;est effectuée. Le portail HubSpot et son abonnement restent ceux de votre entreprise.
+              Pilotzia lit uniquement des signaux CRM utiles : contacts, sociétés, deals et état du pipeline. Ces données peuvent enrichir
+              les recommandations du Copilote et la preuve de résultat, sans modification du CRM. Le portail HubSpot et son abonnement restent ceux de votre entreprise.
             </p>
             {hubspot && (
               <div className="mt-3 space-y-1 text-xs text-muted-foreground">
                 <p>Compte : {hubspot.accountLabel ?? "Compte HubSpot"}</p>
+                <p>{formatSync(hubspot.lastSyncedAt)}</p>
                 {hubspotNeedsReauth && <p className="font-medium text-warning">Le compte doit être reconnecté avant la prochaine observation.</p>}
                 {hubspot.lastError && !hubspotNeedsReauth && <p className="font-medium text-warning">Dernière erreur HubSpot enregistrée.</p>}
               </div>
@@ -369,6 +374,13 @@ export default async function ToolsPage({
             )}
           </div>
           <div className="flex flex-wrap gap-2">
+            {hubspotConnected && canSyncIntegrations && (
+              <form method="post" action="/api/integrations/hubspot/sync">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted">
+                  <RefreshCcw size={15} /> Synchroniser
+                </button>
+              </form>
+            )}
             {(!hubspotConnected || hubspotNeedsReauth) && canManageIntegrations && hubspotConfiguration.configured && (
               <a
                 href="/api/integrations/hubspot/connect"
