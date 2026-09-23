@@ -4,6 +4,7 @@ import { addToolAction, removeToolAction } from "@/lib/companies/actions";
 import { KNOWN_TOOLS } from "@/lib/automations/types";
 import { getIntegrationDefinition } from "@/lib/integrations/registry";
 import { getGoogleConfigurationStatus } from "@/lib/integrations/google";
+import { getHubSpotConfigurationStatus } from "@/lib/integrations/hubspot";
 import { prisma } from "@/lib/db/client";
 import { APP_NAME } from "@/lib/config";
 import { Badge } from "@/components/ui/Badge";
@@ -110,23 +111,111 @@ const GOOGLE_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" |
   },
 };
 
+const HUBSPOT_MESSAGES: Record<string, { tone: "success" | "warning" | "danger" | "accent"; title: string; body: string }> = {
+  connected: {
+    tone: "success",
+    title: "HubSpot est connecté",
+    body: "L'autorisation lecture seule a été enregistrée et une première synchronisation CRM a réussi.",
+  },
+  synced: {
+    tone: "success",
+    title: "Synchronisation HubSpot terminée",
+    body: "Les signaux CRM ont été actualisés et transmis au Business Graph sans copier les fiches individuelles.",
+  },
+  disconnected: {
+    tone: "accent",
+    title: "HubSpot est déconnecté",
+    body: "Pilotzia n'utilise plus les jetons stockés pour ce compte.",
+  },
+  cancelled: {
+    tone: "accent",
+    title: "Connexion HubSpot annulée",
+    body: "Aucune nouvelle autorisation HubSpot n'a été enregistrée.",
+  },
+  "connected-sync-error": {
+    tone: "warning",
+    title: "HubSpot est autorisé mais la première synchronisation a échoué",
+    body: "La connexion est conservée. Relancez la synchronisation ou vérifiez les scopes CRM autorisés dans l'application HubSpot.",
+  },
+  "permission-denied": {
+    tone: "danger",
+    title: "Permission Pilotzia insuffisante",
+    body: "Seul un propriétaire ou un administrateur peut connecter ou déconnecter HubSpot.",
+  },
+  "config-error": {
+    tone: "danger",
+    title: "Configuration HubSpot incomplète côté Pilotzia",
+    body: "La connexion est désactivée tant que HUBSPOT_CLIENT_ID, HUBSPOT_CLIENT_SECRET et le stockage chiffré ne sont pas configurés.",
+  },
+  "token-error": {
+    tone: "danger",
+    title: "HubSpot n'a pas pu finaliser l'autorisation",
+    body: "Le code OAuth n'a pas pu être échangé. Vérifiez l'URL de redirection de l'application HubSpot.",
+  },
+  "state-error": {
+    tone: "danger",
+    title: "Session OAuth HubSpot invalide ou expirée",
+    body: "Recommencez depuis cette page. Aucun accès issu de cette tentative n'a été enregistré.",
+  },
+  "scope-error": {
+    tone: "danger",
+    title: "Scopes HubSpot insuffisants",
+    body: "Pilotzia demande uniquement contacts, sociétés et deals en lecture. Vérifiez les scopes autorisés dans l'application HubSpot.",
+  },
+  "sync-error": {
+    tone: "warning",
+    title: "Synchronisation HubSpot impossible",
+    body: "La connexion est conservée mais les données n'ont pas été actualisées. Réessayez ou reconnectez le compte.",
+  },
+  "provider-error": {
+    tone: "danger",
+    title: "HubSpot a refusé la connexion",
+    body: "Le fournisseur OAuth a renvoyé une erreur. Vérifiez la configuration de l'application HubSpot.",
+  },
+  "invalid-response": {
+    tone: "danger",
+    title: "Réponse HubSpot incomplète",
+    body: "Aucun code OAuth exploitable n'a été reçu.",
+  },
+  "start-error": {
+    tone: "danger",
+    title: "Impossible de démarrer la connexion HubSpot",
+    body: "Pilotzia a bloqué le démarrage avant toute autorisation.",
+  },
+  "callback-error": {
+    tone: "danger",
+    title: "Connexion HubSpot non finalisée",
+    body: "Une erreur inattendue est survenue pendant le retour OAuth.",
+  },
+  "disconnect-error": {
+    tone: "danger",
+    title: "Déconnexion HubSpot incomplète",
+    body: "Pilotzia n'a pas pu terminer proprement la déconnexion.",
+  },
+};
+
 export default async function ToolsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ google?: string }>;
+  searchParams: Promise<{ google?: string; hubspot?: string }>;
 }) {
   const access = await getCurrentCompanyAccess();
   const company = access.company;
   const params = await searchParams;
   const googleMessage = params.google ? GOOGLE_MESSAGES[params.google] : null;
+  const hubSpotMessage = params.hubspot ? HUBSPOT_MESSAGES[params.hubspot] : null;
   const googleConfiguration = getGoogleConfigurationStatus();
-  const canManageGoogle = hasCompanyPermission(access.role, "manage_integrations");
-  const canSyncGoogle = hasCompanyPermission(access.role, "sync_integrations");
+  const hubSpotConfiguration = getHubSpotConfigurationStatus();
+  const canManageIntegrations = hasCompanyPermission(access.role, "manage_integrations");
+  const canSyncIntegrations = hasCompanyPermission(access.role, "sync_integrations");
 
   const connections = await prisma.integrationConnection.findMany({ where: { companyId: company.id } });
   const google = connections.find((connection) => connection.provider === "google");
   const googleConnected = google?.status === "connected";
   const googleNeedsReauth = google?.status === "needs_reauth";
+  const hubSpot = connections.find((connection) => connection.provider === "hubspot");
+  const hubSpotConnected = hubSpot?.status === "connected";
+  const hubSpotNeedsReauth = hubSpot?.status === "needs_reauth";
   const currentNames = new Set(company.tools.map((t) => t.name));
   const suggestions = KNOWN_TOOLS.filter((t) => !currentNames.has(t));
 
@@ -151,6 +240,21 @@ export default async function ToolsPage({
                 <Badge tone={googleMessage.tone}>{params.google}</Badge>
               </div>
               <p className="mt-1 text-sm leading-6 text-muted-foreground">{googleMessage.body}</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {hubSpotMessage && (
+        <div className="rounded-2xl border border-border bg-card p-4">
+          <div className="flex gap-3">
+            <AlertCircle size={18} className={hubSpotMessage.tone === "danger" ? "mt-0.5 text-danger" : hubSpotMessage.tone === "warning" ? "mt-0.5 text-warning" : "mt-0.5 text-accent"} />
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
+                <p className="text-sm font-semibold">{hubSpotMessage.title}</p>
+                <Badge tone={hubSpotMessage.tone}>{params.hubspot}</Badge>
+              </div>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">{hubSpotMessage.body}</p>
             </div>
           </div>
         </div>
@@ -199,7 +303,7 @@ export default async function ToolsPage({
                 )}
               </div>
             )}
-            {!googleConfiguration.configured && canManageGoogle && (
+            {!googleConfiguration.configured && canManageIntegrations && (
               <p className="mt-3 text-xs font-medium text-danger">
                 Configuration serveur Google incomplète : connexion temporairement indisponible.
               </p>
@@ -207,14 +311,14 @@ export default async function ToolsPage({
           </div>
 
           <div className="flex flex-wrap gap-2">
-            {googleConnected && canSyncGoogle && (
+            {googleConnected && canSyncIntegrations && (
               <form method="post" action="/api/integrations/google/sync">
                 <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted">
                   <RefreshCcw size={15} /> Synchroniser
                 </button>
               </form>
             )}
-            {(googleNeedsReauth || !googleConnected) && canManageGoogle && googleConfiguration.configured && (
+            {(googleNeedsReauth || !googleConnected) && canManageIntegrations && googleConfiguration.configured && (
               <a
                 href="/api/integrations/google/connect"
                 className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90"
@@ -222,14 +326,14 @@ export default async function ToolsPage({
                 <RefreshCcw size={15} /> {googleNeedsReauth ? "Reconnecter Google" : "Connecter Google"}
               </a>
             )}
-            {googleConnected && canManageGoogle && (
+            {googleConnected && canManageIntegrations && (
               <form method="post" action="/api/integrations/google/disconnect">
                 <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
                   <Unplug size={15} /> Déconnecter
                 </button>
               </form>
             )}
-            {!canManageGoogle && !googleConnected && (
+            {!canManageIntegrations && !googleConnected && (
               <span className="rounded-xl border border-border px-3.5 py-2 text-xs text-muted-foreground">Administrateur requis</span>
             )}
           </div>
@@ -238,6 +342,73 @@ export default async function ToolsPage({
         <div className="mt-5 grid gap-3 sm:grid-cols-2">
           <ConnectionCapability title="Gmail" body="Lecture du contexte utile. Aucun email n'est envoyé avec l'autorisation initiale." connected={googleConnected} />
           <ConnectionCapability title="Google Calendar" body="Lecture des rendez-vous. Aucune création ou modification n'est autorisée avec l'accès initial." connected={googleConnected} />
+        </div>
+      </section>
+
+      <section className="rounded-2xl border border-border bg-card p-6">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <Cloud size={18} className="text-accent" />
+              <h2 className="font-semibold">HubSpot CRM</h2>
+              {hubSpotConnected ? (
+                <Badge tone="success">Connecté · lecture seule</Badge>
+              ) : hubSpotNeedsReauth ? (
+                <Badge tone="warning">Reconnexion requise</Badge>
+              ) : hubSpotConfiguration.configured ? (
+                <Badge tone="accent">Disponible</Badge>
+              ) : (
+                <Badge tone="neutral">Configuration requise</Badge>
+              )}
+            </div>
+            <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+              Pilotzia lit uniquement des signaux CRM utiles : volumes de contacts, sociétés et deals, ainsi que l'état du pipeline.
+              Les fiches individuelles ne sont pas copiées dans le Business Graph.
+            </p>
+            {hubSpot && (
+              <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                <p>Compte : {hubSpot.accountLabel ?? "Compte HubSpot"}</p>
+                <p>{formatSync(hubSpot.lastSyncedAt)}</p>
+                {hubSpotNeedsReauth && <p className="font-medium text-warning">Le compte doit être reconnecté.</p>}
+                {hubSpot.lastError && !hubSpotNeedsReauth && <p className="font-medium text-warning">La dernière synchronisation a rencontré une erreur.</p>}
+              </div>
+            )}
+            {!hubSpotConfiguration.configured && canManageIntegrations && (
+              <p className="mt-3 text-xs font-medium text-danger">
+                Configuration serveur HubSpot incomplète : connexion temporairement indisponible.
+              </p>
+            )}
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {hubSpotConnected && canSyncIntegrations && (
+              <form method="post" action="/api/integrations/hubspot/sync">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium transition-colors hover:bg-muted">
+                  <RefreshCcw size={15} /> Synchroniser
+                </button>
+              </form>
+            )}
+            {(hubSpotNeedsReauth || !hubSpotConnected) && canManageIntegrations && hubSpotConfiguration.configured && (
+              <a href="/api/integrations/hubspot/connect" className="inline-flex items-center gap-2 rounded-xl bg-accent px-4 py-2 text-sm font-semibold text-accent-foreground transition-opacity hover:opacity-90">
+                <RefreshCcw size={15} /> {hubSpotNeedsReauth ? "Reconnecter HubSpot" : "Connecter HubSpot"}
+              </a>
+            )}
+            {hubSpotConnected && canManageIntegrations && (
+              <form method="post" action="/api/integrations/hubspot/disconnect">
+                <button className="inline-flex items-center gap-2 rounded-xl border border-border px-3.5 py-2 text-sm font-medium text-muted-foreground transition-colors hover:text-danger">
+                  <Unplug size={15} /> Déconnecter
+                </button>
+              </form>
+            )}
+            {!canManageIntegrations && !hubSpotConnected && (
+              <span className="rounded-xl border border-border px-3.5 py-2 text-xs text-muted-foreground">Administrateur requis</span>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-3">
+          <ConnectionCapability title="Contacts" body="Comptages et signaux CRM en lecture seule." connected={hubSpotConnected} />
+          <ConnectionCapability title="Sociétés" body="Volume de sociétés connu du CRM, sans copier les fiches." connected={hubSpotConnected} />
+          <ConnectionCapability title="Deals" body="Pipeline ouvert, gagné et perdu pour aider le Copilote à prioriser." connected={hubSpotConnected} />
         </div>
       </section>
 
@@ -259,7 +430,8 @@ export default async function ToolsPage({
             {company.tools.map((tool) => {
               const definition = getIntegrationDefinition(tool.name);
               const isGoogleTool = tool.name === "Gmail" || tool.name === "Google Calendar";
-              const isReallyConnected = isGoogleTool && googleConnected;
+              const isHubSpotTool = tool.name === "HubSpot";
+              const isReallyConnected = (isGoogleTool && googleConnected) || (isHubSpotTool && hubSpotConnected);
               return (
                 <li key={tool.id} className="rounded-xl border border-border bg-background p-4">
                   <div className="flex items-start justify-between gap-3">
