@@ -1,6 +1,6 @@
 import { prisma } from "@/lib/db/client";
 import { rebuildBusinessGraph } from "@/lib/business-graph";
-import { hubSpotApi } from "@/lib/integrations/hubspot";
+import { hubspotApi } from "@/lib/integrations/hubspot";
 
 interface HubSpotSearchResponse {
   total: number;
@@ -24,7 +24,7 @@ export interface HubSpotOperationalSnapshot {
   contentStored: false;
 }
 
-const CRM_SEARCH_ROOT = "https://api.hubapi.com/crm/objects/2026-03";
+const CRM_SEARCH_ROOT = "/crm/objects/2026-03";
 
 function searchBody(filters?: Array<{ propertyName: string; operator: string; value: string }>) {
   return JSON.stringify({
@@ -40,7 +40,7 @@ async function countObjects(
   objectType: "contacts" | "companies" | "deals",
   filters?: Array<{ propertyName: string; operator: string; value: string }>
 ) {
-  const response = await hubSpotApi<HubSpotSearchResponse>(
+  const response = await hubspotApi<HubSpotSearchResponse>(
     companyId,
     `${CRM_SEARCH_ROOT}/${objectType}/search`,
     {
