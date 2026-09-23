@@ -14,9 +14,11 @@
     "db:migrate": "prisma migrate deploy",
     "db:status": "prisma migrate status",
     "db:seed": "tsx prisma/seed.ts",
-    "test:operations": "tsx scripts/test-automation-scheduling.ts && tsx scripts/test-weekly-refresh.ts",
+    "test:operations": "tsx scripts/test-automation-scheduling.ts && tsx scripts/test-weekly-refresh.ts && tsx scripts/test-provider-outcomes.ts",
     "test:profiles": "tsx scripts/test-four-profiles.ts",
     "test:team": "tsx scripts/test-team-governance.ts",
+    "test:profiles:runtime": "tsx scripts/test-four-profiles-runtime.ts",
+    "audit:production": "node scripts/check-production-audit.mjs",
     "test:integrations": "tsx scripts/test-hubspot-integration.ts"
   },
   "dependencies": {
