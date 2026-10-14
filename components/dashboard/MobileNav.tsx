@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Menu, Home, Bot, Zap, Lightbulb, BarChart3, Wrench, Building2, Settings, Network, ShieldCheck, Landmark, LifeBuoy, Users, Megaphone } from "lucide-react";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { APP_NAME } from "@/lib/config";
@@ -27,6 +27,15 @@ const NAV = [
 export function MobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
+
+  // Fermer le menu une fois la navigation effective (changement de route) plutôt que
+  // dans le onClick du lien lui-même : fermer la boîte de dialogue Radix dans le même
+  // clic que la navigation de next/link peut démonter l'ancre avant que le navigateur
+  // n'ait traité la navigation, ce qui annule silencieusement le premier clic.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
+
   const items = isAdmin
     ? [
         ...NAV,
@@ -52,7 +61,6 @@ export function MobileNav({ isAdmin = false }: { isAdmin?: boolean }) {
                   <Link
                     key={item.href}
                     href={item.href}
-                    onClick={() => setOpen(false)}
                     className={cn(
                       "flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors",
                       active ? "bg-accent-soft text-accent" : "text-muted-foreground hover:bg-muted hover:text-foreground"
