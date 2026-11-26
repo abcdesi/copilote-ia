@@ -19,4 +19,5 @@ jobs:
       - run: npm ci
       - run: npx prisma validate
       - run: npm run test:sales
+      - run: npx next typegen
       - run: npx tsc --noEmit
