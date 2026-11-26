@@ -22,13 +22,16 @@ jobs:
           npm audit --omit=dev --json > /tmp/audit.json || true
           node -e 'const a=require("/tmp/audit.json"); for(const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))'
       - name: Try non-forced updates in disposable runner
-        run: npm audit fix --package-lock-only --ignore-scripts --no-fund || true
+        run: npm install --package-lock-only --ignore-scripts --no-fund --save-exact next@16.4.6 zod@4.6.6
+          npm install --package-lock-only --ignore-scripts --no-fund --save-dev --save-exact eslint-config-next@16.4.6
       - run: npm ci
       - run: npm run audit:production
+        continue-on-error: true
       - run: npx prisma validate
       - run: npm run test:sales
       - run: npx next typegen
       - run: npx tsc --noEmit
+      - run: npm run audit:production
       - name: Preserve proposed dependency changes
         if: always()
         run: git diff -- package.json package-lock.json > /tmp/security-update.patch
