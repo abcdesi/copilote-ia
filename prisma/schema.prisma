@@ -561,3 +561,37 @@ model Event {
   @@index([companyId])
   @@index([createdAt])
 }
+
+// First-party commercial CRM: never expose through tenant Prospect APIs.
+model SalesLead {
+  id               String   @id @default(cuid())
+  email            String   @unique
+  stage            String   @default("identified")
+  sector           String?
+  sizeRange        String?
+  objective        String?
+  source           String?
+  medium           String?
+  campaign         String?
+  content          String?
+  emailVerifiedAt  DateTime?
+  marketingOptInAt DateTime?
+  marketingOptOutAt DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  events           SalesLeadEvent[]
+
+  @@index([stage, updatedAt])
+  @@index([source, campaign])
+}
+
+model SalesLeadEvent {
+  id          String   @id @default(cuid())
+  leadId      String
+  lead        SalesLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  kind        String
+  dedupeKey   String   @unique
+  createdAt   DateTime @default(now())
+
+  @@index([leadId, createdAt])
+}
