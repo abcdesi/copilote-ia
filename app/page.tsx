@@ -138,6 +138,21 @@ export default function HomePage() {
             </div>
           </div>
 
+          <section aria-label="Deux façons de travailler avec Pilotzia" className="mx-auto mt-10 grid max-w-4xl gap-4 text-left sm:grid-cols-2">
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Pilotzia · Plateforme</p>
+              <h2 className="mt-2 text-xl font-semibold">Pilotez votre entreprise en autonomie</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Analysez vos priorités, connectez vos outils et découvrez les actions adaptées à votre activité.</p>
+              <Link href="#diagnostic" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent">Commencer mon diagnostic <ArrowRight size={16} /></Link>
+            </div>
+            <div className="rounded-2xl border border-border bg-card p-6">
+              <p className="text-xs font-semibold uppercase tracking-wide text-accent">Pilotzia · Agency</p>
+              <h2 className="mt-2 text-xl font-semibold">Faites automatiser vos processus</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">Découvrez les possibilités d'intégration et d'accompagnement pour vos processus commerciaux et administratifs.</p>
+              <Link href="/agency" className="mt-4 inline-flex items-center gap-2 text-sm font-semibold text-accent">Découvrir les services <ArrowRight size={16} /></Link>
+            </div>
+          </section>
+
           <div id="diagnostic" className="mx-auto mt-10 max-w-4xl scroll-mt-20">
             <p className="mb-3 text-center text-sm font-medium text-muted-foreground">
               Décrivez un problème, une perte de temps ou une priorité business. Pilotzia vous donne une première lecture.
