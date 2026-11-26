@@ -19,7 +19,8 @@
     "test:team": "tsx scripts/test-team-governance.ts",
     "test:profiles:runtime": "tsx scripts/test-four-profiles-runtime.ts",
     "audit:production": "node scripts/check-production-audit.mjs",
-    "test:integrations": "tsx scripts/test-hubspot-integration.ts"
+    "test:integrations": "tsx scripts/test-hubspot-integration.ts",
+    "test:sales": "tsx scripts/test-acquisition.ts && tsx scripts/test-sales-lifecycle.ts"
   },
   "dependencies": {
     "@prisma/client": "6.19.3",
