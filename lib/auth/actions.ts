@@ -8,6 +8,7 @@ import { prisma } from "@/lib/db/client";
 import { signIn, signOut } from "@/lib/auth";
 import { track } from "@/lib/analytics/track";
 import { EVENTS } from "@/lib/analytics/events";
+import { recordSalesRegistration } from "@/lib/sales/registration";
 import {
   consumePasswordResetToken,
   createPasswordResetToken,
@@ -58,6 +59,12 @@ export async function signupAction(formData: FormData) {
 
   const passwordHash = await bcrypt.hash(password, 10);
   const user = await prisma.user.create({ data: { name, email, passwordHash } });
+
+  // CRM is auxiliary: a temporary CRM outage must not prevent account access.
+  // Registration alone is neither email verification nor marketing consent.
+  await recordSalesRegistration(user.id, email).catch(() => {
+    console.error("Sales registration sync failed");
+  });
 
   await track(EVENTS.USER_CREATED, {
     userId: user.id,

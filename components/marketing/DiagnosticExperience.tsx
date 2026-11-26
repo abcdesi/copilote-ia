@@ -21,6 +21,9 @@ type Status = "idle" | "loading" | "done" | "error";
 
 export function DiagnosticExperience() {
   const [input, setInput] = useState("");
+  const [sector, setSector] = useState("");
+  const [size, setSize] = useState("");
+  const [goal, setGoal] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [result, setResult] = useState<DiagnosticResult | null>(null);
   const [diagnosticId, setDiagnosticId] = useState<string | null>(null);
@@ -32,7 +35,7 @@ export function DiagnosticExperience() {
       const res = await fetch("/api/diagnostic", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ input: text }),
+        body: JSON.stringify({ input: [sector && `Secteur : ${sector}`, size && `Taille : ${size}`, goal && `Objectif : ${goal}`, text.trim()].filter(Boolean).join("\n").slice(0, 2000) }),
       });
       if (!res.ok) throw new Error("failed");
       const data = await res.json();
@@ -57,6 +60,26 @@ export function DiagnosticExperience() {
 
   return (
     <div className="w-full">
+      <div className="mx-auto mb-4 grid max-w-2xl gap-3 sm:grid-cols-3">
+        <label className="text-xs font-medium">Secteur (facultatif)
+          <select value={sector} onChange={(e) => setSector(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-card p-2 text-sm">
+            <option value="">Choisir</option>
+            {["Artisan / BTP", "Commerce", "Automobile", "Immobilier", "Tourisme", "Services", "Autre"].map((v) => <option key={v}>{v}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-medium">Effectif (facultatif)
+          <select value={size} onChange={(e) => setSize(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-card p-2 text-sm">
+            <option value="">Choisir</option>
+            {["Indépendant", "2 à 10", "11 à 50", "Plus de 50"].map((v) => <option key={v}>{v}</option>)}
+          </select>
+        </label>
+        <label className="text-xs font-medium">Priorité (facultatif)
+          <select value={goal} onChange={(e) => setGoal(e.target.value)} className="mt-1 w-full rounded-lg border border-border bg-card p-2 text-sm">
+            <option value="">Choisir</option>
+            {["Gagner du temps", "Augmenter les ventes", "Améliorer la trésorerie", "Réduire les coûts", "Mieux piloter"].map((v) => <option key={v}>{v}</option>)}
+          </select>
+        </label>
+      </div>
       <form onSubmit={handleSubmit} className="mx-auto max-w-2xl">
         <div className="rounded-2xl border border-border bg-card p-2 shadow-[0_1px_3px_rgba(23,22,28,0.06)] transition-shadow focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/30">
           <textarea

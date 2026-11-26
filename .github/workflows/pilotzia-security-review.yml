@@ -1,0 +1,42 @@
+name: Pilotzia security review
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  assess:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      DATABASE_URL: postgresql://validation:validation@127.0.0.1:5432/validation
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci
+      - name: Assess compatible security updates
+        run: |
+          npm audit --omit=dev --json > /tmp/audit.json || true
+          node -e 'const a=require("/tmp/audit.json"); for(const [name,v] of Object.entries(a.vulnerabilities||{})) console.log(JSON.stringify({name,severity:v.severity,range:v.range,fixAvailable:v.fixAvailable}))'
+      - name: Try non-forced updates in disposable runner
+        run: npm install --package-lock-only --ignore-scripts --no-fund --save-exact next@16.4.6 zod@4.6.6
+          npm install --package-lock-only --ignore-scripts --no-fund --save-dev --save-exact eslint-config-next@16.4.6
+      - run: npm ci
+      - run: npm run audit:production
+        continue-on-error: true
+      - run: npx prisma validate
+      - run: npm run test:sales
+      - run: npx next typegen
+      - run: npx tsc --noEmit
+      - run: npm run audit:production
+      - name: Preserve proposed dependency changes
+        if: always()
+        run: git diff -- package.json package-lock.json > /tmp/security-update.patch
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: security-update-proposal
+          path: /tmp/security-update.patch
